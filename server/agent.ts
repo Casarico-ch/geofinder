@@ -134,12 +134,12 @@ HOW TO WIN (invent freely; this is what works)
 4. Iterate relentlessly. If one method stalls, switch angle. Read the exact street number from the register. Confirm a mitoyenne's twin. Don't stop at "the right area" — drive to the exact address, then re-check it against every photo.
 5. submit_answer with the address, parcel, coordinates, honest confidence, your full reasoning, the ranked candidates, and DIRECT links (cadastre extract + satellite + map). Never fabricate — every address must come from real data you fetched. If you truly cannot pin it, return the tightest honest area with found=false.
 
-WHEN TO COMMIT — do not over-search (this is a real failure mode)
-The goal is the CORRECT answer, not certainty. The moment ONE candidate satisfies the listing's primary key (terrain area — or footprint + era + floors + mitoyenneté for a villa/apartment) AND a single aerial or register check corroborates it, call submit_answer. Do NOT keep scanning for a marginally "better" match: agents that keep exploring after finding the right property waste steps and, worse, talk themselves out of the correct answer and move on to the wrong one.
-- Keep a running shortlist of your best candidates and why each fits. Never discard a strong match just to look further.
-- Before fetching yet another area, ask yourself: "does my current best candidate already satisfy the hard keys?" If yes — verify it once, then submit. Don't reopen the search.
-- If you're genuinely torn between two adjacent units (e.g. a mitoyenne pair, or a twin address), submit the more likely one at "building" confidence and list the other as a candidate. That IS the correct outcome — not a reason to keep searching.
-- A confirmed match you can defend beats an endless hunt for perfection.
+WHEN TO COMMIT — confidence, not exhaustion, and never fabrication
+Commit when the EVIDENCE confirms one property — not because you have searched a lot, and not because a candidate is merely the best of a weak field.
+- Confirmation = independent signals CONVERGING on one parcel: the primary key (terrain area — or footprint + era + floors + mitoyenneté) matches, AND the aerial matches the photos (roof, garden, pool, veranda, driveway), AND the register/address is consistent. When several independent checks all point to the same building, THAT is your confirmation — submit_answer then, and do NOT reopen the search. Re-searching after the evidence has already converged is exactly how the correct property gets discarded.
+- Keep a running shortlist. For your strongest candidate, actively test it against EVERY hard signal in the listing (area, rooms, floors, year, orientation/sun, any background landmark, amenity distances). Convergence across signals is what earns a commit — a single loose match is not enough.
+- If the signals do NOT converge and you cannot close the gap, do NOT invent a door number to "finish." Submit your honest conclusion instead: the tightest defensible area with found=false (or a deliberately low confidence), plus your ranked candidates and the one check that would resolve them. An honest "neighbourhood, not pinned" beats a confident wrong address.
+- The only real tie is two adjacent units that share every signal (a mitoyenne pair / twin address). There, submit the more likely one at "building" confidence and list the other — that is confident-enough, not a guess.
 
 FIELD NOTES — useful keyless public sources (starting points, not limits; set a User-Agent header on every request)
 - Geneva cadastre (SITG), ArcGIS REST, params f=json&outSR=4326:
@@ -182,9 +182,9 @@ function clip(s: string, n: number): string {
 // model reviews its best candidate and commits instead of scanning forever.
 function convergeReminder(step: number, max: number): string | null {
   if (step >= max - 15)
-    return `[system-reminder] You are near the ${max}-step limit. Commit now: call submit_answer with your best candidate at honest confidence, listing any alternates as candidates. Do not open new searches.`;
+    return `[system-reminder] You are near the ${max}-step limit. Reach a conclusion now — an HONEST one. If the evidence has converged on one property, submit_answer with it. If it has not, submit your tightest defensible area with found=false and your ranked candidates. Do NOT fabricate a precise address just to finish, and do not open new searches.`;
   if (step >= 24 && (step - 24) % 12 === 0)
-    return `[system-reminder] ${step} steps in. If a candidate already satisfies the listing's primary key and an aerial or register check corroborates it, call submit_answer NOW — do not keep scanning for a better match; that is how the correct property gets discarded. If you are genuinely torn between two, submit the more likely one at "building" confidence and list the other as a candidate. State your current best candidate before doing anything else.`;
+    return `[system-reminder] ${step} steps in. Stop and assess your strongest candidate: does it match EVERY hard signal in the listing (area/footprint, era, floors, orientation, background landmarks, amenity distances)? If the signals CONVERGE, that is confirmation — submit_answer now and do not reopen the search (re-searching after convergence is how the right property gets discarded). If they do NOT converge, name the single check that would resolve it and do only that — or conclude honestly (found=false + candidates). Do not keep scanning the same way, and do not commit just because a candidate is the "best" of a weak field.`;
   return null;
 }
 
