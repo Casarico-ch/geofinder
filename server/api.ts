@@ -57,11 +57,11 @@ function compassBearing(lat1: number, lon1: number, lat2: number, lon2: number):
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 type MediaType = z.infer<typeof mediaTypeSchema>;
 
-interface ImageInput {
+export interface ImageInput {
   imageBase64: string;
   mediaType: MediaType;
 }
-interface AnalyzeInput {
+export interface AnalyzeInput {
   images: ImageInput[];
   listingText?: string;
 }
@@ -561,6 +561,53 @@ Match the property's land against this data and pin the exact parcel/building, o
   };
 }
 
+export interface AnalyzeResult {
+  estimate: LocationEstimate;
+  landVerification: LandVerification;
+}
+
+// Full pipeline: deduce the area from the images + text, then map the land to
+// pin the parcel. Shared by the HTTP route and the CLI test harness.
+export async function analyzeListing(
+  client: Anthropic,
+  input: AnalyzeInput,
+): Promise<AnalyzeResult | { refusal: true }> {
+  const result = await geolocate(client, input);
+  if ("refusal" in result) return { refusal: true };
+
+  let estimate = result;
+  let landVerification: LandVerification = {
+    status: "unavailable",
+    matched_address: null,
+    matches: [],
+    mismatches: [],
+    notes: null,
+    aerialUsed: false,
+    sources: [],
+  };
+  try {
+    const { verification, verdict } = await mapTheLand(
+      client,
+      input.images,
+      input.listingText,
+      estimate,
+    );
+    landVerification = verification;
+    if (verdict && verdict.corroborated) {
+      estimate = {
+        ...estimate,
+        confidence: verdict.confidence,
+        address: verdict.matched_address ?? estimate.address,
+        latitude: verdict.latitude ?? estimate.latitude,
+        longitude: verdict.longitude ?? estimate.longitude,
+      };
+    }
+  } catch (err) {
+    console.error("[api] map-the-land stage failed:", err);
+  }
+  return { estimate, landVerification };
+}
+
 export function registerApiRoutes(app: Express) {
   app.use(express.json({ limit: "25mb" }));
 
@@ -589,49 +636,14 @@ export function registerApiRoutes(app: Express) {
 
     try {
       const client = new Anthropic();
-      const result = await geolocate(client, input);
+      const result = await analyzeListing(client, input);
 
       if ("refusal" in result) {
         res.status(422).json({ error: "The model declined to analyze this listing." });
         return;
       }
 
-      let estimate = result;
-
-      // Second stage: map the land — ground the deduction against aerial /
-      // register / OSM data to pin the parcel. Must never break the endpoint;
-      // degrades to the first-pass estimate.
-      let landVerification: LandVerification = {
-        status: "unavailable",
-        matched_address: null,
-        matches: [],
-        mismatches: [],
-        notes: null,
-        aerialUsed: false,
-        sources: [],
-      };
-      try {
-        const { verification, verdict } = await mapTheLand(
-          client,
-          input.images,
-          input.listingText,
-          estimate,
-        );
-        landVerification = verification;
-        if (verdict && verdict.corroborated) {
-          estimate = {
-            ...estimate,
-            confidence: verdict.confidence,
-            address: verdict.matched_address ?? estimate.address,
-            latitude: verdict.latitude ?? estimate.latitude,
-            longitude: verdict.longitude ?? estimate.longitude,
-          };
-        }
-      } catch (err) {
-        console.error("[api] map-the-land stage failed:", err);
-      }
-
-      res.json({ estimate, landVerification });
+      res.json(result);
     } catch (err) {
       if (err instanceof Anthropic.AuthenticationError) {
         res.status(503).json({ error: "The configured Anthropic API key was rejected." });
