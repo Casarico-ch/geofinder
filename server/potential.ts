@@ -71,10 +71,15 @@ const SUBMIT_TOOL = {
       },
       confidence: { type: "string", enum: ["exact", "estimated", "indicative"] },
       caveats: { type: "array", items: { type: "string" } },
-      sources: { type: "array", items: { type: "string" }, description: "the exact URLs you used" },
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "REQUIRED, non-empty: the exact URLs you actually fetched to reach this answer — the parcel query, the building/register query, the zone/regulation lookup. Every number must be traceable to one of these. Do not leave this empty.",
+      },
       reasoning: { type: "string" },
     },
-    required: ["headline", "confidence", "reasoning"],
+    required: ["headline", "confidence", "reasoning", "sources"],
   },
 } as unknown as Anthropic.Messages.ToolUnion;
 
@@ -99,6 +104,7 @@ HONESTY (non-negotiable)
 - If a needed parameter isn't published, do not guess a value — give the best-supported estimate, label it (confidence 'estimated'/'indicative'), and record what's missing in caveats.
 - Confidence: 'exact' = the binding numeric rule is published and you applied it; 'estimated' = you inferred a standard value; 'indicative' = zone known but the number is discretionary/unavailable.
 - Never fabricate. A truthful "the by-right envelope is essentially built out; more is only possible via a discretionary derogation" is a correct, valuable answer.
+- Traceability: as you go, keep the exact URLs you fetch (parcel query, building/register query, zone/regulation lookup) and pass them ALL in \`sources\` — the list must not be empty. Every figure you report has to come from one of them.
 
 Reason explicitly about each step — your thinking is saved as the trace. When done, call submit_potential once.`;
 
