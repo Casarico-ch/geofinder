@@ -804,7 +804,7 @@ const AGENT_TOOLS = [
       properties: {
         commune: { type: "string", description: "Commune name as in the cadastre, e.g. 'Corsier'" },
         target_area_m2: { type: "number", description: "The listing's terrain area in m²" },
-        tolerance_m2: { type: "number", description: "Band half-width in m² (default 100). Start small (10) then widen." },
+        tolerance_m2: { type: "number", description: "Band half-width in m² (default 100). Start at 20, then widen to 50, then 100." },
       },
       required: ["commune", "target_area_m2"],
     },
@@ -874,7 +874,7 @@ const AGENT_SYSTEM = `You are a property-address detective. Given a real-estate 
 
 Your strongest lever is the CADASTRE, not vision. Method:
 1. Read the listing text: extract the commune and, crucially, the TERRAIN AREA ("surface du terrain", m²). Also note living area, rooms, floors, year built, and whether it claims direct water access / "bord du lac".
-2. Call cadastre_parcels_by_area(commune, target_area_m2) — the terrain area is a near-unique key. Start with a tight tolerance (10 m²); widen to 100 only if needed. This narrows a whole commune to a handful of parcels.
+2. Call cadastre_parcels_by_area(commune, target_area_m2) — the terrain area is a near-unique key. Start with a tolerance of 20 m²; if that yields no viable match, widen to 50, then to 100. This narrows a whole commune to a handful of parcels.
 3. For the candidate parcels, use aerial_view (zoom in, ~150-250 m) and buildings_here to check each against the photos and the listing facts: does the plot's pool / garden / roof / shoreline match the photos? Do the register's floors and year built match? Rule out parcels that contradict (e.g. no water access when the listing claims a private pontoon, or wrong floor count).
 4. When one parcel matches, call submit_answer with its address, parcel ("Commune NNNN"), coordinates, confidence, your reasoning, the ranked candidates, and cadastre_url (the LIEN_WWW the cadastre tool returned for that parcel).
 
