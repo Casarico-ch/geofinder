@@ -10,7 +10,7 @@ import type { Express, Request, Response } from "express";
 import express from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { createJob, getJob, listJobs } from "./jobs";
+import { costUsd, createJob, getJob, listJobs } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -46,6 +46,7 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
     title,
     found: job.answer?.found ?? null,
     tokens: job.tokens?.total ?? 0,
+    cost: job.tokens ? costUsd(job.tokens) : 0,
   };
 }
 
@@ -103,6 +104,6 @@ export function registerApiRoutes(app: Express) {
       return;
     }
     const { runDir: _runDir, ...pub } = job;
-    res.json(pub);
+    res.json({ ...pub, cost: costUsd(job.tokens) });
   });
 }

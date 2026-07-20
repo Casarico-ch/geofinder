@@ -62,7 +62,15 @@ export interface TokenUsage {
   input: number;
   output: number;
   cached: number; // subset of input served from the prompt cache (cheap reads)
+  cacheWrite: number; // input tokens written to the cache (1.25x price)
   total: number;
+}
+
+// Claude Opus 4.8 pricing, USD per 1M tokens: input $5, output $25,
+// cache read ~0.1x input ($0.50), cache write 1.25x input ($6.25, 5-min TTL).
+export function costUsd(t: TokenUsage): number {
+  const fresh = Math.max(0, t.input - t.cached - t.cacheWrite);
+  return (fresh * 5 + t.cached * 0.5 + t.cacheWrite * 6.25 + t.output * 25) / 1_000_000;
 }
 
 export interface Job {
@@ -103,7 +111,7 @@ export async function createJob(input: Job["input"]): Promise<Job> {
     input,
     steps: [],
     answer: null,
-    tokens: { input: 0, output: 0, cached: 0, total: 0 },
+    tokens: { input: 0, output: 0, cached: 0, cacheWrite: 0, total: 0 },
     runDir,
   };
   jobs.set(id, job);
@@ -112,16 +120,18 @@ export async function createJob(input: Job["input"]): Promise<Job> {
 }
 
 // Accumulate token usage across the investigation's model turns. `cached` is the
-// portion of `input` that was served from the prompt cache (billed ~10%).
+// portion of `input` read from the cache; `cacheWrite` is the portion written.
 export async function addUsage(
   job: Job,
   input: number,
   output: number,
   cached: number,
+  cacheWrite: number,
 ): Promise<void> {
   job.tokens.input += input;
   job.tokens.output += output;
   job.tokens.cached += cached;
+  job.tokens.cacheWrite += cacheWrite;
   job.tokens.total = job.tokens.input + job.tokens.output;
   job.updatedAt = nowIso();
   await persist(job);
@@ -180,6 +190,7 @@ export async function loadPersistedJobs(): Promise<void> {
           input: parsed.tokens?.input ?? 0,
           output: parsed.tokens?.output ?? 0,
           cached: parsed.tokens?.cached ?? 0,
+          cacheWrite: parsed.tokens?.cacheWrite ?? 0,
           total: parsed.tokens?.total ?? 0,
         },
         runDir: path.join(RUNS_ROOT, id),

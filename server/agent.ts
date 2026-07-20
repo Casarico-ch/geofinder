@@ -244,8 +244,9 @@ export async function runInvestigation(
       const u = resp.usage;
       if (u) {
         const cacheRead = u.cache_read_input_tokens ?? 0;
-        const inTok = (u.input_tokens ?? 0) + cacheRead + (u.cache_creation_input_tokens ?? 0);
-        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead);
+        const cacheWrite = u.cache_creation_input_tokens ?? 0;
+        const inTok = (u.input_tokens ?? 0) + cacheRead + cacheWrite;
+        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead, cacheWrite);
       }
 
       if (resp.stop_reason === "refusal") {

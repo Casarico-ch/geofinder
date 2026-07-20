@@ -10,6 +10,8 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={AddressFinder} />
+      <Route path={"/new"} component={AddressFinder} />
+      <Route path={"/i/:id"} component={AddressFinder} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>

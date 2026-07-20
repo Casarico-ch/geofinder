@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,6 +16,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  Search,
   Terminal,
   X,
 } from "lucide-react";
@@ -67,6 +69,7 @@ interface TokenUsage {
   input: number;
   output: number;
   cached: number;
+  cacheWrite: number;
   total: number;
 }
 
@@ -80,6 +83,7 @@ interface Job {
   answer: Answer | null;
   error?: string;
   tokens: TokenUsage;
+  cost: number;
 }
 
 interface JobSummary {
@@ -91,6 +95,7 @@ interface JobSummary {
   title: string;
   found: boolean | null;
   tokens: number;
+  cost: number;
 }
 
 interface Picture {
@@ -110,7 +115,6 @@ const CONFIDENCE_META: Record<Confidence, { label: string; tone: string }> = {
 };
 
 const MAX_IMAGES = 15;
-const JOB_KEY = "geofinder.jobId";
 
 async function fileToJpegBase64(file: File, maxEdge = 2048): Promise<string> {
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
@@ -145,6 +149,11 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
+function fmtCost(n: number): string {
+  if (n > 0 && n < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
+}
+
 const STEP_ICON: Record<StepKind, typeof Terminal> = {
   reasoning: Brain,
   bash: Terminal,
@@ -154,6 +163,12 @@ const STEP_ICON: Record<StepKind, typeof Terminal> = {
   note: FileText,
   error: AlertCircle,
 };
+
+function StatusDot({ status }: { status: JobStatus }) {
+  if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />;
+  if (status === "error") return <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />;
+  return <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />;
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -184,9 +199,7 @@ function StepRow({ step }: { step: Step }) {
           {step.title}
         </p>
         {step.reasoning && (
-          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
-            {step.reasoning}
-          </p>
+          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{step.reasoning}</p>
         )}
         {step.detail && (
           <pre className="text-[11px] text-muted-foreground bg-muted/60 rounded-md p-2 overflow-x-auto whitespace-pre-wrap max-h-56">
@@ -194,12 +207,7 @@ function StepRow({ step }: { step: Step }) {
           </pre>
         )}
         {step.image && (
-          <img
-            src={step.image}
-            alt={step.title}
-            className="mt-1 rounded-md border border-border max-h-72"
-            loading="lazy"
-          />
+          <img src={step.image} alt={step.title} className="mt-1 rounded-md border border-border max-h-72" loading="lazy" />
         )}
       </div>
     </li>
@@ -207,6 +215,12 @@ function StepRow({ step }: { step: Step }) {
 }
 
 export default function AddressFinder() {
+  const [location, navigate] = useLocation();
+  const [isDetail, detailParams] = useRoute("/i/:id");
+  const jobId = isDetail ? detailParams.id : null;
+  const isNew = location === "/new";
+  const isOverview = !isDetail && !isNew;
+
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [municipality, setMunicipality] = useState("");
   const [description, setDescription] = useState("");
@@ -214,8 +228,8 @@ export default function AddressFinder() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [jobId, setJobId] = useState<string | null>(() => localStorage.getItem(JOB_KEY));
   const [job, setJob] = useState<Job | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [recent, setRecent] = useState<JobSummary[]>([]);
   const traceEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -232,29 +246,31 @@ export default function AddressFinder() {
     }
   }, []);
 
+  // Keep the overview list fresh while it's on screen (running jobs update live).
   useEffect(() => {
+    if (!isOverview) return;
     void loadRecent();
-  }, [loadRecent]);
+    const timer = setInterval(() => void loadRecent(), 3000);
+    return () => clearInterval(timer);
+  }, [isOverview, loadRecent]);
 
-  // Poll the active job until it reaches a terminal state.
+  // Poll the active investigation until it reaches a terminal state.
   useEffect(() => {
     if (!jobId) return;
+    setJob(null);
+    setNotFound(false);
     let alive = true;
     const tick = async () => {
       try {
         const res = await fetch(`/api/geo/investigate/${jobId}`);
-        if (!res.ok) {
-          if (res.status === 404 && alive) {
-            setJob(null);
-          }
-          return;
-        }
-        const data = (await res.json()) as Job;
-        if (alive) setJob(data);
-        if (data.status !== "running") {
-          void loadRecent();
+        if (res.status === 404) {
+          if (alive) setNotFound(true);
           return true;
         }
+        if (!res.ok) return false;
+        const data = (await res.json()) as Job;
+        if (alive) setJob(data);
+        if (data.status !== "running") return true;
       } catch {
         /* transient */
       }
@@ -262,16 +278,14 @@ export default function AddressFinder() {
     };
     void tick();
     const timer = setInterval(async () => {
-      const done = await tick();
-      if (done) clearInterval(timer);
+      if (await tick()) clearInterval(timer);
     }, 2000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [jobId, loadRecent]);
+  }, [jobId]);
 
-  // Keep the trace scrolled to the newest step while running.
   useEffect(() => {
     if (job?.status === "running") traceEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [job?.steps.length, job?.status]);
@@ -304,6 +318,16 @@ export default function AddressFinder() {
     });
   }, []);
 
+  const clearForm = useCallback(() => {
+    setPictures((prev) => {
+      prev.forEach((p) => URL.revokeObjectURL(p.url));
+      return [];
+    });
+    setMunicipality("");
+    setDescription("");
+    setError(null);
+  }, []);
+
   const start = useCallback(async () => {
     if (pictures.length === 0) return;
     setSubmitting(true);
@@ -322,30 +346,14 @@ export default function AddressFinder() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error ?? "Could not start the investigation");
-      const id = body.jobId as string;
-      localStorage.setItem(JOB_KEY, id);
-      setJob(null);
-      setJobId(id);
-      void loadRecent();
+      clearForm();
+      navigate(`/i/${body.jobId as string}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start the investigation");
     } finally {
       setSubmitting(false);
     }
-  }, [pictures, municipality, description, loadRecent]);
-
-  const openJob = useCallback((id: string) => {
-    localStorage.setItem(JOB_KEY, id);
-    setJob(null);
-    setJobId(id);
-  }, []);
-
-  const newSearch = useCallback(() => {
-    localStorage.removeItem(JOB_KEY);
-    setJobId(null);
-    setJob(null);
-    setError(null);
-  }, []);
+  }, [pictures, municipality, description, clearForm, navigate]);
 
   const copyText = useCallback((text: string) => {
     navigator.clipboard
@@ -368,32 +376,101 @@ export default function AddressFinder() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b border-border">
-        <div className="container py-4 flex items-center gap-2.5">
-          <MapPin className="h-5 w-5 text-primary" />
-          <div className="flex-1">
-            <h1 className="text-base font-semibold text-foreground">GeoFinder</h1>
-            <p className="text-xs text-muted-foreground">
-              An autonomous investigator finds a property's exact address from its listing
-            </p>
-          </div>
-          {jobId && (
-            <Button variant="outline" size="sm" onClick={newSearch}>
-              New search
-            </Button>
+      <header className="border-b border-border sticky top-0 bg-background/90 backdrop-blur z-10">
+        <div className="container py-3.5 flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <MapPin className="h-5 w-5 text-primary" />
+            <div>
+              <h1 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors">
+                GeoFinder
+              </h1>
+              <p className="text-xs text-muted-foreground">Find a property's exact address from its listing</p>
+            </div>
+          </Link>
+          <div className="flex-1" />
+          {isNew ? (
+            <Link href="/">
+              <Button variant="ghost" size="sm">
+                Overview
+              </Button>
+            </Link>
+          ) : (
+            <Link href="/new">
+              <Button size="sm">
+                <Search className="mr-1.5 h-3.5 w-3.5" />
+                New search
+              </Button>
+            </Link>
           )}
         </div>
       </header>
 
       <main className="flex-1 container py-8">
         <div className="max-w-2xl mx-auto space-y-6">
-          {!jobId && (
+          {/* ---------- Overview ---------- */}
+          {isOverview && (
+            <div className="space-y-3">
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-medium text-foreground">Investigations</h2>
+                {recent.length > 0 && <span className="text-xs text-muted-foreground">{recent.length}</span>}
+              </div>
+
+              {recent.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-card px-6 py-14 flex flex-col items-center text-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <MapPin className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">No investigations yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Add a listing's photos and text; the address is deduced from scratch.
+                    </p>
+                  </div>
+                  <Link href="/new">
+                    <Button size="sm">
+                      <Search className="mr-1.5 h-3.5 w-3.5" />
+                      New search
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {recent.map((j) => (
+                    <li key={j.id}>
+                      <Link href={`/i/${j.id}`}>
+                        <div className="rounded-lg border border-border bg-card px-3.5 py-2.5 hover:border-primary/40 transition-colors flex items-center gap-3 cursor-pointer">
+                          <StatusDot status={j.status} />
+                          <span className="text-sm text-foreground truncate flex-1">{j.title}</span>
+                          <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
+                            {j.steps} steps
+                          </span>
+                          <span className="text-xs text-muted-foreground tabular-nums inline-flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            {fmtTokens(j.tokens)}
+                          </span>
+                          <span className="text-xs font-medium text-foreground tabular-nums w-14 text-right">
+                            {fmtCost(j.cost)}
+                          </span>
+                          <span className="text-xs text-muted-foreground w-14 text-right hidden sm:inline">
+                            {timeAgo(j.updatedAt)}
+                          </span>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* ---------- New search ---------- */}
+          {isNew && (
             <>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Add the listing's photos, its description, and the municipality. A model is given a real
-                computer — a shell, files, and eyes — and it writes its own code to query the cadastre,
-                download aerials and read the building register, iterating until it reaches the exact door.
-                It runs in the background: you can close this window and come back.
+                Add the listing's photos, its description, and the municipality. A model is given a real computer —
+                a shell, files, and eyes — and writes its own code to query the cadastre, download aerials and read
+                the building register, iterating until it reaches the exact door. It runs in the background: you can
+                close this window and come back.
               </p>
 
               <div className="rounded-xl border border-border bg-card p-5 space-y-5">
@@ -484,62 +561,39 @@ export default function AddressFinder() {
                   <p className="text-sm text-destructive">{error}</p>
                 </div>
               )}
-
-              {recent.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    All investigations ({recent.length})
-                  </p>
-                  <ul className="space-y-1">
-                    {recent.map((j) => (
-                      <li key={j.id}>
-                        <button
-                          onClick={() => openJob(j.id)}
-                          className="w-full text-left rounded-lg border border-border bg-card px-3 py-2 hover:border-primary/40 transition-colors flex items-center gap-2.5"
-                        >
-                          {j.status === "running" ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-                          ) : j.status === "error" ? (
-                            <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                          )}
-                          <span className="text-sm text-foreground truncate flex-1">{j.title}</span>
-                          <span className="text-xs text-muted-foreground shrink-0 tabular-nums flex items-center gap-1">
-                            <Coins className="h-3 w-3" />
-                            {fmtTokens(j.tokens)}
-                          </span>
-                          <span className="text-xs text-muted-foreground shrink-0 w-14 text-right">
-                            {timeAgo(j.updatedAt)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </>
           )}
 
-          {jobId && job && (
+          {/* ---------- Detail ---------- */}
+          {isDetail && notFound && (
+            <div className="rounded-xl border border-border bg-card px-6 py-12 flex flex-col items-center text-center gap-3">
+              <AlertCircle className="h-6 w-6 text-muted-foreground" />
+              <p className="text-sm text-foreground">This investigation doesn't exist.</p>
+              <Link href="/">
+                <Button variant="outline" size="sm">
+                  Back to overview
+                </Button>
+              </Link>
+            </div>
+          )}
+
+          {isDetail && !notFound && !job && (
+            <div className="rounded-xl border border-border bg-card p-8 flex items-center justify-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading investigation…
+            </div>
+          )}
+
+          {isDetail && job && (
             <>
-              {/* Status */}
               <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
-                {running ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                ) : job.status === "error" ? (
-                  <AlertCircle className="h-4 w-4 text-destructive" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                )}
-                <div className="flex-1">
+                <StatusDot status={job.status} />
+                <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
                     {running ? "Investigating…" : job.status === "error" ? "Failed" : "Done"}
-                    <span className="text-muted-foreground font-normal"> · {job.steps.length} steps</span>
-                    <span className="text-muted-foreground font-normal inline-flex items-center gap-1">
+                    <span className="text-muted-foreground font-normal">
                       {" · "}
-                      <Coins className="h-3 w-3" />
-                      {fmtTokens(job.tokens.total)} tokens
+                      {job.steps.length} steps · {fmtTokens(job.tokens.total)} tokens ·{" "}
+                      <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
                     </span>
                   </p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -557,7 +611,6 @@ export default function AddressFinder() {
                 </div>
               )}
 
-              {/* Answer */}
               {answer && (answer.found || answer.reasoning) && (
                 <div className="rounded-xl border border-border bg-card overflow-hidden">
                   <div className="p-5 space-y-4">
@@ -644,7 +697,6 @@ export default function AddressFinder() {
                 </div>
               )}
 
-              {/* Documented trace */}
               <div className="rounded-xl border border-border bg-card p-5">
                 <p className="text-xs font-medium text-muted-foreground mb-3">
                   Investigation trace — every step and the reasoning behind it
@@ -662,12 +714,6 @@ export default function AddressFinder() {
                 <div ref={traceEndRef} />
               </div>
             </>
-          )}
-
-          {jobId && !job && (
-            <div className="rounded-xl border border-border bg-card p-8 flex items-center justify-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading investigation…
-            </div>
           )}
         </div>
       </main>
