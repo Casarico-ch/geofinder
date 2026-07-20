@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: geofinder
+    runtime: node
+    plan: starter
+    buildCommand: corepack enable && pnpm install && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NODE_VERSION
+        value: "22"
