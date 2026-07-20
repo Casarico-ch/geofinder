@@ -20,11 +20,12 @@ import {
   type Confidence,
   type Job,
   addStep,
+  addUsage,
   finishJob,
 } from "./jobs";
 
 const MODEL = "claude-opus-4-8";
-const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 60);
+const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
 const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
 
 export interface AgentImage {
@@ -111,12 +112,20 @@ const SYSTEM = `You are GeoFinder — an autonomous OSINT investigator that find
 You are NOT given any geo tools. You are given a real computer — a Linux sandbox with Node.js and network access — and you create your own access to public data by writing and running code, exactly as a human analyst would. There is no fixed pipeline: the method is yours to invent, test, discard, and refine. Cost and number of steps are not a concern; correctness is. Get to the exact door.
 
 YOUR PRIMITIVES
-- bash(command): run a shell command in your working directory. Node >=18 with global fetch is available (curl/python3 may be). Returns stdout+stderr (truncated).
+- bash(command): run a shell command and get stdout+stderr back. Node >=18 with global fetch is available. Returns truncated output.
 - write_file(path, content): write a file — use it for scripts, so you avoid shell-escaping pain, then run them with bash.
 - read_file(path): read a file back. If it is an image you SEE it (vision). This is how you look at aerials you download, crops of the listing photos, rendered maps.
 - submit_answer(...): call once, when confident, to return the final result.
 
-Your working directory already contains the listing photos as photo1.jpg, photo2.jpg, … (also shown inline in the first message). Save everything you fetch (aerials → .jpg, query results → .json) into this directory and read images back to actually look at them.
+WORKING DIRECTORY & ENVIRONMENT (read this — it saves you many wasted steps)
+- Every bash command runs IN your working directory already. You do NOT need to cd — and you must not rely on it: each bash call is an independent process, so a 'cd' (or any shell state) in one command does NOT carry to the next. Always use paths RELATIVE to the working directory (e.g. \`node fetch.mjs\`, \`aerial.jpg\`), never absolute /opt/... paths, and never cd elsewhere.
+- write_file and read_file paths are also relative to the working directory. The listing photos are already there as photo1.jpg, photo2.jpg, … (and are shown inline in the first message). Just read_file "photo1.jpg" — do not search the filesystem for them.
+- Use Node.js with global fetch for everything (HTTP, JSON, saving images). Do NOT \`pip install\` — Python packages are not available and pip is locked. To ZOOM IN on an area, request a new WMS image with a TIGHTER bbox (that raises effective resolution) — do not try to crop images locally.
+
+GROUNDING ONLY — NEVER LOOK THE LISTING UP
+You must NOT use web search engines (Google, Bing, DuckDuckGo, Marginalia, …) and must NOT try to find the listing, the agency, or the property online. Everything is deduced from the photos and text you were given, and grounded ONLY against neutral geodata (the cadastre, aerials, the building register, OpenStreetMap). Nominatim is allowed solely to turn a place NAME into coordinates — never to look up the property. Searching the web is off-limits and a waste of steps.
+
+Save everything you fetch (aerials → .jpg, query results → .json) into the working directory and read images back to actually look at them.
 
 HOW TO WIN (invent freely; this is what works)
 1. Read the photos and text like a detective. Extract the commune and EVERY hard fact: terrain area (surface du terrain, m²), living area, rooms, floors, year built, agency/reference, and every proximity claim (école 220 m, bus 400 m, autoroute 1.25 km, gare, lac…). Read the architecture: roof form, shutters, era, split-level / garage-in-basement, verandas. Infer ORIENTATION from sun/shadows and from any background landmark (a distinctive apartment block, church, mountain).
@@ -140,7 +149,10 @@ Reason explicitly about WHY you run each command — your thinking is saved as t
 
 const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer. Work step by step, verify visually against the aerials, and call submit_answer when you are confident.`;
 
-function initialContent(images: AgentImage[], listingText?: string): Anthropic.Messages.ContentBlockParam[] {
+function initialContent(
+  images: AgentImage[],
+  listingText: string | undefined,
+): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
   images.forEach((img, i) => {
     blocks.push({ type: "text", text: `Listing photo ${i + 1} (saved as photo${i + 1}.jpg):` });
@@ -148,13 +160,22 @@ function initialContent(images: AgentImage[], listingText?: string): Anthropic.M
   });
   blocks.push({
     type: "text",
-    text: `${TASK}\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}`,
+    text:
+      `${TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
+      `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}`,
   });
   return blocks;
 }
 
 function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
+}
+
+// The model sometimes addresses files as if from the repo root ("runs/<id>/x")
+// even though it is already inside the run dir. Strip that redundant prefix so
+// the read/write resolves instead of ENOENT-ing on a doubled path.
+function normalizePath(jobId: string, p: string): string {
+  return p.replace(new RegExp(`^\\.?/?(runs/)?${jobId}/`), "");
 }
 
 // Pull the model's own reasoning (thinking + any visible text) out of a turn.
@@ -211,6 +232,17 @@ export async function runInvestigation(
         tools: TOOLS,
         messages,
       });
+
+      // Record token usage for this turn (input includes cache traffic so the
+      // total reflects what actually moved through the model).
+      const u = resp.usage;
+      if (u) {
+        const inTok =
+          (u.input_tokens ?? 0) +
+          (u.cache_read_input_tokens ?? 0) +
+          (u.cache_creation_input_tokens ?? 0);
+        await addUsage(job, inTok, u.output_tokens ?? 0);
+      }
 
       if (resp.stop_reason === "refusal") {
         await finishJob(job, { status: "error", error: "The model declined to analyze this listing." });
@@ -291,7 +323,7 @@ async function dispatchTool(
   }
 
   if (name === "write_file") {
-    const p = String(input.path ?? "");
+    const p = normalizePath(job.id, String(input.path ?? ""));
     const content = String(input.content ?? "");
     try {
       const w = await writeSandboxFile(job.runDir, p, content);
@@ -305,7 +337,7 @@ async function dispatchTool(
   }
 
   if (name === "read_file") {
-    const p = String(input.path ?? "");
+    const p = normalizePath(job.id, String(input.path ?? ""));
     try {
       const r = await readSandboxFile(job.runDir, p);
       if (r.kind === "image") {

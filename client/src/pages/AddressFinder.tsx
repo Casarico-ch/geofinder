@@ -6,6 +6,7 @@ import {
   Brain,
   CheckCircle2,
   Clock,
+  Coins,
   Copy,
   ExternalLink,
   Eye,
@@ -62,6 +63,12 @@ interface Step {
 
 type JobStatus = "running" | "done" | "error" | "cancelled";
 
+interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
 interface Job {
   id: string;
   status: JobStatus;
@@ -71,6 +78,7 @@ interface Job {
   steps: Step[];
   answer: Answer | null;
   error?: string;
+  tokens: TokenUsage;
 }
 
 interface JobSummary {
@@ -81,6 +89,7 @@ interface JobSummary {
   steps: number;
   title: string;
   found: boolean | null;
+  tokens: number;
 }
 
 interface Picture {
@@ -127,6 +136,12 @@ function timeAgo(iso: string): string {
   if (s < 3600) return `${Math.round(s / 60)}m ago`;
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
 }
 
 const STEP_ICON: Record<StepKind, typeof Terminal> = {
@@ -471,13 +486,15 @@ export default function AddressFinder() {
 
               {recent.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Recent investigations</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    All investigations ({recent.length})
+                  </p>
                   <ul className="space-y-1">
                     {recent.map((j) => (
                       <li key={j.id}>
                         <button
                           onClick={() => openJob(j.id)}
-                          className="w-full text-left rounded-lg border border-border bg-card px-3 py-2 hover:border-primary/40 transition-colors flex items-center gap-2"
+                          className="w-full text-left rounded-lg border border-border bg-card px-3 py-2 hover:border-primary/40 transition-colors flex items-center gap-2.5"
                         >
                           {j.status === "running" ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
@@ -487,7 +504,13 @@ export default function AddressFinder() {
                             <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />
                           )}
                           <span className="text-sm text-foreground truncate flex-1">{j.title}</span>
-                          <span className="text-xs text-muted-foreground shrink-0">{timeAgo(j.updatedAt)}</span>
+                          <span className="text-xs text-muted-foreground shrink-0 tabular-nums flex items-center gap-1">
+                            <Coins className="h-3 w-3" />
+                            {fmtTokens(j.tokens)}
+                          </span>
+                          <span className="text-xs text-muted-foreground shrink-0 w-14 text-right">
+                            {timeAgo(j.updatedAt)}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -512,9 +535,16 @@ export default function AddressFinder() {
                   <p className="text-sm font-medium text-foreground">
                     {running ? "Investigating…" : job.status === "error" ? "Failed" : "Done"}
                     <span className="text-muted-foreground font-normal"> · {job.steps.length} steps</span>
+                    <span className="text-muted-foreground font-normal inline-flex items-center gap-1">
+                      {" · "}
+                      <Coins className="h-3 w-3" />
+                      {fmtTokens(job.tokens.total)} tokens
+                    </span>
                   </p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" /> started {timeAgo(job.createdAt)}
+                    {job.tokens.total > 0 &&
+                      ` · ${fmtTokens(job.tokens.input)} in / ${fmtTokens(job.tokens.output)} out`}
                     {running && " · runs in the background — safe to close this window"}
                   </p>
                 </div>

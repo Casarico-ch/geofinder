@@ -45,6 +45,7 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
     steps: job.steps.length,
     title,
     found: job.answer?.found ?? null,
+    tokens: job.tokens?.total ?? 0,
   };
 }
 

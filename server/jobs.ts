@@ -58,6 +58,12 @@ export interface Step {
 
 export type JobStatus = "running" | "done" | "error" | "cancelled";
 
+export interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
 export interface Job {
   id: string;
   status: JobStatus;
@@ -67,6 +73,7 @@ export interface Job {
   steps: Step[];
   answer: Answer | null;
   error?: string;
+  tokens: TokenUsage;
   runDir: string;
 }
 
@@ -95,11 +102,21 @@ export async function createJob(input: Job["input"]): Promise<Job> {
     input,
     steps: [],
     answer: null,
+    tokens: { input: 0, output: 0, total: 0 },
     runDir,
   };
   jobs.set(id, job);
   await persist(job);
   return job;
+}
+
+// Accumulate token usage across the investigation's model turns.
+export async function addUsage(job: Job, input: number, output: number): Promise<void> {
+  job.tokens.input += input;
+  job.tokens.output += output;
+  job.tokens.total = job.tokens.input + job.tokens.output;
+  job.updatedAt = nowIso();
+  await persist(job);
 }
 
 export async function addStep(job: Job, step: Omit<Step, "n" | "at">): Promise<Step> {
@@ -149,7 +166,11 @@ export async function loadPersistedJobs(): Promise<void> {
     try {
       const raw = await readFile(path.join(RUNS_ROOT, id, "job.json"), "utf8");
       const parsed = JSON.parse(raw) as Omit<Job, "runDir">;
-      const job: Job = { ...parsed, runDir: path.join(RUNS_ROOT, id) };
+      const job: Job = {
+        ...parsed,
+        tokens: parsed.tokens ?? { input: 0, output: 0, total: 0 },
+        runDir: path.join(RUNS_ROOT, id),
+      };
       if (job.status === "running") {
         job.status = "error";
         job.error = "Interrupted by a server restart.";
