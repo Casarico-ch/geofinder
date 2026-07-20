@@ -9,6 +9,7 @@
 // the documented trace the user asked for.
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   runBash,
@@ -237,19 +238,52 @@ function coerceAnswer(input: Record<string, unknown>): Answer {
   };
 }
 
-// Run one investigation to completion, streaming documented steps into `job`.
+// Start a fresh investigation. The whole conversation is persisted every turn
+// (see runLoop) so the run survives a process restart.
 export async function runInvestigation(
   job: Job,
   images: AgentImage[],
   listingText: string | undefined,
 ): Promise<void> {
-  const client = new Anthropic();
   const messages: Anthropic.Messages.MessageParam[] = [
     { role: "user", content: initialContent(images, listingText) },
   ];
+  await saveState(job, 0, messages);
+  await runLoop(job, messages, 0);
+}
+
+// Continue an investigation that was mid-flight when the process died (a
+// redeploy or crash). The next process reloads the saved conversation and picks
+// up exactly where it left off — the run is independent of any single container.
+export async function resumeInvestigation(job: Job): Promise<void> {
+  const state = await loadState(job.runDir);
+  if (!state) {
+    await finishJob(job, {
+      status: "error",
+      error: "Interrupted by a server restart (no resumable state was saved).",
+    });
+    return;
+  }
+  await addStep(job, {
+    kind: "note",
+    title: "Resumed after a server restart",
+    detail: `The investigation continued automatically from turn ${state.turn}.`,
+  });
+  await runLoop(job, state.messages, state.turn);
+}
+
+// The investigation loop, shared by fresh and resumed runs. `startTurn` is the
+// number of model turns already completed, so the step budget and the
+// convergence nudges stay consistent across a restart.
+async function runLoop(
+  job: Job,
+  messages: Anthropic.Messages.MessageParam[],
+  startTurn: number,
+): Promise<void> {
+  const client = new Anthropic();
 
   try {
-    for (let i = 0; i < MAX_STEPS; i++) {
+    for (let i = startTurn; i < MAX_STEPS; i++) {
       if (job.cancelRequested) {
         await addStep(job, { kind: "note", title: "Stopped by the user" });
         await finishJob(job, {
@@ -328,6 +362,9 @@ export async function runInvestigation(
       const nudge = convergeReminder(i + 1, MAX_STEPS);
       if (nudge) content.push({ type: "text", text: nudge });
       messages.push({ role: "user", content });
+      // Checkpoint: the conversation now ends on a user turn — a clean point to
+      // resume from if the process dies before the next model turn.
+      await saveState(job, i + 1, messages);
     }
 
     await finishJob(job, {
@@ -342,6 +379,56 @@ export async function runInvestigation(
     const message = err instanceof Error ? err.message : String(err);
     await addStep(job, { kind: "error", title: "Investigation error", detail: message });
     await finishJob(job, { status: "error", error: message });
+  } finally {
+    // Once the job is no longer running, the saved conversation is dead weight —
+    // drop it so a resumable-jobs scan on the next boot ignores this run.
+    if (job.status !== "running") await clearState(job);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Resume state — the full conversation, persisted so a running investigation
+// outlives the process. Written atomically (tmp + rename) so a crash mid-write
+// can never leave a half-written, unparseable state file.
+// ---------------------------------------------------------------------------
+const STATE_FILE = "state.json";
+
+interface ResumeState {
+  turn: number;
+  messages: Anthropic.Messages.MessageParam[];
+}
+
+async function saveState(
+  job: Job,
+  turn: number,
+  messages: Anthropic.Messages.MessageParam[],
+): Promise<void> {
+  try {
+    const abs = path.join(job.runDir, STATE_FILE);
+    const tmp = `${abs}.tmp`;
+    await writeFile(tmp, JSON.stringify({ turn, messages } satisfies ResumeState));
+    await rename(tmp, abs);
+  } catch (err) {
+    console.error(`[agent] could not save resume state for ${job.id}:`, err);
+  }
+}
+
+async function loadState(runDir: string): Promise<ResumeState | null> {
+  try {
+    const raw = await readFile(path.join(runDir, STATE_FILE), "utf8");
+    const parsed = JSON.parse(raw) as ResumeState;
+    if (!Array.isArray(parsed.messages) || typeof parsed.turn !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function clearState(job: Job): Promise<void> {
+  try {
+    await rm(path.join(job.runDir, STATE_FILE), { force: true });
+  } catch {
+    /* best effort */
   }
 }
 
@@ -412,7 +499,6 @@ async function dispatchTool(
 // Persist the listing photos into the run dir so the model can crop/inspect
 // them as files (photo1.jpg, …), matching what it's shown inline.
 export async function saveListingPhotos(runDir: string, images: AgentImage[]): Promise<void> {
-  const { writeFile } = await import("node:fs/promises");
   await Promise.all(
     images.map((img, i) => {
       const ext = img.mediaType.split("/")[1].replace("jpeg", "jpg");

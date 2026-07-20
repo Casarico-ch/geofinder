@@ -187,13 +187,16 @@ async function persist(job: Job): Promise<void> {
 }
 
 // On boot, reload persisted jobs so reopened windows see history. Any job left
-// "running" when the process died is marked interrupted — it cannot resume.
-export async function loadPersistedJobs(): Promise<void> {
+// "running" when the process died is returned so the caller can resume it from
+// its saved conversation (see resumeInvestigation) — a restart no longer kills
+// an in-flight investigation. Returns the jobs to resume.
+export async function loadPersistedJobs(): Promise<Job[]> {
+  const resumable: Job[] = [];
   let entries: string[] = [];
   try {
     entries = await readdir(RUNS_ROOT);
   } catch {
-    return; // no runs yet
+    return resumable; // no runs yet
   }
   for (const id of entries) {
     try {
@@ -210,15 +213,16 @@ export async function loadPersistedJobs(): Promise<void> {
         },
         runDir: path.join(RUNS_ROOT, id),
       };
-      if (job.status === "running") {
-        job.status = "error";
-        job.error = "Interrupted by a server restart.";
-      }
       jobs.set(job.id, job);
+      // Still "running" means the previous process died mid-flight; hand it back
+      // to be resumed. A pending cancel (persisted on the job) is preserved, so
+      // the resumed run stops on its first turn as the user intended.
+      if (job.status === "running") resumable.push(job);
     } catch {
       // skip unreadable run dirs
     }
   }
+  return resumable;
 }
 
 function cryptoRandomId(): string {

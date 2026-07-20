@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import { resumeInvestigation } from "./agent";
 import { registerApiRoutes } from "./api";
 import { loadPersistedJobs } from "./jobs";
 import { RUNS_ROOT, initRunsRoot } from "./sandbox";
@@ -21,12 +22,30 @@ async function startServer() {
   // Resolve a writable runs dir (falls back if the volume is mis-mounted), then
   // recover jobs (and their traces) from previous runs before serving.
   await initRunsRoot();
-  await loadPersistedJobs();
+  const resumable = await loadPersistedJobs();
 
   registerApiRoutes(app);
 
+  // Resume any investigation that was still running when the previous process
+  // exited (e.g. a redeploy) so the work continues instead of dying with the
+  // container. Fire-and-forget — each run drives itself to completion.
+  for (const job of resumable) {
+    console.log(`[resume] continuing investigation ${job.id} (${job.steps.length} steps so far)`);
+    void resumeInvestigation(job).catch((err) => {
+      console.error(`[resume] investigation ${job.id} failed to resume:`, err);
+    });
+  }
+
   // Serve run artifacts — the aerials and crops the agent actually looked at,
-  // referenced by the documented trace.
+  // referenced by the documented trace. The internal resume state (the full
+  // conversation, with embedded images) is not an artifact and is never served.
+  app.use("/runs", (req, res, next) => {
+    if (req.path.endsWith("/state.json") || req.path.endsWith(".tmp")) {
+      res.status(404).end();
+      return;
+    }
+    next();
+  });
   app.use("/runs", express.static(RUNS_ROOT));
 
   // Unmatched API paths must not fall through to the SPA catchall below.
