@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Copy,
-  ExternalLink,
-  ImageIcon,
-  Loader2,
-  MapPin,
-  MapPinned,
-  Plus,
-  X,
-} from "lucide-react";
+import { Copy, ExternalLink, ImageIcon, Loader2, MapPin, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 type Confidence =
@@ -23,33 +14,29 @@ type Confidence =
   | "country"
   | "unknown";
 
-interface LocationEstimate {
-  location_found: boolean;
-  confidence: Confidence;
+interface AgentCandidate {
+  parcel: string;
   address: string | null;
-  place: string;
-  city: string | null;
-  country: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  clues: string[];
-  text_read: string[];
-  reasoning: string;
+  surface_m2: number | null;
+  note: string;
 }
 
-interface LandVerification {
-  status: "pinned" | "corroborated" | "inconclusive" | "unavailable" | "skipped";
-  matched_address: string | null;
-  matches: { evidence: string; source: string }[];
-  mismatches: string[];
-  notes: string | null;
-  aerialUsed: boolean;
-  sources: string[];
+interface AgentAnswer {
+  found: boolean;
+  address: string | null;
+  parcel: string | null;
+  commune: string | null;
+  confidence: Confidence;
+  latitude: number | null;
+  longitude: number | null;
+  reasoning: string;
+  candidates: AgentCandidate[];
+  cadastre_url: string | null;
 }
 
 interface AnalyzeResponse {
-  estimate: LocationEstimate;
-  landVerification: LandVerification;
+  answer: AgentAnswer;
+  steps: string[];
 }
 
 type Stage =
@@ -74,11 +61,6 @@ const CONFIDENCE_META: Record<Confidence, { label: string; tone: string }> = {
   region: { label: "Region-level", tone: "text-muted-foreground bg-muted" },
   country: { label: "Country-level", tone: "text-muted-foreground bg-muted" },
   unknown: { label: "Inconclusive", tone: "text-destructive bg-destructive/10" },
-};
-
-const LAND_META: Partial<Record<LandVerification["status"], string>> = {
-  pinned: "Parcel pinned",
-  corroborated: "Map-corroborated",
 };
 
 const MAX_IMAGES = 15;
@@ -211,14 +193,14 @@ export default function AddressFinder() {
   }, []);
 
   const analyzing = stage.kind === "analyzing";
-  const est = stage.kind === "resolved" ? stage.data.estimate : null;
-  const land = stage.kind === "resolved" ? stage.data.landVerification : null;
+  const answer = stage.kind === "resolved" ? stage.data.answer : null;
+  const steps = stage.kind === "resolved" ? stage.data.steps : [];
   const coords =
-    est && est.latitude !== null && est.longitude !== null
-      ? { lat: est.latitude, lon: est.longitude }
+    answer && answer.latitude !== null && answer.longitude !== null
+      ? { lat: answer.latitude, lon: answer.longitude }
       : null;
-  const primaryLine = land?.matched_address ?? est?.address ?? est?.place ?? "";
-  const wideMap = est ? !["street", "building", "block"].includes(est.confidence) : true;
+  const primaryLine = answer?.address ?? answer?.parcel ?? "";
+  const wideMap = answer ? !["street", "building", "block"].includes(answer.confidence) : true;
 
   const inputClass =
     "w-full rounded-md border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -349,8 +331,8 @@ export default function AddressFinder() {
             </div>
             {analyzing && (
               <p className="text-xs text-muted-foreground text-center">
-                Deducing the area, then matching the parcel against aerial and map data — this can take a minute
-                or two.
+                Investigating — reading the listing, querying the cadastre by parcel area, then checking aerials
+                and the building register. This can take a few minutes.
               </p>
             )}
           </div>
@@ -366,34 +348,30 @@ export default function AddressFinder() {
             </div>
           )}
 
-          {est && (
+          {answer && (
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <div className="p-5 space-y-4">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      CONFIDENCE_META[est.confidence].tone
-                    }`}
-                  >
-                    {CONFIDENCE_META[est.confidence].label}
-                  </span>
-                  {land && LAND_META[land.status] && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-primary bg-primary/10">
-                      <MapPinned className="h-3 w-3" />
-                      {LAND_META[land.status]}
-                    </span>
-                  )}
-                </div>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                    CONFIDENCE_META[answer.confidence].tone
+                  }`}
+                >
+                  {CONFIDENCE_META[answer.confidence].label}
+                </span>
 
-                {est.location_found ? (
+                {primaryLine ? (
                   <div className="space-y-0.5">
                     <p className="text-lg font-semibold text-foreground leading-snug">{primaryLine}</p>
-                    {land?.matched_address && est.address && land.matched_address !== est.address && (
-                      <p className="text-xs text-muted-foreground">Model read: {est.address}</p>
+                    {(answer.parcel || answer.commune) && (
+                      <p className="text-xs text-muted-foreground">
+                        {[answer.commune, answer.parcel && `parcel ${answer.parcel.replace(/^\S+\s/, "")}`]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Not enough to place this confidently. {est.place}</p>
+                  <p className="text-sm text-muted-foreground">No parcel identified with confidence.</p>
                 )}
 
                 {coords && (
@@ -402,51 +380,34 @@ export default function AddressFinder() {
                   </p>
                 )}
 
-                <p className="text-sm text-muted-foreground leading-relaxed">{est.reasoning}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{answer.reasoning}</p>
 
-                {est.clues.length > 0 && (
-                  <Section title="Clues used">
+                {answer.candidates.length > 0 && (
+                  <Section title="Candidates considered">
                     <ul className="space-y-1">
-                      {est.clues.map((c, i) => (
+                      {answer.candidates.map((c, i) => (
                         <li key={i} className="text-sm text-muted-foreground leading-relaxed">
-                          · {c}
+                          · <span className="text-foreground">{c.address ?? c.parcel}</span>
+                          {c.surface_m2 != null && ` · ${c.surface_m2} m²`} — {c.note}
                         </li>
                       ))}
                     </ul>
                   </Section>
                 )}
 
-                {est.text_read.length > 0 && (
-                  <Section title="Text read">
-                    <div className="flex flex-wrap gap-1.5">
-                      {est.text_read.map((t, i) => (
-                        <span
-                          key={i}
-                          className="text-xs text-foreground border border-border rounded-md px-1.5 py-0.5"
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-                {land && (land.matches.length > 0 || land.mismatches.length > 0) && (
-                  <Section title={`Map the land${land.sources.length ? ` · ${land.sources.join(", ")}` : ""}`}>
-                    <ul className="space-y-1">
-                      {land.matches.map((m, i) => (
-                        <li key={i} className="text-sm text-muted-foreground leading-relaxed">
-                          · {m.evidence} <span className="text-muted-foreground/60">({m.source})</span>
+                {steps.length > 0 && (
+                  <details className="group">
+                    <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                      Investigation trace ({steps.length} steps)
+                    </summary>
+                    <ol className="mt-2 space-y-0.5">
+                      {steps.map((s, i) => (
+                        <li key={i} className="text-xs text-muted-foreground tabular-nums">
+                          {String(i + 1).padStart(2, "0")}. {s}
                         </li>
                       ))}
-                      {land.mismatches.map((m, i) => (
-                        <li key={`x-${i}`} className="text-sm text-destructive/80 leading-relaxed">
-                          · {m}
-                        </li>
-                      ))}
-                    </ul>
-                    {land.notes && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{land.notes}</p>}
-                  </Section>
+                    </ol>
+                  </details>
                 )}
 
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -455,6 +416,13 @@ export default function AddressFinder() {
                       <Copy className="mr-1.5 h-3.5 w-3.5" />
                       Copy address
                     </Button>
+                  )}
+                  {answer.cadastre_url && (
+                    <a href={answer.cadastre_url} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm">
+                        Cadastre extract <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                      </Button>
+                    </a>
                   )}
                   {coords && (
                     <>

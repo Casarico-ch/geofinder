@@ -13,7 +13,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import { analyzeListing, type ImageInput } from "../server/api";
+import { investigateListing, type ImageInput } from "../server/api";
 
 const MEDIA_TYPES: Record<string, ImageInput["mediaType"]> = {
   ".jpg": "image/jpeg",
@@ -59,37 +59,31 @@ async function main() {
   );
 
   const client = new Anthropic();
-  const result = await analyzeListing(client, { images, listingText });
+  const result = await investigateListing(client, { images, listingText });
 
   if ("refusal" in result) {
     console.error("The model declined to analyze this listing.");
     process.exit(2);
   }
 
-  const { estimate, landVerification } = result;
-  console.log("=== ESTIMATE ===");
-  console.log(`confidence:  ${estimate.confidence}`);
-  console.log(`place:       ${estimate.place}`);
-  console.log(`address:     ${estimate.address ?? "—"}`);
-  console.log(`city/region: ${[estimate.city, estimate.country].filter(Boolean).join(", ") || "—"}`);
+  const { answer, steps } = result;
+  console.log("=== INVESTIGATION ===");
+  steps.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}. ${s}`));
+
+  console.log(`\n=== ANSWER ===`);
+  console.log(`found:       ${answer.found}`);
+  console.log(`address:     ${answer.address ?? "—"}`);
+  console.log(`parcel:      ${answer.parcel ?? "—"}`);
+  console.log(`confidence:  ${answer.confidence}`);
   console.log(
-    `coordinates: ${estimate.latitude !== null && estimate.longitude !== null ? `${estimate.latitude}, ${estimate.longitude}` : "—"}`,
+    `coordinates: ${answer.latitude !== null && answer.longitude !== null ? `${answer.latitude}, ${answer.longitude}` : "—"}`,
   );
-  console.log(`\nreasoning:   ${estimate.reasoning}`);
-  if (estimate.clues.length) console.log(`\nclues:\n${estimate.clues.map((c) => `  · ${c}`).join("\n")}`);
-  if (estimate.text_read.length) console.log(`\ntext read:   ${estimate.text_read.join(" | ")}`);
-
-  console.log(`\n=== MAP THE LAND (${landVerification.status}) ===`);
-  console.log(`sources:  ${landVerification.sources.join(", ") || "—"}${landVerification.aerialUsed ? " [aerial used]" : ""}`);
-  if (landVerification.matched_address) console.log(`matched:  ${landVerification.matched_address}`);
-  if (landVerification.matches.length)
-    console.log(`matches:\n${landVerification.matches.map((m) => `  · ${m.evidence} (${m.source})`).join("\n")}`);
-  if (landVerification.mismatches.length)
-    console.log(`mismatches:\n${landVerification.mismatches.map((m) => `  · ${m}`).join("\n")}`);
-  if (landVerification.notes) console.log(`notes:    ${landVerification.notes}`);
-
-  console.log(`\n=== RAW JSON ===`);
-  console.log(JSON.stringify(result, null, 2));
+  console.log(`cadastre:    ${answer.cadastre_url ?? "—"}`);
+  console.log(`\nreasoning:   ${answer.reasoning}`);
+  if (answer.candidates.length)
+    console.log(
+      `\ncandidates:\n${answer.candidates.map((c) => `  · ${c.parcel} ${c.surface_m2 ?? "?"}m² ${c.address ?? ""} — ${c.note}`).join("\n")}`,
+    );
 }
 
 main().catch((err) => {

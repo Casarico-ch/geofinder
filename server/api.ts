@@ -401,9 +401,10 @@ const AERIAL_SPAN_METERS = 1400;
 export async function fetchAerialImage(
   lat: number,
   lon: number,
+  spanMeters: number = AERIAL_SPAN_METERS,
 ): Promise<{ imageBase64: string; mediaType: "image/jpeg"; spanMeters: number } | null> {
   if (!inSwitzerland(lat, lon)) return null;
-  const dLat = AERIAL_SPAN_METERS / 2 / 111320;
+  const dLat = spanMeters / 2 / 111320;
   const dLon = dLat / Math.cos((lat * Math.PI) / 180); // equal metres east-west (square ground)
   // WMS 1.3.0 with EPSG:4326 uses lat,lon axis order.
   const bbox = `${lat - dLat},${lon - dLon},${lat + dLat},${lon + dLon}`;
@@ -427,7 +428,7 @@ export async function fetchAerialImage(
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("image")) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 2000) return null; // near-empty tile (e.g. open water / no data)
-    return { imageBase64: buf.toString("base64"), mediaType: "image/jpeg", spanMeters: AERIAL_SPAN_METERS };
+    return { imageBase64: buf.toString("base64"), mediaType: "image/jpeg", spanMeters };
   } catch (err) {
     console.error("[api] aerial fetch failed:", err);
     return null;
@@ -678,6 +679,349 @@ export async function analyzeListing(
   return { estimate, landVerification };
 }
 
+// =============================================================================
+// Agent — the same investigation a human/LLM does by hand, driven by the model
+// with tools it decides to call and iterate on (cadastre-by-area is the key
+// deterministic lever; aerial + register confirm; no listing lookup).
+// =============================================================================
+
+const SITG_PARCELLE =
+  "https://vector.sitg.ge.ch/arcgis/rest/services/CAD_PARCELLE_MENSU/MapServer/0/query";
+
+interface CadastreParcel {
+  parcel: number;
+  surface: number;
+  lat: number;
+  lon: number;
+  url: string;
+}
+
+// Geneva cadastre (SITG): parcels in a commune within an area band. This is the
+// backbone — the listing's terrain area is a near-unique key. Geneva only for now.
+async function searchCadastreByArea(
+  commune: string,
+  minM2: number,
+  maxM2: number,
+): Promise<CadastreParcel[]> {
+  const where = `COMMUNE='${commune.replace(/'/g, "''")}' AND SURFACE>=${Math.round(minM2)} AND SURFACE<=${Math.round(maxM2)}`;
+  const params = new URLSearchParams({
+    where,
+    outFields: "NO_PARCELLE,SURFACE,LIEN_WWW",
+    returnGeometry: "true",
+    outSR: "4326",
+    f: "json",
+    resultRecordCount: "80",
+  });
+  try {
+    const res = await fetch(`${SITG_PARCELLE}?${params.toString()}`, {
+      headers: { "User-Agent": GEO_USER_AGENT },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      features?: Array<{ attributes: Record<string, unknown>; geometry?: { rings?: number[][][] } }>;
+    };
+    const out: CadastreParcel[] = [];
+    for (const f of data.features ?? []) {
+      const ring = f.geometry?.rings?.[0];
+      if (!ring || ring.length === 0) continue;
+      const lon = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+      const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+      out.push({
+        parcel: Number(f.attributes.NO_PARCELLE),
+        surface: Number(f.attributes.SURFACE),
+        lat,
+        lon,
+        url: String(f.attributes.LIEN_WWW ?? ""),
+      });
+    }
+    const mid = (minM2 + maxM2) / 2;
+    out.sort((a, b) => Math.abs(a.surface - mid) - Math.abs(b.surface - mid));
+    return out;
+  } catch (err) {
+    console.error("[api] cadastre query failed:", err);
+    return [];
+  }
+}
+
+async function geocodePlace(query: string): Promise<{ lat: number; lon: number; name: string } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+      { headers: { "User-Agent": GEO_USER_AGENT }, signal: AbortSignal.timeout(12000) },
+    );
+    if (!res.ok) return null;
+    const arr = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
+    if (arr.length === 0) return null;
+    return { lat: Number(arr[0].lat), lon: Number(arr[0].lon), name: arr[0].display_name };
+  } catch {
+    return null;
+  }
+}
+
+const agentAnswerSchema = z.object({
+  found: z.boolean(),
+  address: z.string().nullable(),
+  parcel: z.string().nullable(),
+  commune: z.string().nullable(),
+  confidence: confidenceSchema,
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  reasoning: z.string(),
+  candidates: z.array(
+    z.object({
+      parcel: z.string(),
+      address: z.string().nullable(),
+      surface_m2: z.number().nullable(),
+      note: z.string(),
+    }),
+  ),
+  cadastre_url: z.string().nullable(),
+});
+export type AgentAnswer = z.infer<typeof agentAnswerSchema>;
+
+export interface InvestigateResult {
+  answer: AgentAnswer;
+  steps: string[];
+}
+
+const AGENT_TOOLS = [
+  {
+    name: "geocode",
+    description: "Look up approximate WGS84 coordinates for a place name (commune, quarter, landmark). Uses OpenStreetMap; not the listing.",
+    input_schema: {
+      type: "object",
+      properties: { query: { type: "string", description: "e.g. 'Corsier-Port, Geneva, Switzerland'" } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "cadastre_parcels_by_area",
+    description:
+      "PRIMARY TOOL. Return official cadastral parcels in a commune whose surface (terrain area, m²) falls in [target-tolerance, target+tolerance], nearest to target first. The listing's 'surface du terrain' is a near-unique key. Canton of Geneva only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        commune: { type: "string", description: "Commune name as in the cadastre, e.g. 'Corsier'" },
+        target_area_m2: { type: "number", description: "The listing's terrain area in m²" },
+        tolerance_m2: { type: "number", description: "Band half-width in m² (default 100). Start small (10) then widen." },
+      },
+      required: ["commune", "target_area_m2"],
+    },
+  },
+  {
+    name: "aerial_view",
+    description:
+      "Fetch an official swisstopo aerial orthophoto (north up) centered on a point, returned as an image you can inspect. Use a small span (120-250 m) to study one parcel, larger (600-1200 m) to scan a shoreline. Switzerland only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+        span_meters: { type: "number", description: "Width of the view in metres (80-1500, default 200)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+  {
+    name: "buildings_here",
+    description:
+      "Official Swiss building register near a point: addresses with year built and floor count, each with distance and bearing. Use to read a candidate parcel's address and check floors/year against the listing.",
+    input_schema: {
+      type: "object",
+      properties: { latitude: { type: "number" }, longitude: { type: "number" } },
+      required: ["latitude", "longitude"],
+    },
+  },
+  {
+    name: "submit_answer",
+    description: "Call once when done to report the identified address (or found=false).",
+    input_schema: {
+      type: "object",
+      properties: {
+        found: { type: "boolean" },
+        address: { type: ["string", "null"] },
+        parcel: { type: ["string", "null"], description: "e.g. 'Corsier 3690'" },
+        commune: { type: ["string", "null"] },
+        confidence: {
+          type: "string",
+          enum: ["street", "building", "block", "neighborhood", "city", "region", "country", "unknown"],
+        },
+        latitude: { type: ["number", "null"] },
+        longitude: { type: ["number", "null"] },
+        reasoning: { type: "string" },
+        candidates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              parcel: { type: "string" },
+              address: { type: ["string", "null"] },
+              surface_m2: { type: ["number", "null"] },
+              note: { type: "string" },
+            },
+            required: ["parcel", "note"],
+          },
+        },
+        cadastre_url: { type: ["string", "null"] },
+      },
+      required: ["found", "confidence", "reasoning", "candidates"],
+    },
+  },
+] as unknown as Anthropic.Messages.ToolUnion[];
+
+const AGENT_SYSTEM = `You are a property-address detective. Given a real-estate listing (photos + text), find the property's EXACT address and cadastral parcel by investigating with your tools — the same way a careful human would. You have no web access and must NOT try to look the listing up; work from the photos, the text, and the map/cadastre tools.
+
+Your strongest lever is the CADASTRE, not vision. Method:
+1. Read the listing text: extract the commune and, crucially, the TERRAIN AREA ("surface du terrain", m²). Also note living area, rooms, floors, year built, and whether it claims direct water access / "bord du lac".
+2. Call cadastre_parcels_by_area(commune, target_area_m2) — the terrain area is a near-unique key. Start with a tight tolerance (10 m²); widen to 100 only if needed. This narrows a whole commune to a handful of parcels.
+3. For the candidate parcels, use aerial_view (zoom in, ~150-250 m) and buildings_here to check each against the photos and the listing facts: does the plot's pool / garden / roof / shoreline match the photos? Do the register's floors and year built match? Rule out parcels that contradict (e.g. no water access when the listing claims a private pontoon, or wrong floor count).
+4. When one parcel matches, call submit_answer with its address, parcel ("Commune NNNN"), coordinates, confidence, your reasoning, the ranked candidates, and cadastre_url (the LIEN_WWW the cadastre tool returned for that parcel).
+
+Notes:
+- The cadastre currently covers the canton of GENEVA only. If the commune is elsewhere, say so, fall back to aerial_view + reasoning from the photos, and report found=false with your best area estimate and confidence.
+- Prefer the exact-area parcel corroborated by the photos and register. Be honest about confidence: "building"/"street" only when a parcel genuinely matches; otherwise "neighborhood"/"city".
+- Don't fabricate. Every address must come from the register/cadastre tools.`;
+
+const AGENT_TASK = `These photos and text are a property listing. Find the property's exact street address and cadastral parcel using your tools. Investigate step by step: extract the commune and terrain area from the text, query the cadastre by area, then confirm the matching parcel with aerial views and the building register. Call submit_answer when done.`;
+
+async function runAgentTool(
+  name: string,
+  input: Record<string, unknown>,
+): Promise<{ content: Anthropic.Messages.ToolResultBlockParam["content"]; step: string }> {
+  if (name === "geocode") {
+    const q = String(input.query ?? "");
+    const g = await geocodePlace(q);
+    return g
+      ? { content: `${g.lat},${g.lon} — ${g.name}`, step: `geocode "${q}" → ${g.lat.toFixed(4)},${g.lon.toFixed(4)}` }
+      : { content: "No geocoding result.", step: `geocode "${q}" → none` };
+  }
+  if (name === "cadastre_parcels_by_area") {
+    const commune = String(input.commune ?? "");
+    const target = Number(input.target_area_m2);
+    const tol = Number(input.tolerance_m2 ?? 100);
+    const parcels = await searchCadastreByArea(commune, target - tol, target + tol);
+    const step = `cadastre ${commune} ${Math.round(target)}±${Math.round(tol)}m² → ${parcels.length}`;
+    if (parcels.length === 0) {
+      return {
+        content: `No Geneva parcels in '${commune}' with surface ${Math.round(target - tol)}-${Math.round(target + tol)} m². The cadastre covers canton Geneva only; if this commune is elsewhere, fall back to aerial reasoning.`,
+        step,
+      };
+    }
+    const lines = parcels
+      .slice(0, 40)
+      .map((p) => `parcel ${p.parcel}: ${p.surface} m² at ${p.lat.toFixed(5)},${p.lon.toFixed(5)}${p.url ? ` · ${p.url}` : ""}`)
+      .join("\n");
+    return {
+      content: `${parcels.length} parcel(s) in ${commune}, ${Math.round(target - tol)}-${Math.round(target + tol)} m² (nearest to ${Math.round(target)} first):\n${lines}`,
+      step,
+    };
+  }
+  if (name === "aerial_view") {
+    const lat = Number(input.latitude);
+    const lon = Number(input.longitude);
+    const span = Math.min(1500, Math.max(80, Number(input.span_meters ?? 200)));
+    const a = await fetchAerialImage(lat, lon, span);
+    if (!a) {
+      return { content: "No aerial available (outside Switzerland or fetch failed).", step: `aerial ${lat.toFixed(5)},${lon.toFixed(5)} ${span}m → none` };
+    }
+    return {
+      content: [
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: a.imageBase64 } },
+        { type: "text", text: `Aerial (north up), ~${span} m across, centered ${lat.toFixed(5)},${lon.toFixed(5)}.` },
+      ],
+      step: `aerial ${lat.toFixed(5)},${lon.toFixed(5)} ${span}m`,
+    };
+  }
+  if (name === "buildings_here") {
+    const lat = Number(input.latitude);
+    const lon = Number(input.longitude);
+    const r = await fetchSwissBuildings(lat, lon);
+    return {
+      content:
+        r && r.count > 0
+          ? `Register buildings near ${lat.toFixed(5)},${lon.toFixed(5)} (distance & bearing from the point):\n${r.digest}`
+          : "No register buildings found near this point.",
+      step: `buildings ${lat.toFixed(5)},${lon.toFixed(5)} → ${r?.count ?? 0}`,
+    };
+  }
+  return { content: `Unknown tool: ${name}`, step: `unknown ${name}` };
+}
+
+// The agent loop: the model calls tools and iterates until it submits an answer.
+export async function investigateListing(
+  client: Anthropic,
+  input: AnalyzeInput,
+): Promise<InvestigateResult | { refusal: true }> {
+  const messages: Anthropic.Messages.MessageParam[] = [
+    {
+      role: "user",
+      content: [
+        ...imageBlocks(input.images),
+        { type: "text", text: `${AGENT_TASK}\n\nListing text:\n${input.listingText ? `"${input.listingText}"` : "(none provided)"}` },
+      ],
+    },
+  ];
+  const steps: string[] = [];
+  let answer: AgentAnswer | null = null;
+
+  for (let i = 0; i < 18 && !answer; i++) {
+    const resp = await client.messages.create({
+      model: VISION_MODEL,
+      max_tokens: 8000,
+      thinking: { type: "adaptive" },
+      system: AGENT_SYSTEM,
+      tools: AGENT_TOOLS,
+      messages,
+    });
+    if (resp.stop_reason === "refusal") return { refusal: true };
+    messages.push({ role: "assistant", content: resp.content });
+
+    const toolUses = resp.content.filter(
+      (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
+    );
+    if (toolUses.length === 0) break; // model stopped without submitting
+
+    const results: Anthropic.Messages.ToolResultBlockParam[] = [];
+    for (const tu of toolUses) {
+      if (tu.name === "submit_answer") {
+        const parsed = agentAnswerSchema.safeParse(tu.input);
+        if (parsed.success) {
+          answer = parsed.data;
+          steps.push(`answer → ${parsed.data.address ?? parsed.data.parcel ?? "not found"}`);
+        }
+        results.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: parsed.success ? "recorded" : "submit_answer fields were invalid; correct them and resubmit.",
+          is_error: !parsed.success,
+        });
+      } else {
+        const { content, step } = await runAgentTool(tu.name, tu.input as Record<string, unknown>);
+        steps.push(step);
+        results.push({ type: "tool_result", tool_use_id: tu.id, content });
+      }
+    }
+    messages.push({ role: "user", content: results });
+  }
+
+  if (!answer) {
+    answer = {
+      found: false,
+      address: null,
+      parcel: null,
+      commune: null,
+      confidence: "unknown",
+      latitude: null,
+      longitude: null,
+      reasoning: "The investigation did not converge on a parcel within the step budget.",
+      candidates: [],
+      cadastre_url: null,
+    };
+  }
+  return { answer, steps };
+}
+
 export function registerApiRoutes(app: Express) {
   app.use(express.json({ limit: "25mb" }));
 
@@ -706,7 +1050,7 @@ export function registerApiRoutes(app: Express) {
 
     try {
       const client = new Anthropic();
-      const result = await analyzeListing(client, input);
+      const result = await investigateListing(client, input);
 
       if ("refusal" in result) {
         res.status(422).json({ error: "The model declined to analyze this listing." });
