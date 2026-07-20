@@ -10,7 +10,7 @@ import type { Express, Request, Response } from "express";
 import express from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { buildDossier } from "./enrich";
+import { analyzeBuildPotential } from "./potential";
 import {
   addStep,
   costUsd,
@@ -19,7 +19,6 @@ import {
   getJob,
   listJobs,
   requestCancel,
-  setDossier,
 } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -191,9 +190,10 @@ export function registerApiRoutes(app: Express) {
     res.json({ ok: true });
   });
 
-  // Optional, manual enrichment: build the buyer's dossier for a found parcel
-  // from authoritative public layers. Runs only after an answer with coords.
-  app.post("/api/geo/investigate/:id/enrich", async (req: Request, res: Response) => {
+  // Optional, manual: analyse how much MORE can be built on the found parcel.
+  // Runs the focused construction-potential agent in the background; the trace
+  // and result are polled via GET below (job.potential / job.potentialStatus).
+  app.post("/api/geo/investigate/:id/potential", (req: Request, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -201,17 +201,17 @@ export function registerApiRoutes(app: Express) {
     }
     const { latitude, longitude } = job.answer ?? {};
     if (latitude == null || longitude == null) {
-      res.status(400).json({ error: "This investigation has no coordinates to enrich." });
+      res.status(400).json({ error: "This investigation has no located parcel to analyse." });
       return;
     }
-    try {
-      const dossier = await buildDossier(latitude, longitude);
-      await setDossier(job, dossier);
-      res.json(dossier);
-    } catch (err) {
-      console.error(`[api] enrich ${job.id} failed:`, err);
-      res.status(502).json({ error: "Could not build the dossier. Try again." });
+    if (job.potentialStatus === "running") {
+      res.status(409).json({ error: "A construction-potential analysis is already running." });
+      return;
     }
+    void analyzeBuildPotential(job).catch((err) => {
+      console.error(`[api] potential ${job.id} crashed:`, err);
+    });
+    res.status(202).json({ ok: true });
   });
 
   // Poll one investigation: full documented trace + answer + status.

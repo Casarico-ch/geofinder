@@ -25,16 +25,18 @@ import {
   finishJob,
 } from "./jobs";
 
-const MODEL = "claude-opus-4-8";
+export const MODEL = "claude-opus-4-8";
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
-const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
+export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
 
 export interface AgentImage {
   base64: string;
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
 }
 
-const TOOLS = [
+// The "computer" — the only tools both the finder and the build-potential
+// analyst share. No domain logic; the model writes its own access.
+export const COMPUTER_TOOLS = [
   {
     name: "bash",
     description:
@@ -68,6 +70,10 @@ const TOOLS = [
       required: ["path"],
     },
   },
+] as unknown as Anthropic.Messages.ToolUnion[];
+
+const TOOLS = [
+  ...COMPUTER_TOOLS,
   {
     name: "submit_answer",
     description: "Call once, when you are confident, to report the final result (or found=false).",
@@ -189,7 +195,7 @@ function initialContent(
   return blocks;
 }
 
-function clip(s: string, n: number): string {
+export function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
 }
 
@@ -211,7 +217,7 @@ function normalizePath(jobId: string, p: string): string {
 }
 
 // Pull the model's own reasoning (thinking + any visible text) out of a turn.
-function extractReasoning(content: Anthropic.Messages.ContentBlock[]): string {
+export function extractReasoning(content: Anthropic.Messages.ContentBlock[]): string {
   const parts: string[] = [];
   for (const b of content) {
     if (b.type === "thinking" && b.thinking) parts.push(b.thinking);
@@ -437,7 +443,7 @@ async function clearState(job: Job): Promise<void> {
   }
 }
 
-async function dispatchTool(
+export async function dispatchTool(
   job: Job,
   name: string,
   input: Record<string, unknown>,

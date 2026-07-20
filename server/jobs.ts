@@ -11,7 +11,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT, ensureRunDir } from "./sandbox";
-import type { Dossier } from "./enrich";
+import type { BuildPotential } from "./potential";
+
+export type PotentialStatus = "running" | "done" | "error";
 
 export type Confidence =
   | "street"
@@ -85,7 +87,8 @@ export interface Job {
   answer: Answer | null;
   error?: string;
   tokens: TokenUsage;
-  dossier?: Dossier | null;
+  potential?: BuildPotential | null;
+  potentialStatus?: PotentialStatus;
   cancelRequested?: boolean;
   runDir: string;
 }
@@ -154,8 +157,15 @@ export function requestCancel(job: Job): void {
   job.cancelRequested = true;
 }
 
-export async function setDossier(job: Job, dossier: Dossier): Promise<void> {
-  job.dossier = dossier;
+export async function setPotentialStatus(job: Job, status: PotentialStatus): Promise<void> {
+  job.potentialStatus = status;
+  job.updatedAt = nowIso();
+  await persist(job);
+}
+
+export async function setPotential(job: Job, potential: BuildPotential): Promise<void> {
+  job.potential = potential;
+  job.potentialStatus = "done";
   job.updatedAt = nowIso();
   await persist(job);
 }
@@ -213,6 +223,10 @@ export async function loadPersistedJobs(): Promise<Job[]> {
         },
         runDir: path.join(RUNS_ROOT, id),
       };
+      // A construction-potential analysis is short and not resumable; if it was
+      // mid-flight when the process died, mark it errored so the UI can offer a
+      // retry instead of spinning forever.
+      if (job.potentialStatus === "running") job.potentialStatus = "error";
       jobs.set(job.id, job);
       // Still "running" means the previous process died mid-flight; hand it back
       // to be resumed. A pending cancel (persisted on the job) is preserved, so
