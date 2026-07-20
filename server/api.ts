@@ -77,19 +77,24 @@ export function registerApiRoutes(app: Express) {
     }));
     const listingText = foldListingText(parsed.data.listingText, parsed.data.municipality);
 
-    const job = await createJob({
-      municipality: parsed.data.municipality,
-      listingText,
-      imageCount: images.length,
-    });
-    await saveListingPhotos(job.runDir, images);
+    try {
+      const job = await createJob({
+        municipality: parsed.data.municipality,
+        listingText,
+        imageCount: images.length,
+      });
+      await saveListingPhotos(job.runDir, images);
 
-    // Fire and forget — the job keeps running regardless of the client.
-    void runInvestigation(job, images, listingText).catch((err) => {
-      console.error(`[api] investigation ${job.id} crashed:`, err);
-    });
+      // Fire and forget — the job keeps running regardless of the client.
+      void runInvestigation(job, images, listingText).catch((err) => {
+        console.error(`[api] investigation ${job.id} crashed:`, err);
+      });
 
-    res.status(202).json({ jobId: job.id });
+      res.status(202).json({ jobId: job.id });
+    } catch (err) {
+      console.error("[api] failed to start investigation:", err);
+      res.status(500).json({ error: "Could not start the investigation on the server." });
+    }
   });
 
   // List recent investigations (for reopening after the window was closed).

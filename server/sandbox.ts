@@ -16,9 +16,29 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const RUNS_ROOT = process.env.RUNS_DIR
+// `let` so initRunsRoot() can fall back to a writable dir if the configured one
+// (e.g. a mis-mounted volume) can't be written — ESM live bindings propagate the
+// new value to importers. Never let a persistence-config issue crash the app.
+export let RUNS_ROOT = process.env.RUNS_DIR
   ? path.resolve(process.env.RUNS_DIR)
   : path.resolve(process.cwd(), "runs");
+
+// Verify RUNS_ROOT is writable at boot; if not, fall back to <cwd>/runs so the
+// app still works (without cross-deploy persistence) instead of 502-ing.
+export async function initRunsRoot(): Promise<void> {
+  try {
+    await mkdir(RUNS_ROOT, { recursive: true });
+    await writeFile(path.join(RUNS_ROOT, ".writable"), "ok");
+  } catch (err) {
+    const fallback = path.resolve(process.cwd(), "runs");
+    console.error(
+      `[sandbox] RUNS_DIR "${RUNS_ROOT}" is not writable (${err instanceof Error ? err.message : err}); ` +
+        `falling back to ${fallback}. Persistence across deploys is OFF until the volume mount path matches RUNS_DIR.`,
+    );
+    RUNS_ROOT = fallback;
+    await mkdir(RUNS_ROOT, { recursive: true });
+  }
+}
 
 export async function ensureRunDir(runId: string): Promise<string> {
   const dir = path.join(RUNS_ROOT, runId);

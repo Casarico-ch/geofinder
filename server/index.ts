@@ -4,7 +4,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { registerApiRoutes } from "./api";
 import { loadPersistedJobs } from "./jobs";
-import { RUNS_ROOT } from "./sandbox";
+import { RUNS_ROOT, initRunsRoot } from "./sandbox";
+
+// Never let a stray async error take the process down (Node 15+ exits on
+// unhandled rejections by default) — log it and keep serving.
+process.on("unhandledRejection", (reason) => console.error("[unhandledRejection]", reason));
+process.on("uncaughtException", (err) => console.error("[uncaughtException]", err));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +18,9 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // Recover jobs (and their traces) from previous runs before serving.
+  // Resolve a writable runs dir (falls back if the volume is mis-mounted), then
+  // recover jobs (and their traces) from previous runs before serving.
+  await initRunsRoot();
   await loadPersistedJobs();
 
   registerApiRoutes(app);
