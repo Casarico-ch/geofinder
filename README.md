@@ -1,32 +1,35 @@
 # GeoFinder
 
-Find the street address of the place a photo was taken — **purely from what's visible
-in the image**, plus an optional free-text note. No EXIF, no GPS tags, no device
-location: the photo is re-encoded to a plain JPEG in the browser before upload, so
-only the pixels travel.
+Deduce the street address of a property from its listing — **purely from what you
+give it**: the listing text and an array of photos. Nothing is looked up. No web
+search, no map database, no geocoder, no EXIF or device location — only the pixels
+and the text.
 
 ## How it works
 
-1. **Vision analysis** — the image (and your optional context note) goes to Claude
-   (`claude-opus-4-8`, vision + adaptive thinking) with a geolocation prompt. It
-   transcribes any legible text (street signs, shop and bus-stop names, house
-   numbers) and reads architecture, street furniture, road markings, vegetation,
-   terrain and skyline.
-2. **Web-search verification** — Claude uses the web-search tool to look up the
-   specific clues it reads and resolve them to a real street address and
-   coordinates.
-3. **Map cross-check** — when the estimate is neighborhood-tight or better, the
-   server pulls real OpenStreetMap features around the estimated point (addressed
-   buildings, shops, playgrounds and their surfaces, transit stops, high-rises on
-   the skyline — each with distance and bearing, via Overpass) and a second Claude
-   pass tests the photo against that ground truth: corroborating matches upgrade
-   the fix toward a specific building; contradictions downgrade the confidence.
-4. **Honest confidence** — every result is labelled from `street`-level down to
-   `region`-level, with the clues used, the text read from the image, the map
-   features matched, the reasoning, and the sources.
+The Express API (`server/api.ts`) sends the photos and listing text to Claude
+(`claude-opus-4-8`, vision + adaptive thinking) in a single reasoning pass with no
+tools, and Claude deduces the location from the evidence alone:
 
-Coordinates are reverse-geocoded to a clean address via OpenStreetMap / Nominatim
-through the Express API (`server/api.ts`) — no map API key needed.
+- **All photos together** — the exterior, the views out of the windows and balcony,
+  the street and the entrance are reasoned over as one set, so they triangulate a
+  single building rather than being read in isolation.
+- **Visual signals** — every legible sign (street names, shop and bus-stop names,
+  house numbers, plaques, license plates), architecture and construction era,
+  street furniture and sign conventions, language and typography, vegetation,
+  terrain and skyline, and **sun direction and shadows** for orientation and
+  latitude.
+- **Text cues as constraints** — commune/quarter, street fragments or postcode,
+  floor and total floors (building height), year built, and proximity claims like
+  "station 100 m away" or "5 minutes from the university", each of which narrows
+  where the property can be.
+- **Honest confidence** — every result is labelled from `street`-level down to
+  `region`-level, with the clues used, the text read from the photos, and the
+  reasoning. An exact address is only returned when the evidence carries a locking
+  signal; otherwise it reports the tightest area it can defend.
+
+The endpoint accepts `{ images: [{ imageBase64, mediaType }], listingText? }` (the
+legacy single-photo `{ imageBase64, mediaType, hint }` shape still works).
 
 ## Stack
 
