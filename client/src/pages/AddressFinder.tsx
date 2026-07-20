@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Camera,
   Copy,
   ExternalLink,
   Eye,
@@ -11,9 +10,11 @@ import {
   Loader2,
   MapPin,
   MapPinned,
+  Plus,
   RefreshCw,
   ScanSearch,
   Sparkles,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,28 +40,21 @@ interface LocationEstimate {
   clues: string[];
   text_read: string[];
   reasoning: string;
-  sources: string[];
 }
 
-interface ResolvedAddress {
-  formatted: string;
-  latitude: number;
-  longitude: number;
-}
-
-interface OsmVerification {
-  status: "verified" | "unverified" | "skipped" | "unavailable";
-  matches: { feature: string; clue: string }[];
+interface LandVerification {
+  status: "pinned" | "corroborated" | "inconclusive" | "unavailable" | "skipped";
+  matched_address: string | null;
+  matches: { evidence: string; source: string }[];
   mismatches: string[];
   notes: string | null;
-  refined: boolean;
+  aerialUsed: boolean;
+  sources: string[];
 }
 
 interface AnalyzeResponse {
   estimate: LocationEstimate;
-  resolvedAddress: ResolvedAddress | null;
-  searchUsed: boolean;
-  osmVerification?: OsmVerification;
+  landVerification: LandVerification;
 }
 
 type Stage =
@@ -68,6 +62,11 @@ type Stage =
   | { kind: "analyzing" }
   | { kind: "resolved"; data: AnalyzeResponse }
   | { kind: "error"; message: string };
+
+interface Picture {
+  file: File;
+  url: string;
+}
 
 // How tight the result is — drives the badge. Only "street"/"building" is doorstep-accurate.
 const CONFIDENCE_META: Record<Confidence, { label: string; tone: string }> = {
@@ -80,6 +79,14 @@ const CONFIDENCE_META: Record<Confidence, { label: string; tone: string }> = {
   country: { label: "COUNTRY-LEVEL", tone: "text-muted-foreground border-border bg-background/40" },
   unknown: { label: "INCONCLUSIVE", tone: "text-destructive border-destructive/40 bg-destructive/10" },
 };
+
+// Badge for the map-the-land stage — only when it actually grounded the estimate.
+const LAND_META: Partial<Record<LandVerification["status"], string>> = {
+  pinned: "PARCEL PINNED",
+  corroborated: "MAP-CORROBORATED",
+};
+
+const MAX_IMAGES = 15;
 
 // Re-encode to a downscaled JPEG before upload: keeps the request small and
 // normalizes formats (incl. HEIC from iPhones on Safari).
@@ -102,67 +109,85 @@ function mapEmbedUrl(lat: number, lon: number, wide: boolean) {
   return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
 }
 
+// Fold the municipality and free-text description into the single listing-text field.
+function buildListingText(municipality: string, description: string): string | undefined {
+  const parts: string[] = [];
+  if (municipality.trim()) parts.push(`Municipality / commune: ${municipality.trim()}`);
+  if (description.trim()) parts.push(description.trim());
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
 export default function AddressFinder() {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewFailed, setPreviewFailed] = useState(false);
-  const [hint, setHint] = useState("");
+  const [pictures, setPictures] = useState<Picture[]>([]);
+  const [municipality, setMunicipality] = useState("");
+  const [description, setDescription] = useState("");
   const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
+    return () => pictures.forEach((p) => URL.revokeObjectURL(p.url));
+  }, [pictures]);
 
-  const chooseFile = useCallback((selected: File) => {
-    if (!selected.type.startsWith("image/") && !/\.(heic|heif)$/i.test(selected.name)) {
-      toast.error("Please choose an image file");
+  const addFiles = useCallback((list: FileList | File[]) => {
+    const chosen = Array.from(list).filter(
+      (f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name),
+    );
+    if (chosen.length === 0) {
+      toast.error("Please choose image files");
       return;
     }
-    setFile(selected);
-    setPreviewFailed(false);
     setStage({ kind: "idle" });
-    setPreviewUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return URL.createObjectURL(selected);
+    setPictures((prev) => {
+      const room = MAX_IMAGES - prev.length;
+      if (room <= 0) {
+        toast.error(`Up to ${MAX_IMAGES} images`);
+        return prev;
+      }
+      const next = chosen.slice(0, room).map((file) => ({ file, url: URL.createObjectURL(file) }));
+      if (chosen.length > room) toast.error(`Up to ${MAX_IMAGES} images — extra ignored`);
+      return [...prev, ...next];
+    });
+  }, []);
+
+  const removePicture = useCallback((index: number) => {
+    setPictures((prev) => {
+      const p = prev[index];
+      if (p) URL.revokeObjectURL(p.url);
+      return prev.filter((_, i) => i !== index);
     });
   }, []);
 
   const analyze = useCallback(async () => {
-    if (!file) return;
+    if (pictures.length === 0) return;
     setStage({ kind: "analyzing" });
     try {
-      const imageBase64 = await fileToJpegBase64(file);
+      const images = await Promise.all(
+        pictures.map(async (p) => ({
+          imageBase64: await fileToJpegBase64(p.file),
+          mediaType: "image/jpeg" as const,
+        })),
+      );
       const res = await fetch("/api/geo/analyze-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64,
-          mediaType: "image/jpeg",
-          hint: hint.trim() || undefined,
-        }),
+        body: JSON.stringify({ images, listingText: buildListingText(municipality, description) }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? "Vision analysis failed");
+      if (!res.ok) throw new Error(body?.error ?? "Analysis failed");
       setStage({ kind: "resolved", data: body as AnalyzeResponse });
     } catch (err) {
-      setStage({ kind: "error", message: err instanceof Error ? err.message : "Vision analysis failed" });
+      setStage({ kind: "error", message: err instanceof Error ? err.message : "Analysis failed" });
     }
-  }, [file, hint]);
+  }, [pictures, municipality, description]);
 
   const reset = useCallback(() => {
-    setFile(null);
-    setPreviewFailed(false);
-    setHint("");
-    setPreviewUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return null;
+    setPictures((prev) => {
+      prev.forEach((p) => URL.revokeObjectURL(p.url));
+      return [];
     });
+    setMunicipality("");
+    setDescription("");
     setStage({ kind: "idle" });
-    if (inputRef.current) inputRef.current.value = "";
   }, []);
 
   const copyText = useCallback((text: string) => {
@@ -174,13 +199,12 @@ export default function AddressFinder() {
 
   const analyzing = stage.kind === "analyzing";
   const est = stage.kind === "resolved" ? stage.data.estimate : null;
-  const resolved = stage.kind === "resolved" ? stage.data.resolvedAddress : null;
-  const osm = stage.kind === "resolved" ? (stage.data.osmVerification ?? null) : null;
+  const land = stage.kind === "resolved" ? stage.data.landVerification : null;
   const coords =
     est && est.latitude !== null && est.longitude !== null
       ? { lat: est.latitude, lon: est.longitude }
       : null;
-  const primaryLine = resolved?.formatted ?? est?.address ?? est?.place ?? "";
+  const primaryLine = land?.matched_address ?? est?.address ?? est?.place ?? "";
   const wideMap = est ? !["street", "building", "block"].includes(est.confidence) : true;
 
   return (
@@ -190,7 +214,7 @@ export default function AddressFinder() {
           <MapPin className="h-5 w-5 text-primary" />
           <div>
             <h1 className="text-lg font-bold tracking-wider text-primary glow-green">GEOFINDER</h1>
-            <p className="text-xs text-muted-foreground">Vision-only geolocation — no metadata, ever</p>
+            <p className="text-xs text-muted-foreground">Find a property's address from its listing</p>
           </div>
         </div>
       </header>
@@ -198,99 +222,118 @@ export default function AddressFinder() {
       <main className="flex-1 container py-8">
         <div className="max-w-2xl mx-auto space-y-6">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Drop a photo. The address is worked out purely from what's <strong className="text-primary">visible</strong> in
-            the picture — architecture, signage, street furniture, terrain, and any readable text — optionally guided by a
-            note you add. Claude reads the scene, verifies distinctive clues with web search, cross-checks the result
-            against OpenStreetMap ground truth, and reports how sure it is.
+            Add the listing's <strong className="text-primary">photos</strong>, its{" "}
+            <strong className="text-primary">description</strong>, and the{" "}
+            <strong className="text-primary">municipality</strong>. The address is deduced from what's in the
+            photos and text — signage, architecture, orientation, the view — then the property's land is matched
+            against aerial and map data to pin the parcel. The listing itself is never looked up.
           </p>
 
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*,.heic,.heif"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) chooseFile(f);
-            }}
-          />
-
-          {!file ? (
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragging(false);
-                const f = e.dataTransfer.files?.[0];
-                if (f) chooseFile(f);
-              }}
-              className={`w-full border border-dashed rounded p-10 flex flex-col items-center gap-3 transition-colors ${
-                dragging
-                  ? "border-primary bg-primary/5"
-                  : "border-border bg-card/30 hover:border-primary/50 hover:bg-card/50"
-              }`}
-            >
-              <Camera className="h-8 w-8 text-primary" />
-              <span className="text-sm text-foreground">Drop a photo here, or click to choose</span>
-              <span className="text-[11px] text-muted-foreground text-center max-w-sm">
-                Any photo works — the more distinctive detail in frame (signs, shopfronts, a skyline), the tighter the fix.
-              </span>
-            </button>
-          ) : (
-            <Card className="bg-card/40 border-border">
-              <CardContent className="p-4 space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-20 w-20 shrink-0 rounded border border-border bg-background/40 overflow-hidden flex items-center justify-center">
-                    {previewUrl && !previewFailed ? (
-                      <img
-                        src={previewUrl}
-                        alt="Selected photo"
-                        className="h-full w-full object-cover"
-                        onError={() => setPreviewFailed(true)}
+          <Card className="bg-card/40 border-border">
+            <CardContent className="p-4 space-y-4">
+              {/* Photos */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-bold tracking-wider text-muted-foreground">
+                  PHOTOS {pictures.length > 0 && `· ${pictures.length}/${MAX_IMAGES}`}
+                </label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragging(false);
+                    if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+                  }}
+                  className={`grid grid-cols-3 sm:grid-cols-4 gap-2 rounded border border-dashed p-2 transition-colors ${
+                    dragging ? "border-primary bg-primary/5" : "border-border bg-background/20"
+                  }`}
+                >
+                  {pictures.map((p, i) => (
+                    <div
+                      key={p.url}
+                      className="relative aspect-square rounded overflow-hidden border border-border bg-background/40 group"
+                    >
+                      <img src={p.url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                      {!analyzing && (
+                        <button
+                          type="button"
+                          onClick={() => removePicture(i)}
+                          className="absolute top-1 right-1 h-5 w-5 rounded-full bg-background/80 border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Remove photo"
+                        >
+                          <X className="h-3 w-3 text-foreground" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {pictures.length < MAX_IMAGES && (
+                    <label
+                      className={`aspect-square rounded border border-dashed border-border flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary/50 hover:bg-card/50 transition-colors ${
+                        analyzing ? "pointer-events-none opacity-50" : ""
+                      }`}
+                    >
+                      {pictures.length === 0 ? (
+                        <ImageIcon className="h-5 w-5 text-primary" />
+                      ) : (
+                        <Plus className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <span className="text-[10px] text-muted-foreground">
+                        {pictures.length === 0 ? "Add photos" : "Add"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,.heic,.heif"
+                        multiple
+                        className="hidden"
+                        disabled={analyzing}
+                        onChange={(e) => {
+                          if (e.target.files?.length) addFiles(e.target.files);
+                          e.target.value = "";
+                        }}
                       />
-                    ) : (
-                      <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-foreground truncate">{file.name}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
-                  </div>
-                  <Button variant="outline" size="sm" className="h-8 text-xs shrink-0" onClick={reset} disabled={analyzing}>
-                    <RefreshCw className="mr-1.5 h-3 w-3" />
-                    New photo
-                  </Button>
+                    </label>
+                  )}
                 </div>
+              </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold tracking-wider text-muted-foreground">
-                    OPTIONAL CONTEXT
-                  </label>
-                  <Textarea
-                    value={hint}
-                    onChange={(e) => setHint(e.target.value)}
-                    disabled={analyzing}
-                    rows={2}
-                    placeholder='Anything you know — e.g. "Fribourg town", "near a hospital", a street name you half-remember…'
-                    className="text-xs bg-background/50 border-border focus-visible:ring-primary resize-none"
-                  />
-                </div>
+              {/* Municipality */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold tracking-wider text-muted-foreground">MUNICIPALITY</label>
+                <input
+                  value={municipality}
+                  onChange={(e) => setMunicipality(e.target.value)}
+                  disabled={analyzing}
+                  placeholder="e.g. Corsier (GE), Fribourg, Lutry…"
+                  className="w-full h-9 rounded border border-border bg-background/50 px-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+              </div>
 
+              {/* Description */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold tracking-wider text-muted-foreground">DESCRIPTION</label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={analyzing}
+                  rows={4}
+                  placeholder="Paste the listing text — rooms, floor, year built, parcel size, proximity claims ('lakefront', 'station 100 m'), anything it says."
+                  className="text-xs bg-background/50 border-border focus-visible:ring-primary resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2">
                 <Button
                   onClick={() => void analyze()}
-                  disabled={analyzing}
-                  className="w-full h-11 bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-xs tracking-widest"
+                  disabled={analyzing || pictures.length === 0}
+                  className="flex-1 h-11 bg-primary text-primary-foreground hover:bg-primary/90 font-bold text-xs tracking-widest disabled:opacity-40"
                 >
                   {analyzing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      READING THE SCENE…
+                      MAPPING THE LAND…
                     </>
                   ) : (
                     <>
@@ -299,21 +342,27 @@ export default function AddressFinder() {
                     </>
                   )}
                 </Button>
-                {analyzing && (
-                  <p className="text-[11px] text-muted-foreground text-center">
-                    Extracting clues, verifying with web search, then cross-checking against map data — this can take a
-                    minute or two.
-                  </p>
+                {(pictures.length > 0 || municipality || description) && !analyzing && (
+                  <Button variant="outline" className="h-11 text-xs shrink-0" onClick={reset}>
+                    <RefreshCw className="mr-1.5 h-3 w-3" />
+                    Reset
+                  </Button>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </div>
+              {analyzing && (
+                <p className="text-[11px] text-muted-foreground text-center">
+                  Deducing the area, then matching the parcel against aerial and map data — this can take a minute or
+                  two.
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           {stage.kind === "error" && (
             <Card className="bg-card/40 border-destructive/40">
               <CardContent className="p-5 space-y-3">
                 <p className="text-sm text-destructive">{stage.message}</p>
-                {file && (
+                {pictures.length > 0 && (
                   <Button variant="outline" size="sm" className="text-xs" onClick={() => void analyze()}>
                     <RefreshCw className="mr-1.5 h-3 w-3" />
                     Retry
@@ -336,16 +385,10 @@ export default function AddressFinder() {
                       <Sparkles className="h-3 w-3" />
                       {CONFIDENCE_META[est.confidence].label}
                     </span>
-                    {stage.kind === "resolved" && stage.data.searchUsed && (
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-background/40 text-[10px] font-bold tracking-wider text-muted-foreground">
-                        <ScanSearch className="h-3 w-3" />
-                        WEB-VERIFIED
-                      </span>
-                    )}
-                    {osm?.status === "verified" && (
+                    {land && LAND_META[land.status] && (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-background/40 text-[10px] font-bold tracking-wider text-muted-foreground">
                         <MapPinned className="h-3 w-3" />
-                        MAP-VERIFIED
+                        {LAND_META[land.status]}
                       </span>
                     )}
                   </div>
@@ -353,13 +396,13 @@ export default function AddressFinder() {
                   {est.location_found ? (
                     <div className="space-y-1">
                       <p className="text-xl font-bold text-primary leading-snug">{primaryLine}</p>
-                      {resolved && est.address && resolved.formatted !== est.address && (
+                      {land?.matched_address && est.address && land.matched_address !== est.address && (
                         <p className="text-[11px] text-muted-foreground">Model read: {est.address}</p>
                       )}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      Not enough in the frame to place this confidently. {est.place}
+                      Not enough to place this confidently. {est.place}
                     </p>
                   )}
 
@@ -374,7 +417,7 @@ export default function AddressFinder() {
                   {est.clues.length > 0 && (
                     <div className="border border-border/60 bg-background/30 rounded p-3">
                       <p className="text-[10px] font-bold tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                        <Eye className="h-3 w-3" /> VISUAL CLUES
+                        <Eye className="h-3 w-3" /> CLUES USED
                       </p>
                       <ul className="space-y-1">
                         {est.clues.map((c, i) => (
@@ -388,10 +431,13 @@ export default function AddressFinder() {
 
                   {est.text_read.length > 0 && (
                     <div className="border border-border/60 bg-background/30 rounded p-3">
-                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground mb-2">TEXT READ IN IMAGE</p>
+                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground mb-2">TEXT READ</p>
                       <div className="flex flex-wrap gap-1.5">
                         {est.text_read.map((t, i) => (
-                          <span key={i} className="text-[11px] font-mono text-foreground border border-border/60 rounded px-1.5 py-0.5">
+                          <span
+                            key={i}
+                            className="text-[11px] font-mono text-foreground border border-border/60 rounded px-1.5 py-0.5"
+                          >
                             {t}
                           </span>
                         ))}
@@ -399,25 +445,28 @@ export default function AddressFinder() {
                     </div>
                   )}
 
-                  {osm && (osm.matches.length > 0 || osm.mismatches.length > 0) && (
+                  {land && (land.matches.length > 0 || land.mismatches.length > 0) && (
                     <div className="border border-border/60 bg-background/30 rounded p-3">
                       <p className="text-[10px] font-bold tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                        <MapPinned className="h-3 w-3" /> MAP CROSS-CHECK
+                        <MapPinned className="h-3 w-3" /> MAP THE LAND
+                        {land.sources.length > 0 && (
+                          <span className="font-normal normal-case tracking-normal">· {land.sources.join(", ")}</span>
+                        )}
                       </p>
                       <ul className="space-y-1">
-                        {osm.matches.map((m, i) => (
+                        {land.matches.map((m, i) => (
                           <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">
-                            · {m.clue} — matches {m.feature}
+                            · {m.evidence} <span className="text-muted-foreground/60">({m.source})</span>
                           </li>
                         ))}
-                        {osm.mismatches.map((m, i) => (
+                        {land.mismatches.map((m, i) => (
                           <li key={`x-${i}`} className="text-[11px] text-destructive/80 leading-relaxed">
                             · {m}
                           </li>
                         ))}
                       </ul>
-                      {osm.status === "unverified" && osm.notes && (
-                        <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">{osm.notes}</p>
+                      {land.notes && (
+                        <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">{land.notes}</p>
                       )}
                     </div>
                   )}
@@ -452,26 +501,6 @@ export default function AddressFinder() {
                       </>
                     )}
                   </div>
-
-                  {est.sources.length > 0 && (
-                    <div className="pt-1">
-                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground mb-1">SOURCES</p>
-                      <ul className="space-y-0.5">
-                        {est.sources.map((s, i) => (
-                          <li key={i} className="truncate">
-                            <a
-                              href={s}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[11px] text-primary hover:underline"
-                            >
-                              {s}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
 
                 {coords && (
@@ -489,7 +518,7 @@ export default function AddressFinder() {
       </main>
 
       <footer className="border-t border-border py-4 text-[11px] text-muted-foreground">
-        <div className="container">Vision only · verified with web search and OpenStreetMap · geocoding by Nominatim</div>
+        <div className="container">Deduced from your photos + text · parcel matched against aerial, register & OpenStreetMap</div>
       </footer>
     </div>
   );
