@@ -85,6 +85,7 @@ export interface Job {
   error?: string;
   tokens: TokenUsage;
   dossier?: Dossier | null;
+  cancelRequested?: boolean;
   runDir: string;
 }
 
@@ -145,6 +146,11 @@ export async function addStep(job: Job, step: Omit<Step, "n" | "at">): Promise<S
   job.updatedAt = full.at;
   await persist(job);
   return full;
+}
+
+// Flag a running investigation to stop; the agent loop checks this each turn.
+export function requestCancel(job: Job): void {
+  job.cancelRequested = true;
 }
 
 export async function setDossier(job: Job, dossier: Dossier): Promise<void> {

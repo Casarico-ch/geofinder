@@ -199,6 +199,7 @@ const STEP_ICON: Record<StepKind, typeof Terminal> = {
 function StatusDot({ status }: { status: JobStatus }) {
   if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />;
   if (status === "error") return <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />;
+  if (status === "cancelled") return <AlertCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
   return <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />;
 }
 
@@ -534,6 +535,16 @@ export default function AddressFinder() {
       .catch(() => toast.error("Could not copy"));
   }, []);
 
+  const stop = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      await fetch(`/api/geo/investigate/${jobId}/cancel`, { method: "POST" });
+      toast.success("Stopping…");
+    } catch {
+      toast.error("Could not stop");
+    }
+  }, [jobId]);
+
   const enrich = useCallback(async () => {
     if (!jobId) return;
     setEnriching(true);
@@ -776,7 +787,13 @@ export default function AddressFinder() {
                 <StatusDot status={job.status} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    {running ? "Investigating…" : job.status === "error" ? "Failed" : "Done"}
+                    {running
+                      ? "Investigating…"
+                      : job.status === "error"
+                        ? "Failed"
+                        : job.status === "cancelled"
+                          ? "Stopped"
+                          : "Done"}
                     <span className="text-muted-foreground font-normal">
                       {" · "}
                       {job.steps.length} steps · {fmtTokens(job.tokens.total)} tokens ·{" "}
@@ -790,6 +807,11 @@ export default function AddressFinder() {
                     {running && " · runs in the background — safe to close this window"}
                   </p>
                 </div>
+                {running && (
+                  <Button variant="outline" size="sm" onClick={() => void stop()}>
+                    Stop
+                  </Button>
+                )}
               </div>
 
               {job.error && (

@@ -11,7 +11,7 @@ import express from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { buildDossier } from "./enrich";
-import { costUsd, createJob, getJob, listJobs, setDossier } from "./jobs";
+import { costUsd, createJob, getJob, listJobs, requestCancel, setDossier } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -95,6 +95,17 @@ export function registerApiRoutes(app: Express) {
   // List recent investigations (for reopening after the window was closed).
   app.get("/api/geo/investigations", (_req: Request, res: Response) => {
     res.json({ jobs: listJobs().slice(0, 50).map(jobSummary) });
+  });
+
+  // Stop a running investigation (the agent loop checks the flag each turn).
+  app.post("/api/geo/investigate/:id/cancel", (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    if (job.status === "running") requestCancel(job);
+    res.json({ ok: true });
   });
 
   // Optional, manual enrichment: build the buyer's dossier for a found parcel
