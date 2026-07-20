@@ -141,6 +141,15 @@ Commit when the EVIDENCE confirms one property — not because you have searched
 - If the signals do NOT converge and you cannot close the gap, do NOT invent a door number to "finish." Submit your honest conclusion instead: the tightest defensible area with found=false (or a deliberately low confidence), plus your ranked candidates and the one check that would resolve them. An honest "neighbourhood, not pinned" beats a confident wrong address.
 - The only real tie is two adjacent units that share every signal (a mitoyenne pair / twin address). There, submit the more likely one at "building" confidence and list the other — that is confident-enough, not a guess.
 
+DON'T WRONGLY REJECT THE RIGHT PROPERTY (this is how the answer is actually lost)
+The correct property is usually lost by ELIMINATING it on one soft or misread signal — not by never finding it. Before you discard a candidate that already fits most signals, reconcile the apparent mismatch; it is noisy or measured wrong far more often than it is decisive:
+- Register/cadastre year is the ORIGINAL construction year, not renovation — a 1960s house can look modern in the photos. Do not reject on "looks newer than the register".
+- Listing distances are WALKING distances (~1.15–1.3× straight-line). Do not reject a candidate because your straight-line measurement is shorter than the stated one.
+- Living/habitable area vs building footprint differ by the number of floors and the basement — reconcile via NIVEAUX_HORSOL / NIVEAUX_SSOL before concluding the sizes "don't match".
+- "Vue lac" / "proche du lac" is a view or a short walk, NOT necessarily lakefront; a private pontoon can be a few minutes away. Do not require the house to sit on the shore.
+- Register/cadastre fields can be stale, generalized, or attached to a neighbouring sub-building. Treat a single conflicting field as a question to resolve, not a verdict.
+Reject a strong candidate ONLY on a hard, verified contradiction (e.g. the parcel area is unambiguously different from a stated terrain area, or the commune is wrong). Otherwise keep it on the shortlist and resolve the mismatch — do not move on and forget it.
+
 FIELD NOTES — useful keyless public sources (starting points, not limits; set a User-Agent header on every request)
 - Geneva cadastre (SITG), ArcGIS REST, params f=json&outSR=4326:
   · Parcels: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_PARCELLE_MENSU/MapServer/0/query — fields NO_PARCELLE, SURFACE, LIEN_WWW, COMMUNE. Filter with where=COMMUNE='X' AND SURFACE>=a AND SURFACE<=b, or spatially (geometry=lon,lat & geometryType=esriGeometryPoint, or an esriGeometryEnvelope 'lonmin,latmin,lonmax,latmax', inSR=4326, spatialRel=esriSpatialRelIntersects). returnGeometry=true → geometry.rings → centroid = average of the outer ring vertices.
