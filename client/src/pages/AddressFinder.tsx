@@ -1025,8 +1025,8 @@ export default function AddressFinder() {
 
       <footer className="border-t border-border py-4">
         <div className="container text-xs text-muted-foreground">
-          No hard-coded geolocation logic — the model writes its own code against public Swiss geodata (SITG,
-          swisstopo, GWR, OpenStreetMap).
+          No hard-coded geolocation logic — the model writes its own code against public Swiss geodata (cantonal
+          cadastres SITG / geodienste, swisstopo, GWR, OpenStreetMap).
         </div>
       </footer>
 
