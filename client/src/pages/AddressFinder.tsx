@@ -102,7 +102,7 @@ interface Job {
   createdAt: string;
   updatedAt: string;
   input: { municipality?: string; listingText?: string; imageCount: number };
-  steps: Step[];
+  stepCount: number; // total steps; the trace itself is fetched in pages
   answer: Answer | null;
   error?: string;
   tokens: TokenUsage;
@@ -341,11 +341,14 @@ export default function AddressFinder() {
   const [error, setError] = useState<string | null>(null);
 
   const [job, setJob] = useState<Job | null>(null);
+  const [steps, setSteps] = useState<Step[]>([]); // loaded pages of the trace
   const [notFound, setNotFound] = useState(false);
   const [recent, setRecent] = useState<JobSummary[]>([]);
   const traceEndRef = useRef<HTMLDivElement | null>(null);
-  const [newSteps, setNewSteps] = useState(0);
-  const prevLenRef = useRef<number | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadedRef = useRef(0); // how many steps we've fetched
+  const loadingRef = useRef(false);
+  const [pollNonce, setPollNonce] = useState(0); // bump to (re)start the meta poll
 
   useEffect(() => {
     return () => pictures.forEach((p) => URL.revokeObjectURL(p.url));
@@ -368,11 +371,42 @@ export default function AddressFinder() {
     return () => clearInterval(timer);
   }, [isOverview, loadRecent]);
 
-  // Poll the active investigation until it reaches a terminal state.
+  // Fetch the next page of trace steps and append it. Guarded so overlapping
+  // triggers (scroll + poll) can't double-fetch the same page.
+  const loadMoreSteps = useCallback(async () => {
+    if (!jobId || loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const offset = loadedRef.current;
+      const res = await fetch(`/api/geo/investigate/${jobId}/steps?offset=${offset}&limit=30`);
+      if (!res.ok) return;
+      const body = (await res.json()) as { steps: Step[] };
+      const incoming = body.steps ?? [];
+      if (incoming.length) {
+        loadedRef.current = offset + incoming.length;
+        setSteps((prev) => [...prev, ...incoming]);
+      }
+    } catch {
+      /* transient */
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [jobId]);
+
+  // Switching investigations: reset the trace and load only the FIRST page.
   useEffect(() => {
-    if (!jobId) return;
     setJob(null);
     setNotFound(false);
+    setSteps([]);
+    loadedRef.current = 0;
+    if (jobId) void loadMoreSteps();
+  }, [jobId, loadMoreSteps]);
+
+  // Poll the investigation META (small — no trace) while anything is running:
+  // the investigation itself, or a construction-potential analysis (which also
+  // appends steps to this job). pollNonce restarts it when the user triggers one.
+  useEffect(() => {
+    if (!jobId) return;
     let alive = true;
     const tick = async () => {
       try {
@@ -383,8 +417,15 @@ export default function AddressFinder() {
         }
         if (!res.ok) return false;
         const data = (await res.json()) as Job;
-        if (alive) setJob(data);
-        if (data.status !== "running") return true;
+        if (!alive) return true;
+        setJob(data);
+        const active = data.status === "running" || data.potentialStatus === "running";
+        // If the user is already at the bottom, keep the tail loaded as new steps
+        // arrive (this appends below — it never scrolls the page).
+        if (active && loadedRef.current < data.stepCount && isNearBottom()) {
+          void loadMoreSteps();
+        }
+        if (!active) return true;
       } catch {
         /* transient */
       }
@@ -398,44 +439,47 @@ export default function AddressFinder() {
       alive = false;
       clearInterval(timer);
     };
-  }, [jobId]);
+  }, [jobId, loadMoreSteps, pollNonce]);
 
-  // Reset the "new steps" tracker when switching to another investigation.
+  // Progressive load: when the sentinel near the end of the list scrolls into
+  // view, fetch the next page. This is what keeps the page fast — it fills in on
+  // scroll instead of loading the whole trace up front.
   useEffect(() => {
-    prevLenRef.current = null;
-    setNewSteps(0);
-  }, [jobId]);
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && job && loadedRef.current < job.stepCount) {
+          void loadMoreSteps();
+        }
+      },
+      { rootMargin: "800px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [job, loadMoreSteps]);
 
-  // Never auto-scroll. When new trace steps arrive while the user is NOT already
-  // at the bottom, count them so a small pill can offer to jump down — the page
-  // stays exactly where the user left it.
+  // "New steps" pill: only for a RUNNING job whose latest steps aren't on screen
+  // yet while the user is scrolled up. Finished traces just fill in on scroll.
+  const analysisRunning = !!job && (job.status === "running" || job.potentialStatus === "running");
+  const pendingSteps = analysisRunning ? Math.max(0, job!.stepCount - steps.length) : 0;
+  const [showPill, setShowPill] = useState(false);
   useEffect(() => {
-    if (!job) return;
-    const len = job.steps.length;
-    if (prevLenRef.current === null) {
-      prevLenRef.current = len; // baseline on first load; don't flag existing steps
-      return;
+    const update = () => setShowPill(pendingSteps > 0 && !isNearBottom());
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, [pendingSteps]);
+
+  const jumpToLatest = useCallback(async () => {
+    // Pull whatever remains, then jump to the newest step.
+    for (let i = 0; i < 40 && job && loadedRef.current < job.stepCount; i++) {
+      const before = loadedRef.current;
+      await loadMoreSteps();
+      if (loadedRef.current === before) break;
     }
-    if (len > prevLenRef.current) {
-      const delta = len - prevLenRef.current;
-      prevLenRef.current = len;
-      if (!isNearBottom()) setNewSteps((n) => n + delta);
-    }
-  }, [job]);
-
-  // If the user scrolls to the bottom themselves, they've caught up — clear it.
-  useEffect(() => {
-    const onScroll = () => {
-      if (isNearBottom()) setNewSteps(0);
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const jumpToLatest = useCallback(() => {
     traceEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    setNewSteps(0);
-  }, []);
+  }, [job, loadMoreSteps]);
 
   const addFiles = useCallback((list: FileList | File[]) => {
     const chosen = Array.from(list).filter(
@@ -557,6 +601,8 @@ export default function AddressFinder() {
         throw new Error(body?.error ?? "Could not start the analysis");
       }
       setJob((j) => (j ? { ...j, potentialStatus: "running" } : j));
+      setPollNonce((n) => n + 1); // resume polling so the analysis streams in
+
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start the analysis");
     }
@@ -798,7 +844,7 @@ export default function AddressFinder() {
                           : "Done"}
                     <span className="text-muted-foreground font-normal">
                       {" · "}
-                      {job.steps.length} steps · {fmtTokens(job.tokens.total)} tokens ·{" "}
+                      {job.stepCount} steps · {fmtTokens(job.tokens.total)} tokens ·{" "}
                       <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
                     </span>
                   </p>
@@ -946,15 +992,22 @@ export default function AddressFinder() {
                   Investigation trace — every step and the reasoning behind it
                 </p>
                 <ol className="space-y-3">
-                  {job.steps.map((s) => (
+                  {steps.map((s) => (
                     <StepRow key={s.n} step={s} />
                   ))}
-                  {running && job.steps.length === 0 && (
+                  {steps.length === 0 && (
                     <li className="text-xs text-muted-foreground flex items-center gap-2">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> thinking…
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {running ? "thinking…" : "loading trace…"}
                     </li>
                   )}
                 </ol>
+                {/* Sentinel: scrolling this into view loads the next page. */}
+                {steps.length < job.stepCount && (
+                  <div ref={sentinelRef} className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> loading more steps…
+                  </div>
+                )}
                 <div ref={traceEndRef} />
               </div>
             </>
@@ -970,13 +1023,13 @@ export default function AddressFinder() {
       </footer>
 
       {/* Non-intrusive cue that new trace steps arrived; click to jump down. */}
-      {isDetail && newSteps > 0 && (
+      {isDetail && showPill && pendingSteps > 0 && (
         <button
-          onClick={jumpToLatest}
+          onClick={() => void jumpToLatest()}
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg ring-1 ring-black/5 hover:opacity-90 transition-opacity"
         >
           <ArrowDown className="h-4 w-4" />
-          {newSteps} new step{newSteps > 1 ? "s" : ""}
+          {pendingSteps} new step{pendingSteps > 1 ? "s" : ""}
         </button>
       )}
     </div>

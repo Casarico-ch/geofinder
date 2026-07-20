@@ -214,14 +214,29 @@ export function registerApiRoutes(app: Express) {
     res.status(202).json({ ok: true });
   });
 
-  // Poll one investigation: full documented trace + answer + status.
+  // Poll one investigation — META ONLY (answer, status, tokens, potential, the
+  // step COUNT). The trace itself is fetched in pages via /steps below, so a
+  // long investigation opens instantly instead of shipping its whole trace.
   app.get("/api/geo/investigate/:id", (req: Request, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
       return;
     }
-    const { runDir: _runDir, ...pub } = job;
-    res.json({ ...pub, cost: costUsd(job.tokens) });
+    const { runDir: _runDir, steps, ...rest } = job;
+    res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens) });
+  });
+
+  // A page of the trace. The client loads the first page on open and appends
+  // more as the user scrolls down, so nothing loads the whole trace at once.
+  app.get("/api/geo/investigate/:id/steps", (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    const offset = Math.max(0, Number.parseInt(String(req.query.offset ?? "0"), 10) || 0);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit ?? "30"), 10) || 30));
+    res.json({ steps: job.steps.slice(offset, offset + limit), total: job.steps.length });
   });
 }
