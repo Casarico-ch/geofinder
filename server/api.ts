@@ -12,6 +12,7 @@ import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { analyzeBuildPotential } from "./potential";
 import {
+  MODELS,
   addStep,
   costUsd,
   createJob,
@@ -35,6 +36,7 @@ const createSchema = z.object({
   imageCount: z.number().int().min(1).max(15).optional(),
   listingText: z.string().max(20000).optional(),
   municipality: z.string().max(200).optional(),
+  model: z.enum(MODELS).optional(),
 });
 
 const photosSchema = z.object({ images: imagesSchema });
@@ -67,7 +69,8 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
     title,
     found: job.answer?.found ?? null,
     tokens: job.tokens?.total ?? 0,
-    cost: job.tokens ? costUsd(job.tokens) : 0,
+    cost: job.tokens ? costUsd(job.tokens, job.model) : 0,
+    model: job.model,
   };
 }
 
@@ -100,11 +103,14 @@ export function registerApiRoutes(app: Express) {
     }));
 
     try {
-      const job = await createJob({
-        municipality: parsed.data.municipality,
-        listingText,
-        imageCount: images?.length ?? parsed.data.imageCount ?? 0,
-      });
+      const job = await createJob(
+        {
+          municipality: parsed.data.municipality,
+          listingText,
+          imageCount: images?.length ?? parsed.data.imageCount ?? 0,
+        },
+        parsed.data.model,
+      );
 
       if (images && images.length > 0) {
         // One-shot path (photos included): behave as before.
@@ -224,7 +230,7 @@ export function registerApiRoutes(app: Express) {
       return;
     }
     const { runDir: _runDir, steps, ...rest } = job;
-    res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens) });
+    res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens, job.model) });
   });
 
   // A page of the trace. The client loads the first page on open and appends

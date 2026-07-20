@@ -173,7 +173,7 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
   try {
     for (let i = 0; i < MAX_STEPS; i++) {
       const resp = await client.messages.create({
-        model: MODEL,
+        model: job.model ?? MODEL,
         max_tokens: 16_000,
         thinking: { type: "adaptive", display: "summarized" },
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],

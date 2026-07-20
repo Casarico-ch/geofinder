@@ -75,6 +75,12 @@ interface TokenUsage {
   total: number;
 }
 
+type ModelId = "claude-opus-4-8" | "claude-fable-5";
+const MODEL_LABEL: Record<ModelId, string> = {
+  "claude-opus-4-8": "Opus 4.8",
+  "claude-fable-5": "Fable 5",
+};
+
 type PotentialStatus = "running" | "done" | "error";
 
 interface BuildPotential {
@@ -101,6 +107,7 @@ interface Job {
   status: JobStatus;
   createdAt: string;
   updatedAt: string;
+  model?: ModelId;
   input: { municipality?: string; listingText?: string; imageCount: number };
   stepCount: number; // total steps; the trace itself is fetched in pages
   answer: Answer | null;
@@ -121,6 +128,7 @@ interface JobSummary {
   found: boolean | null;
   tokens: number;
   cost: number;
+  model?: ModelId;
 }
 
 interface Picture {
@@ -336,6 +344,7 @@ export default function AddressFinder() {
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [municipality, setMunicipality] = useState("");
   const [description, setDescription] = useState("");
+  const [model, setModel] = useState<ModelId>("claude-opus-4-8");
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -535,6 +544,7 @@ export default function AddressFinder() {
           imageCount: files.length,
           listingText: description || undefined,
           municipality: municipality || undefined,
+          model,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -570,7 +580,7 @@ export default function AddressFinder() {
     } finally {
       setSubmitting(false);
     }
-  }, [pictures, municipality, description, clearForm, navigate]);
+  }, [pictures, municipality, description, model, clearForm, navigate]);
 
   const copyText = useCallback((text: string) => {
     navigator.clipboard
@@ -790,6 +800,26 @@ export default function AddressFinder() {
                   />
                 </Field>
 
+                <Field label="Model">
+                  <div className="flex gap-2">
+                    {(["claude-opus-4-8", "claude-fable-5"] as ModelId[]).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setModel(m)}
+                        className={`flex-1 h-9 rounded-md border text-sm font-medium transition-colors ${
+                          model === m
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-input bg-card text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {MODEL_LABEL[m]}
+                        {m === "claude-opus-4-8" ? " · default" : " · 2× cost"}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
                 <Button onClick={() => void start()} disabled={submitting || pictures.length === 0} className="w-full h-10">
                   {submitting ? (
                     <>
@@ -844,6 +874,7 @@ export default function AddressFinder() {
                           : "Done"}
                     <span className="text-muted-foreground font-normal">
                       {" · "}
+                      {job.model ? `${MODEL_LABEL[job.model]} · ` : ""}
                       {job.stepCount} steps · {fmtTokens(job.tokens.total)} tokens ·{" "}
                       <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
                     </span>

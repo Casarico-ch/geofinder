@@ -70,11 +70,21 @@ export interface TokenUsage {
   total: number;
 }
 
-// Claude Opus 4.8 pricing, USD per 1M tokens: input $5, output $25,
-// cache read ~0.1x input ($0.50), cache write 1.25x input ($6.25, 5-min TTL).
-export function costUsd(t: TokenUsage): number {
+// Per-model pricing, USD per 1M tokens: [fresh input, cache read (~0.1x),
+// cache write (1.25x, 5-min TTL), output]. Fable 5 is ~2x Opus 4.8.
+export const MODELS = ["claude-opus-4-8", "claude-fable-5"] as const;
+export type ModelId = (typeof MODELS)[number];
+export const DEFAULT_MODEL: ModelId = "claude-opus-4-8";
+
+const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: number; out: number }> = {
+  "claude-opus-4-8": { in: 5, cacheRead: 0.5, cacheWrite: 6.25, out: 25 },
+  "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
+};
+
+export function costUsd(t: TokenUsage, model?: string): number {
+  const p = PRICING[(model as ModelId) in PRICING ? (model as ModelId) : DEFAULT_MODEL];
   const fresh = Math.max(0, t.input - t.cached - t.cacheWrite);
-  return (fresh * 5 + t.cached * 0.5 + t.cacheWrite * 6.25 + t.output * 25) / 1_000_000;
+  return (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
 }
 
 export interface Job {
@@ -82,6 +92,7 @@ export interface Job {
   status: JobStatus;
   createdAt: string;
   updatedAt: string;
+  model: ModelId; // which Claude model runs this investigation
   input: { municipality?: string; listingText?: string; imageCount: number };
   steps: Step[];
   answer: Answer | null;
@@ -107,7 +118,7 @@ export function getJob(id: string): Job | undefined {
   return jobs.get(id);
 }
 
-export async function createJob(input: Job["input"]): Promise<Job> {
+export async function createJob(input: Job["input"], model: ModelId = DEFAULT_MODEL): Promise<Job> {
   const id = cryptoRandomId();
   const runDir = await ensureRunDir(id);
   const job: Job = {
@@ -115,6 +126,7 @@ export async function createJob(input: Job["input"]): Promise<Job> {
     status: "running",
     createdAt: nowIso(),
     updatedAt: nowIso(),
+    model,
     input,
     steps: [],
     answer: null,
@@ -214,6 +226,7 @@ export async function loadPersistedJobs(): Promise<Job[]> {
       const parsed = JSON.parse(raw) as Omit<Job, "runDir">;
       const job: Job = {
         ...parsed,
+        model: (MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
         tokens: {
           input: parsed.tokens?.input ?? 0,
           output: parsed.tokens?.output ?? 0,

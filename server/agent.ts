@@ -315,10 +315,12 @@ async function runLoop(
       }
 
       const resp = await client.messages.create({
-        model: MODEL,
+        model: job.model ?? MODEL,
         max_tokens: 16_000,
         // display: "summarized" so the model's reasoning is actually returned
-        // (Opus 4.8 omits thinking text by default) — that's the documented trace.
+        // (Opus 4.8 / Fable 5 omit thinking text by default) — that's the trace.
+        // adaptive thinking is valid on both models (Fable rejects only
+        // disabled/budget_tokens, which we never send).
         thinking: { type: "adaptive", display: "summarized" },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
