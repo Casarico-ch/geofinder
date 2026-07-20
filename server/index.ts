@@ -3,6 +3,8 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { registerApiRoutes } from "./api";
+import { loadPersistedJobs } from "./jobs";
+import { RUNS_ROOT } from "./sandbox";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,7 +13,14 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Recover jobs (and their traces) from previous runs before serving.
+  await loadPersistedJobs();
+
   registerApiRoutes(app);
+
+  // Serve run artifacts — the aerials and crops the agent actually looked at,
+  // referenced by the documented trace.
+  app.use("/runs", express.static(RUNS_ROOT));
 
   // Unmatched API paths must not fall through to the SPA catchall below.
   app.use("/api", (_req, res) => {

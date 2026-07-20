@@ -1,21 +1,18 @@
 /**
- * Run the GeoFinder pipeline on a listing from the command line — no server needed.
+ * Run a GeoFinder investigation from the command line — same background agent,
+ * run to completion synchronously and printed.
  *
  * Usage:
  *   pnpm try:listing <image...> [--text "listing text"] [--text-file <path>]
  *
- * Examples:
- *   pnpm try:listing garden.jpg bedroom.jpg --text "Propriété au bord du lac à Corsier-Port…"
- *   pnpm try:listing photos/*.jpg --text-file listing.txt
- *
  * Requires ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN) in the environment.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import { investigateListing, type ImageInput } from "../server/api";
+import { runInvestigation, saveListingPhotos, type AgentImage } from "../server/agent";
+import { createJob } from "../server/jobs";
 
-const MEDIA_TYPES: Record<string, ImageInput["mediaType"]> = {
+const MEDIA_TYPES: Record<string, AgentImage["mediaType"]> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".png": "image/png",
@@ -28,13 +25,9 @@ function parseArgs(argv: string[]): { imagePaths: string[]; listingText?: string
   let listingText: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--text") {
-      listingText = argv[++i];
-    } else if (arg === "--text-file") {
-      listingText = readFileSync(argv[++i], "utf8");
-    } else {
-      imagePaths.push(arg);
-    }
+    if (arg === "--text") listingText = argv[++i];
+    else if (arg === "--text-file") listingText = readFileSync(argv[++i], "utf8");
+    else imagePaths.push(arg);
   }
   return { imagePaths, listingText: listingText?.trim() || undefined };
 }
@@ -42,48 +35,47 @@ function parseArgs(argv: string[]): { imagePaths: string[]; listingText?: string
 async function main() {
   const { imagePaths, listingText } = parseArgs(process.argv.slice(2));
   if (imagePaths.length === 0) {
-    console.error(
-      "Usage: pnpm try:listing <image...> [--text \"listing text\"] [--text-file <path>]",
-    );
+    console.error('Usage: pnpm try:listing <image...> [--text "…"] [--text-file <path>]');
     process.exit(1);
   }
 
-  const images: ImageInput[] = imagePaths.map((path) => {
+  const images: AgentImage[] = imagePaths.map((path) => {
     const mediaType = MEDIA_TYPES[extname(path).toLowerCase()];
-    if (!mediaType) throw new Error(`Unsupported image type: ${path} (use jpg/png/webp/gif)`);
-    return { imageBase64: readFileSync(path).toString("base64"), mediaType };
+    if (!mediaType) throw new Error(`Unsupported image type: ${path}`);
+    return { base64: readFileSync(path).toString("base64"), mediaType };
   });
 
-  console.error(
-    `Analyzing ${images.length} image(s)${listingText ? ` + ${listingText.length} chars of listing text` : ""}…\n`,
-  );
+  console.error(`Investigating ${images.length} image(s)${listingText ? ` + listing text` : ""}…\n`);
 
-  const client = new Anthropic();
-  const result = await investigateListing(client, { images, listingText });
+  const job = await createJob({ listingText, imageCount: images.length });
+  await saveListingPhotos(job.runDir, images);
 
-  if ("refusal" in result) {
-    console.error("The model declined to analyze this listing.");
-    process.exit(2);
+  // Mirror the live trace to the console as steps land.
+  let printed = 0;
+  const timer = setInterval(() => {
+    for (; printed < job.steps.length; printed++) {
+      const s = job.steps[printed];
+      console.log(`${String(s.n).padStart(2)}. [${s.kind}] ${s.title}`);
+      if (s.reasoning) console.log(`    ${s.reasoning.replace(/\n/g, "\n    ").slice(0, 800)}`);
+    }
+  }, 500);
+
+  await runInvestigation(job, images, listingText);
+  clearInterval(timer);
+  for (; printed < job.steps.length; printed++) {
+    const s = job.steps[printed];
+    console.log(`${String(s.n).padStart(2)}. [${s.kind}] ${s.title}`);
   }
 
-  const { answer, steps } = result;
-  console.log("=== INVESTIGATION ===");
-  steps.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}. ${s}`));
-
-  console.log(`\n=== ANSWER ===`);
-  console.log(`found:       ${answer.found}`);
-  console.log(`address:     ${answer.address ?? "—"}`);
-  console.log(`parcel:      ${answer.parcel ?? "—"}`);
-  console.log(`confidence:  ${answer.confidence}`);
-  console.log(
-    `coordinates: ${answer.latitude !== null && answer.longitude !== null ? `${answer.latitude}, ${answer.longitude}` : "—"}`,
-  );
-  console.log(`cadastre:    ${answer.cadastre_url ?? "—"}`);
-  console.log(`\nreasoning:   ${answer.reasoning}`);
-  if (answer.candidates.length)
-    console.log(
-      `\ncandidates:\n${answer.candidates.map((c) => `  · ${c.parcel} ${c.surface_m2 ?? "?"}m² ${c.address ?? ""} — ${c.note}`).join("\n")}`,
-    );
+  const a = job.answer;
+  console.log(`\n=== ANSWER (${job.status}) ===`);
+  console.log(`found:       ${a?.found}`);
+  console.log(`address:     ${a?.address ?? "—"}`);
+  console.log(`parcel:      ${a?.parcel ?? "—"}`);
+  console.log(`confidence:  ${a?.confidence}`);
+  console.log(`coordinates: ${a?.latitude != null && a?.longitude != null ? `${a.latitude}, ${a.longitude}` : "—"}`);
+  console.log(`links:       ${a?.links.join("  ") ?? "—"}`);
+  console.log(`\nreasoning:   ${a?.reasoning ?? "—"}`);
 }
 
 main().catch((err) => {
