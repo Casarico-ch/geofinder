@@ -17,6 +17,8 @@ import {
   ImageIcon,
   Loader2,
   MapPin,
+  Pause,
+  Play,
   Plus,
   Search,
   Terminal,
@@ -65,7 +67,7 @@ interface Step {
   image?: string;
 }
 
-type JobStatus = "running" | "done" | "error" | "cancelled";
+type JobStatus = "running" | "done" | "error" | "cancelled" | "paused";
 
 interface TokenUsage {
   input: number;
@@ -207,6 +209,7 @@ function StatusDot({ status }: { status: JobStatus }) {
   if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />;
   if (status === "error") return <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />;
   if (status === "cancelled") return <AlertCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
+  if (status === "paused") return <Pause className="h-3.5 w-3.5 text-amber-600 shrink-0" />;
   return <CheckCircle2 className="h-3.5 w-3.5 text-primary shrink-0" />;
 }
 
@@ -589,13 +592,28 @@ export default function AddressFinder() {
       .catch(() => toast.error("Could not copy"));
   }, []);
 
-  const stop = useCallback(async () => {
+  // Pause the running investigation at the next turn boundary (keeps its saved
+  // conversation; no tokens are spent while paused).
+  const pause = useCallback(async () => {
     if (!jobId) return;
     try {
-      await fetch(`/api/geo/investigate/${jobId}/cancel`, { method: "POST" });
-      toast.success("Stopping…");
+      await fetch(`/api/geo/investigate/${jobId}/pause`, { method: "POST" });
+      toast.success("Pausing…");
     } catch {
-      toast.error("Could not stop");
+      toast.error("Could not pause");
+    }
+  }, [jobId]);
+
+  // Resume a paused investigation from where it left off.
+  const resume = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      const res = await fetch(`/api/geo/investigate/${jobId}/resume`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      setJob((j) => (j ? { ...j, status: "running" } : j));
+      setPollNonce((n) => n + 1); // restart polling now that it's running again
+    } catch {
+      toast.error("Could not resume");
     }
   }, [jobId]);
 
@@ -861,17 +879,19 @@ export default function AddressFinder() {
 
           {isDetail && job && (
             <>
-              <div className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
+              <div className="sticky top-[68px] z-10 rounded-xl border border-border bg-card/95 backdrop-blur p-4 flex items-center gap-3 shadow-sm">
                 <StatusDot status={job.status} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
                     {running
                       ? "Investigating…"
-                      : job.status === "error"
-                        ? "Failed"
-                        : job.status === "cancelled"
-                          ? "Stopped"
-                          : "Done"}
+                      : job.status === "paused"
+                        ? "Paused"
+                        : job.status === "error"
+                          ? "Failed"
+                          : job.status === "cancelled"
+                            ? "Stopped"
+                            : "Done"}
                     <span className="text-muted-foreground font-normal">
                       {" · "}
                       {job.model ? `${MODEL_LABEL[job.model]} · ` : ""}
@@ -879,16 +899,42 @@ export default function AddressFinder() {
                       <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
                     </span>
                   </p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> started {timeAgo(job.createdAt)}
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                    <Clock className="h-3 w-3 shrink-0" /> started {timeAgo(job.createdAt)}
                     {job.tokens.total > 0 &&
                       ` · ${fmtTokens(job.tokens.input)} in${job.tokens.cached > 0 ? ` (${fmtTokens(job.tokens.cached)} cached)` : ""} / ${fmtTokens(job.tokens.output)} out`}
-                    {running && " · runs in the background — safe to close this window"}
                   </p>
                 </div>
+
+                {/* Contextual CTA: pause while running, resume while paused, and
+                    the construction-potential check once it's done. */}
                 {running && (
-                  <Button variant="outline" size="sm" onClick={() => void stop()}>
-                    Stop
+                  <Button variant="outline" size="sm" onClick={() => void pause()} className="shrink-0">
+                    <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause
+                  </Button>
+                )}
+                {job.status === "paused" && (
+                  <Button size="sm" onClick={() => void resume()} className="shrink-0">
+                    <Play className="mr-1.5 h-3.5 w-3.5" /> Resume
+                  </Button>
+                )}
+                {job.status === "done" && coords && !job.potential && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void analysePotential()}
+                    disabled={job.potentialStatus === "running"}
+                    className="shrink-0"
+                  >
+                    {job.potentialStatus === "running" ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Analysing…
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="mr-1.5 h-3.5 w-3.5" /> Potential check
+                      </>
+                    )}
                   </Button>
                 )}
               </div>

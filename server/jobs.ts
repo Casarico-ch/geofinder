@@ -60,7 +60,7 @@ export interface Step {
   image?: string;
 }
 
-export type JobStatus = "running" | "done" | "error" | "cancelled";
+export type JobStatus = "running" | "done" | "error" | "cancelled" | "paused";
 
 export interface TokenUsage {
   input: number;
@@ -101,6 +101,7 @@ export interface Job {
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
   cancelRequested?: boolean;
+  pauseRequested?: boolean;
   runDir: string;
 }
 
@@ -167,6 +168,12 @@ export async function addStep(job: Job, step: Omit<Step, "n" | "at">): Promise<S
 // Flag a running investigation to stop; the agent loop checks this each turn.
 export function requestCancel(job: Job): void {
   job.cancelRequested = true;
+}
+
+// Flag a running investigation to PAUSE at the next turn boundary. Unlike cancel
+// (terminal), a paused job keeps its saved conversation and can be resumed.
+export function requestPause(job: Job): void {
+  job.pauseRequested = true;
 }
 
 export async function setPotentialStatus(job: Job, status: PotentialStatus): Promise<void> {

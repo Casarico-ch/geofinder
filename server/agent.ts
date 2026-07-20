@@ -273,22 +273,28 @@ export async function runInvestigation(
   await runLoop(job, messages, 0);
 }
 
-// Continue an investigation that was mid-flight when the process died (a
-// redeploy or crash). The next process reloads the saved conversation and picks
-// up exactly where it left off — the run is independent of any single container.
+// Continue an investigation from its saved conversation — used both to recover a
+// run that was mid-flight when the process died (a redeploy or crash) and to
+// resume a run the user paused. The next process reloads the state and picks up
+// exactly where it left off.
 export async function resumeInvestigation(job: Job): Promise<void> {
   const state = await loadState(job.runDir);
   if (!state) {
     await finishJob(job, {
       status: "error",
-      error: "Interrupted by a server restart (no resumable state was saved).",
+      error: "Could not resume — no saved state was found.",
     });
     return;
   }
+  // A paused job is not "running" until now; clear any stale flags and mark it
+  // running so the client starts polling again.
+  job.pauseRequested = false;
+  job.cancelRequested = false;
+  await finishJob(job, { status: "running" });
   await addStep(job, {
     kind: "note",
-    title: "Resumed after a server restart",
-    detail: `The investigation continued automatically from turn ${state.turn}.`,
+    title: "Resumed",
+    detail: `Continuing from turn ${state.turn}.`,
   });
   await runLoop(job, state.messages, state.turn);
 }
@@ -311,6 +317,15 @@ async function runLoop(
           status: "cancelled",
           answer: coerceAnswer({ found: false, confidence: "unknown", reasoning: `Stopped by the user after ${i} steps.` }),
         });
+        return;
+      }
+      // Pause boundary: `messages` currently ends on a user turn (a clean resume
+      // point) and state.json is up to date, so the run can continue later. Keep
+      // the saved state (the finally only clears it on a TERMINAL status).
+      if (job.pauseRequested) {
+        job.pauseRequested = false;
+        await addStep(job, { kind: "note", title: "Paused by the user" });
+        await finishJob(job, { status: "paused" });
         return;
       }
 
@@ -403,9 +418,11 @@ async function runLoop(
     await addStep(job, { kind: "error", title: "Investigation error", detail: message });
     await finishJob(job, { status: "error", error: message });
   } finally {
-    // Once the job is no longer running, the saved conversation is dead weight —
-    // drop it so a resumable-jobs scan on the next boot ignores this run.
-    if (job.status !== "running") await clearState(job);
+    // Drop the saved conversation only on a TERMINAL status. A "paused" job keeps
+    // its state so it can be resumed; "running" would be a live loop.
+    if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
+      await clearState(job);
+    }
   }
 }
 

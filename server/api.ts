@@ -9,7 +9,7 @@
 import type { Express, Request, Response } from "express";
 import express from "express";
 import { z } from "zod";
-import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -20,6 +20,7 @@ import {
   getJob,
   listJobs,
   requestCancel,
+  requestPause,
 } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -185,7 +186,7 @@ export function registerApiRoutes(app: Express) {
     res.json({ jobs: listJobs().slice(0, 50).map(jobSummary) });
   });
 
-  // Stop a running investigation (the agent loop checks the flag each turn).
+  // Stop a running investigation (terminal — the agent loop checks the flag).
   app.post("/api/geo/investigate/:id/cancel", (req: Request, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
@@ -194,6 +195,35 @@ export function registerApiRoutes(app: Express) {
     }
     if (job.status === "running") requestCancel(job);
     res.json({ ok: true });
+  });
+
+  // Pause a running investigation at the next turn boundary. It keeps its saved
+  // conversation and can be resumed later — no tokens are spent while paused.
+  app.post("/api/geo/investigate/:id/pause", (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    if (job.status === "running") requestPause(job);
+    res.json({ ok: true });
+  });
+
+  // Resume a paused investigation from its saved conversation (background run).
+  app.post("/api/geo/investigate/:id/resume", (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    if (job.status !== "paused") {
+      res.status(409).json({ error: "This investigation is not paused." });
+      return;
+    }
+    void resumeInvestigation(job).catch((err) => {
+      console.error(`[api] resume ${job.id} failed:`, err);
+    });
+    res.status(202).json({ ok: true });
   });
 
   // Optional, manual: analyse how much MORE can be built on the found parcel.
