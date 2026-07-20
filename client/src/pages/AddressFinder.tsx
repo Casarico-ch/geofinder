@@ -505,22 +505,48 @@ export default function AddressFinder() {
     if (pictures.length === 0) return;
     setSubmitting(true);
     setError(null);
+    // Keep the files around after we clear the form so the background upload can
+    // still read them once we've navigated away.
+    const files = pictures.map((p) => p.file);
     try {
-      const images = await Promise.all(
-        pictures.map(async (p) => ({
-          imageBase64: await fileToJpegBase64(p.file),
-          mediaType: "image/jpeg" as const,
-        })),
-      );
+      // 1) Create the job on a tiny metadata request — returns in milliseconds.
       const res = await fetch("/api/geo/investigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images, listingText: description || undefined, municipality: municipality || undefined }),
+        body: JSON.stringify({
+          imageCount: files.length,
+          listingText: description || undefined,
+          municipality: municipality || undefined,
+        }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error ?? "Could not start the investigation");
+      const jobId = body.jobId as string;
+
+      // 2) Navigate immediately — the user is free to move on right now.
       clearForm();
-      navigate(`/i/${body.jobId as string}`);
+      navigate(`/i/${jobId}`);
+
+      // 3) Encode + upload the photos in the background. The investigation
+      //    starts the moment they land; the user isn't waiting on any of this.
+      void (async () => {
+        try {
+          const images = await Promise.all(
+            files.map(async (file) => ({
+              imageBase64: await fileToJpegBase64(file),
+              mediaType: "image/jpeg" as const,
+            })),
+          );
+          const up = await fetch(`/api/geo/investigate/${jobId}/photos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ images }),
+          });
+          if (!up.ok) throw new Error();
+        } catch {
+          toast.error("Could not upload the photos — please retry this investigation.");
+        }
+      })();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start the investigation");
     } finally {

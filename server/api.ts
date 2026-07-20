@@ -11,18 +11,39 @@ import express from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { buildDossier } from "./enrich";
-import { costUsd, createJob, getJob, listJobs, requestCancel, setDossier } from "./jobs";
+import {
+  addStep,
+  costUsd,
+  createJob,
+  finishJob,
+  getJob,
+  listJobs,
+  requestCancel,
+  setDossier,
+} from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-const bodySchema = z.object({
-  images: z
-    .array(z.object({ imageBase64: z.string().min(1), mediaType: mediaTypeSchema }))
-    .min(1)
-    .max(15),
+const imagesSchema = z
+  .array(z.object({ imageBase64: z.string().min(1), mediaType: mediaTypeSchema }))
+  .min(1)
+  .max(15);
+
+// The create request carries only metadata so it returns instantly; the photos
+// follow on /photos. `images` stays optional for the old one-shot callers.
+const createSchema = z.object({
+  images: imagesSchema.optional(),
+  imageCount: z.number().int().min(1).max(15).optional(),
   listingText: z.string().max(20000).optional(),
   municipality: z.string().max(200).optional(),
 });
+
+const photosSchema = z.object({ images: imagesSchema });
+
+// If the photos never arrive (e.g. the tab was closed mid-upload), don't leave
+// the job "running" forever — fail it after this long.
+const PHOTO_UPLOAD_TIMEOUT_MS = 5 * 60_000;
+const awaitingPhotos = new Map<string, NodeJS.Timeout>();
 
 function foldListingText(listingText?: string, municipality?: string): string | undefined {
   const parts: string[] = [];
@@ -54,8 +75,10 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
 export function registerApiRoutes(app: Express) {
   app.use(express.json({ limit: "30mb" }));
 
-  // Start an investigation. Returns immediately with a job id; the work runs in
-  // the background and is polled via GET below.
+  // Create an investigation. This returns a job id in milliseconds because it
+  // carries no photos — the client navigates to the job immediately and uploads
+  // the photos in the background via /photos, which is what actually starts the
+  // run. (Old callers may still pass `images` here for the one-shot path.)
   app.post("/api/geo/investigate", async (req: Request, res: Response) => {
     if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
       res.status(503).json({
@@ -63,47 +86,93 @@ export function registerApiRoutes(app: Express) {
       });
       return;
     }
-    const parsed = bodySchema.safeParse(req.body);
+    const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
-        error: "Expected { images: [{ imageBase64, mediaType }], listingText?, municipality? }",
+        error: "Expected { imageCount?, images?, listingText?, municipality? }",
       });
       return;
     }
 
-    const images: AgentImage[] = parsed.data.images.map((img) => ({
+    const listingText = foldListingText(parsed.data.listingText, parsed.data.municipality);
+    const images: AgentImage[] | undefined = parsed.data.images?.map((img) => ({
       base64: img.imageBase64,
       mediaType: img.mediaType,
     }));
-    const listingText = foldListingText(parsed.data.listingText, parsed.data.municipality);
 
     try {
       const job = await createJob({
         municipality: parsed.data.municipality,
         listingText,
-        imageCount: images.length,
+        imageCount: images?.length ?? parsed.data.imageCount ?? 0,
       });
 
-      // Respond the instant the job exists. Writing the photos to disk and the
-      // whole investigation run happen in the background, so "Starting…" ends as
-      // soon as the job is created instead of waiting on the volume. The model's
-      // first turn gets the photos in-memory; the on-disk copies (for later
-      // read_file/crop) are written here, well before any read_file can occur.
-      void (async () => {
-        await saveListingPhotos(job.runDir, images);
-        await runInvestigation(job, images, listingText);
-      })().catch((err) => {
-        console.error(`[api] investigation ${job.id} crashed:`, err);
-      });
+      if (images && images.length > 0) {
+        // One-shot path (photos included): behave as before.
+        void (async () => {
+          await saveListingPhotos(job.runDir, images);
+          await runInvestigation(job, images, listingText);
+        })().catch((err) => console.error(`[api] investigation ${job.id} crashed:`, err));
+      } else {
+        // Two-phase path: wait for /photos to start the run. Show that we're
+        // alive, and arm a safety timeout so a never-finished upload fails.
+        await addStep(job, {
+          kind: "note",
+          title: "Preparing — waiting for the photos to upload…",
+        });
+        const timer = setTimeout(() => {
+          awaitingPhotos.delete(job.id);
+          if (job.status === "running") {
+            void finishJob(job, { status: "error", error: "The photos were not uploaded." });
+          }
+        }, PHOTO_UPLOAD_TIMEOUT_MS);
+        awaitingPhotos.set(job.id, timer);
+      }
 
       res.status(202).json({ jobId: job.id });
     } catch (err) {
       console.error("[api] failed to start investigation:", err);
       res.status(500).json({
         error: "Could not start the investigation on the server.",
-        detail: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
       });
     }
+  });
+
+  // Receive the photos for a two-phase investigation and start the run. This is
+  // the heavy upload, but it happens after the client has already navigated to
+  // the job, so it never blocks the user.
+  app.post("/api/geo/investigate/:id/photos", async (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    const timer = awaitingPhotos.get(job.id);
+    if (!timer || job.status !== "running") {
+      res.status(409).json({ error: "This investigation is not awaiting photos." });
+      return;
+    }
+    const parsed = photosSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Expected { images: [{ imageBase64, mediaType }] }" });
+      return;
+    }
+
+    clearTimeout(timer);
+    awaitingPhotos.delete(job.id);
+
+    const images: AgentImage[] = parsed.data.images.map((img) => ({
+      base64: img.imageBase64,
+      mediaType: img.mediaType,
+    }));
+    const listingText = job.input.listingText;
+
+    void (async () => {
+      await saveListingPhotos(job.runDir, images);
+      await runInvestigation(job, images, listingText);
+    })().catch((err) => console.error(`[api] investigation ${job.id} crashed:`, err));
+
+    res.status(202).json({ jobId: job.id });
   });
 
   // List recent investigations (for reopening after the window was closed).
