@@ -5,14 +5,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 // =============================================================================
-// Address Finder API — vision-only geolocation
+// GeoFinder API — identify a property's address from its listing
 //
-// The address is derived purely from the *pixels* of the submitted photo plus
-// any free-text context the user chooses to add. No EXIF, no device location,
-// no file metadata of any kind is read. To push accuracy as far as vision
-// allows, Claude is given the web-search tool so it can verify identifiable
-// clues it reads in the image (shop names, bus-stop names, street signs,
-// distinctive buildings) and resolve them to a real address + coordinates.
+// Given the photos and text of a real-estate listing, derive the property's
+// street address from the *pixels* and the *listing text* alone — no EXIF, no
+// device location, no file metadata of any kind is read (portal listings have
+// it stripped anyway). Multiple photos are analysed together so the exterior,
+// the view out of the windows, the street and the entrance can triangulate a
+// single building. Claude is given the web-search tool to verify the clues it
+// reads (shop and street-sign names, distinctive buildings) AND to try to
+// match the listing itself against real-estate portals, resolving everything
+// to a real address + coordinates.
 // =============================================================================
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org";
@@ -105,31 +108,93 @@ const estimateSchema = z.object({
 });
 export type LocationEstimate = z.infer<typeof estimateSchema>;
 
-const analyzeBodySchema = z.object({
+const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+type MediaType = z.infer<typeof mediaTypeSchema>;
+
+interface ImageInput {
+  imageBase64: string;
+  mediaType: MediaType;
+}
+interface AnalyzeInput {
+  images: ImageInput[];
+  listingText?: string;
+}
+
+const imageInputSchema = z.object({
   imageBase64: z.string().min(1),
-  mediaType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
-  hint: z.string().max(2000).optional(),
+  mediaType: mediaTypeSchema,
 });
 
-const SYSTEM_PROMPT = `You are an expert visual geolocation analyst — a champion GeoGuessr player combined with a meticulous OSINT researcher. You determine where a photograph was taken using ONLY the visual content of the image and any text context the user provides.
+// Accepts the property-listing shape ({ images[], listingText }) and the legacy
+// single-photo shape ({ imageBase64, mediaType, hint }) so existing callers keep
+// working. Up to 15 images keeps token cost and latency bounded.
+export const analyzeBodySchema = z.object({
+  images: z.array(imageInputSchema).min(1).max(15).optional(),
+  imageBase64: z.string().min(1).optional(),
+  mediaType: mediaTypeSchema.optional(),
+  listingText: z.string().max(12000).optional(),
+  hint: z.string().max(12000).optional(),
+});
 
-Reason from concrete visual evidence:
-- Read and transcribe EVERY piece of legible text in the image (street signs, shop and business names, bus/tram stop names, house numbers, posters, license plates, phone numbers). Text is your highest-value evidence.
-- Architecture and construction era, street furniture, road markings and traffic-sign conventions, bollards, utility poles.
-- Language and typography, vegetation, terrain, mountain skyline profiles, sun direction and shadows.
+// Collapse either request shape into one normalized input, or null if no image
+// was supplied.
+export function normalizeInput(body: z.infer<typeof analyzeBodySchema>): AnalyzeInput | null {
+  const images: ImageInput[] = [];
+  if (body.images && body.images.length > 0) {
+    images.push(...body.images);
+  } else if (body.imageBase64 && body.mediaType) {
+    images.push({ imageBase64: body.imageBase64, mediaType: body.mediaType });
+  }
+  if (images.length === 0) return null;
+  const listingText = (body.listingText ?? body.hint)?.trim() || undefined;
+  return { images, listingText };
+}
 
-Use the web_search tool aggressively to VERIFY identifiable clues — a business name, a bus-stop name, a distinctive building, a street name plus town — and to resolve them to a precise street address and WGS84 coordinates. Search in the local language when useful.
+const SYSTEM_PROMPT = `You are an expert real-estate location analyst — a champion GeoGuessr player combined with a meticulous OSINT researcher who specializes in pinning down the exact address of a property from its listing. You are given the photos from a property listing plus (usually) the listing text, and you determine where the property is — ideally to the exact street address and house number.
+
+The photos are a SET, not one image — triangulate across them:
+- Exterior and facade shots, views out of windows and balconies, the street, the entrance, mailboxes, building name plaques, and neighbouring buildings carry almost all of the geolocation signal. A facade PLUS the view out of its own windows PLUS a street sign pins a building far more tightly than any single photo.
+- Interior shots (kitchens, bedrooms, bathrooms) usually carry no location signal — but still scan them for a window view, a framed local landmark, a visible street, or reflections.
+
+Reason from concrete evidence:
+- Transcribe EVERY piece of legible text across all photos (street signs, shop and business names, bus/tram stop names, house numbers, building plaques, posters, license plates). Text is your highest-value visual evidence.
+- Architecture and construction era, balcony and window styles, street furniture, road markings and sign conventions, vegetation, terrain, skyline profiles, sun direction and shadows.
+
+The listing text is high-value — mine it hard: commune/town, quarter or neighbourhood, any street fragment or postcode, floor number and total number of floors, building age or year built, the listing agency, and proximity claims ("5 minutes from the university", "near the station", "quiet cul-de-sac"). Combine it with what you see in the photos.
+
+Use the web_search tool aggressively, for two distinct jobs:
+1. MATCH THE LISTING. A portal listing is published somewhere — search distinctive phrases from the listing text, the price together with the room count and commune, the agency plus a distinctive feature, or a rare detail. A cross-post of the same listing on another portal (Homegate, ImmoScout24, Comparis, Newhome, agency sites) sometimes exposes the exact address that this copy withholds.
+2. RESOLVE CLUES. Turn a commune + quarter + distinctive features, or a verified street name plus town, into a specific street, house number, and WGS84 coordinates. Search in the local language (German/French/Italian for Switzerland).
 
 Rules:
 - Prefer a precise street address (with house number) when the evidence genuinely supports it. Otherwise report the tightest area you can defend and label the confidence honestly.
-- NEVER fabricate a specific address or coordinates you cannot justify from the evidence. It is better to return "neighborhood" confidence than a confident wrong street number.
-- Treat any user-provided context as reliable ground truth and combine it with what you see.`;
+- The exact address is only reachable when the material carries a locking signal (a readable sign/number, a distinctive facade or view you can find online, or an address/postcode in the text). When it does not, say so with an honest lower confidence rather than guessing a house number.
+- NEVER fabricate a specific address or coordinates you cannot justify from the evidence. A correct "neighborhood" beats a confident wrong street number.
+- Treat the listing text as reliable ground truth and combine it with what you see.`;
 
-function buildUserContent(imageBase64: string, mediaType: string, hint?: string) {
+function imageBlocks(images: ImageInput[]): Anthropic.Messages.ContentBlockParam[] {
+  const blocks: Anthropic.Messages.ContentBlockParam[] = [];
+  images.forEach((img, i) => {
+    if (images.length > 1) {
+      blocks.push({ type: "text", text: `Photo ${i + 1} of ${images.length}:` });
+    }
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: img.mediaType, data: img.imageBase64 },
+    });
+  });
+  return blocks;
+}
+
+export function buildUserContent(
+  images: ImageInput[],
+  listingText?: string,
+): Anthropic.Messages.ContentBlockParam[] {
+  const many = images.length > 1;
   const instruction =
-    `Determine where this photo was taken. Work through the visual clues and any legible text, verifying with web search where a clue is specific enough to look up.` +
-    (hint && hint.trim()
-      ? `\n\nContext the user submitted (treat as reliable): "${hint.trim()}"`
+    `These ${many ? `${images.length} photos are` : "photo and text are"} from a real property listing. Determine the exact street address of the property. Work across ${many ? "ALL the photos" : "the photo"} and the listing text together — the exterior, any view out of the windows or balcony, the street, and the entrance — verifying distinctive clues and trying to match the listing itself with web search.` +
+    (listingText
+      ? `\n\nListing text (treat as reliable ground truth; mine it for the commune, quarter, any street fragment or postcode, the floor and total floors, building age, agency, and proximity claims):\n"${listingText}"`
       : "") +
     `\n\nWhen you have finished researching, reply with ONLY a single JSON object inside a \`\`\`json code block, matching exactly:
 {
@@ -141,23 +206,13 @@ function buildUserContent(imageBase64: string, mediaType: string, hint?: string)
   "country": string | null,
   "latitude": number | null,       // WGS84 decimal degrees
   "longitude": number | null,
-  "clues": string[],               // the visual clues you used
-  "text_read": string[],           // text you read from the image
+  "clues": string[],               // the visual clues you used, across all photos
+  "text_read": string[],           // text you read from the photos
   "reasoning": string,             // 2-4 sentences on how you pinned it
-  "sources": string[]              // URLs you verified against, if any
+  "sources": string[]              // URLs you verified against, incl. any matched listing
 }`;
 
-  return [
-    {
-      type: "image" as const,
-      source: {
-        type: "base64" as const,
-        media_type: mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-        data: imageBase64,
-      },
-    },
-    { type: "text" as const, text: instruction },
-  ];
+  return [...imageBlocks(images), { type: "text", text: instruction }];
 }
 
 function extractJson(text: string): unknown | null {
@@ -331,18 +386,18 @@ export interface OsmVerification {
   refined: boolean;
 }
 
-const VERIFY_SYSTEM_PROMPT = `You are the map-verification stage of a visual geolocation pipeline. A first pass estimated where a photo was taken. You receive the same photo, that estimate, and a list of real OpenStreetMap features mapped near the estimated point (each with its distance and compass bearing FROM the estimated point).
+const VERIFY_SYSTEM_PROMPT = `You are the map-verification stage of a property-geolocation pipeline. A first pass estimated where a listing's property is. You receive the same listing photos, that estimate, and a list of real OpenStreetMap features mapped near the estimated point (each with its distance and compass bearing FROM the estimated point).
 
 Your job: test the estimate against this ground truth.
-- Match concrete features visible in the photo (playgrounds and their surface, shopfronts, building heights and colours, addresses, transit stops, towers on the skyline) against the mapped features.
-- Use distances and bearings: if the photo shows tall buildings in the background and the map lists high-rises 300m NE, the camera likely faces NE — check that the rest of the scene is consistent with that.
-- A distinctive feature that appears in BOTH the photo and the map data (e.g. a rubber-surfaced playground, a specific shop brand) is strong corroboration. Features the photo clearly shows but the map does not list nearby are weak evidence against — OSM coverage is incomplete, so weigh mismatches carefully.
-- Refine when justified: if the matches pin the camera to a specific building or address, return the tighter position and confidence. If the map data contradicts the estimate, downgrade the confidence honestly.
+- Match concrete features visible in the photos (playgrounds and their surface, shopfronts, building heights and colours, addresses, transit stops, towers on the skyline, the property's own facade against an addressed building footprint) against the mapped features.
+- Use distances and bearings: if a photo shows tall buildings in the background and the map lists high-rises 300m NE, the camera likely faces NE — check that the rest of the scene is consistent with that.
+- A distinctive feature that appears in BOTH the photos and the map data (e.g. a rubber-surfaced playground, a specific shop brand, a building height that matches an addressed footprint) is strong corroboration. Features the photos clearly show but the map does not list nearby are weak evidence against — OSM coverage is incomplete, so weigh mismatches carefully.
+- Refine when justified: if the matches pin the property to a specific building or address, return the tighter position, address, and confidence. If the map data contradicts the estimate, downgrade the confidence honestly.
 - NEVER invent map features or matches. Only cite features from the provided list.`;
 
 async function verifyWithOsm(
   client: Anthropic,
-  input: { imageBase64: string; mediaType: string },
+  images: ImageInput[],
   estimate: LocationEstimate,
 ): Promise<{ verification: OsmVerification; verdict: OsmVerdict | null }> {
   const skipped: OsmVerification = {
@@ -380,27 +435,17 @@ ${JSON.stringify(
 OpenStreetMap features near the estimated point (distance and bearing are FROM that point):
 ${features.digest}
 
-Verify the estimate against the photo and this map data, then refine or downgrade it as the evidence dictates.`;
+Verify the estimate against the photos and this map data, then refine or downgrade it as the evidence dictates.`;
 
   const resp = await client.messages.parse({
     model: VISION_MODEL,
-    max_tokens: 4000,
+    max_tokens: 6000,
     thinking: { type: "adaptive" },
     system: VERIFY_SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: input.mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-              data: input.imageBase64,
-            },
-          },
-          { type: "text", text: briefing },
-        ],
+        content: [...imageBlocks(images), { type: "text", text: briefing }],
       },
     ],
     output_config: { format: zodOutputFormat(osmVerdictSchema) },
@@ -437,13 +482,13 @@ interface GeolocateResult {
 
 async function geolocate(
   client: Anthropic,
-  input: { imageBase64: string; mediaType: string; hint?: string },
+  input: AnalyzeInput,
 ): Promise<GeolocateResult | { refusal: true }> {
   // Web search is a server-side tool; cast to keep this resilient across SDK minor versions.
-  const tools = [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }] as unknown as Anthropic.Messages.ToolUnion[];
+  const tools = [{ type: "web_search_20260209", name: "web_search", max_uses: 10 }] as unknown as Anthropic.Messages.ToolUnion[];
 
   const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: buildUserContent(input.imageBase64, input.mediaType, input.hint) },
+    { role: "user", content: buildUserContent(input.images, input.listingText) },
   ];
 
   let searchUsed = false;
@@ -453,7 +498,7 @@ async function geolocate(
   for (let i = 0; i < 6; i++) {
     const resp = await client.messages.create({
       model: VISION_MODEL,
-      max_tokens: 6000,
+      max_tokens: 12000,
       thinking: { type: "adaptive" },
       system: SYSTEM_PROMPT,
       tools,
@@ -499,16 +544,24 @@ export function registerApiRoutes(app: Express) {
 
     const parsed = analyzeBodySchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Expected { imageBase64, mediaType, hint? } in the request body" });
+      res.status(400).json({
+        error:
+          "Expected { images: [{ imageBase64, mediaType }], listingText? } (or the legacy { imageBase64, mediaType, hint? }) in the request body",
+      });
+      return;
+    }
+    const input = normalizeInput(parsed.data);
+    if (!input) {
+      res.status(400).json({ error: "Provide at least one image via images[] or imageBase64" });
       return;
     }
 
     try {
       const client = new Anthropic();
-      const result = await geolocate(client, parsed.data);
+      const result = await geolocate(client, input);
 
       if ("refusal" in result) {
-        res.status(422).json({ error: "The model declined to analyze this image." });
+        res.status(422).json({ error: "The model declined to analyze this listing." });
         return;
       }
 
@@ -525,7 +578,7 @@ export function registerApiRoutes(app: Express) {
         refined: false,
       };
       try {
-        const { verification, verdict } = await verifyWithOsm(client, parsed.data, estimate);
+        const { verification, verdict } = await verifyWithOsm(client, input.images, estimate);
         osmVerification = verification;
         if (verdict && verification.status === "verified") {
           estimate = {
