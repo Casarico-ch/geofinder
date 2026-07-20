@@ -10,6 +10,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT, ensureRunDir } from "./sandbox";
+import type { Dossier } from "./enrich";
 
 export type Confidence =
   | "street"
@@ -83,6 +84,7 @@ export interface Job {
   answer: Answer | null;
   error?: string;
   tokens: TokenUsage;
+  dossier?: Dossier | null;
   runDir: string;
 }
 
@@ -143,6 +145,12 @@ export async function addStep(job: Job, step: Omit<Step, "n" | "at">): Promise<S
   job.updatedAt = full.at;
   await persist(job);
   return full;
+}
+
+export async function setDossier(job: Job, dossier: Dossier): Promise<void> {
+  job.dossier = dossier;
+  job.updatedAt = nowIso();
+  await persist(job);
 }
 
 export async function finishJob(

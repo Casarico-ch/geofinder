@@ -10,7 +10,8 @@ import type { Express, Request, Response } from "express";
 import express from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { costUsd, createJob, getJob, listJobs } from "./jobs";
+import { buildDossier } from "./enrich";
+import { costUsd, createJob, getJob, listJobs, setDossier } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -94,6 +95,29 @@ export function registerApiRoutes(app: Express) {
   // List recent investigations (for reopening after the window was closed).
   app.get("/api/geo/investigations", (_req: Request, res: Response) => {
     res.json({ jobs: listJobs().slice(0, 50).map(jobSummary) });
+  });
+
+  // Optional, manual enrichment: build the buyer's dossier for a found parcel
+  // from authoritative public layers. Runs only after an answer with coords.
+  app.post("/api/geo/investigate/:id/enrich", async (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    const { latitude, longitude } = job.answer ?? {};
+    if (latitude == null || longitude == null) {
+      res.status(400).json({ error: "This investigation has no coordinates to enrich." });
+      return;
+    }
+    try {
+      const dossier = await buildDossier(latitude, longitude);
+      await setDossier(job, dossier);
+      res.json(dossier);
+    } catch (err) {
+      console.error(`[api] enrich ${job.id} failed:`, err);
+      res.status(502).json({ error: "Could not build the dossier. Try again." });
+    }
   });
 
   // Poll one investigation: full documented trace + answer + status.
