@@ -9,7 +9,13 @@
 import type { Express, Request, Response } from "express";
 import express from "express";
 import { z } from "zod";
-import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import {
+  loadListingPhotos,
+  resumeInvestigation,
+  runInvestigation,
+  saveListingPhotos,
+  type AgentImage,
+} from "./agent";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -207,6 +213,40 @@ export function registerApiRoutes(app: Express) {
     }
     if (job.status === "running") requestPause(job);
     res.json({ ok: true });
+  });
+
+  // Relaunch: start a FRESH investigation from a past one's original inputs
+  // (municipality, listing text, model, photos). It carries over NONE of the
+  // prior run's findings or state — just the instructions, so it's a clean redo.
+  app.post("/api/geo/investigate/:id/relaunch", async (req: Request, res: Response) => {
+    const src = getJob(req.params.id);
+    if (!src) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    try {
+      const images = await loadListingPhotos(src.runDir);
+      if (images.length === 0) {
+        res.status(400).json({ error: "The original photos are no longer available to relaunch." });
+        return;
+      }
+      const job = await createJob(
+        {
+          municipality: src.input.municipality,
+          listingText: src.input.listingText,
+          imageCount: images.length,
+        },
+        src.model,
+      );
+      void (async () => {
+        await saveListingPhotos(job.runDir, images);
+        await runInvestigation(job, images, src.input.listingText);
+      })().catch((err) => console.error(`[api] relaunch ${job.id} crashed:`, err));
+      res.status(202).json({ jobId: job.id });
+    } catch (err) {
+      console.error(`[api] relaunch of ${src.id} failed:`, err);
+      res.status(500).json({ error: "Could not relaunch the investigation." });
+    }
   });
 
   // Resume a paused investigation from its saved conversation (background run).

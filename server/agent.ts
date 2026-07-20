@@ -138,7 +138,7 @@ HOW TO WORK — the method is yours; this is guidance, not a script
 Read the listing like a detective first: pull the commune and every hard fact (terrain area, living area, rooms, floors, year, proximity claims like école 220 m / bus 400 m / autoroute 1.25 km), read the architecture (roof, shutters, era, split-level, veranda) and infer orientation from the sun and any background landmark. Then ground those facts against real geodata until they converge on ONE building. Invent and switch methods freely — the one rule is to be efficient: pin the door in a handful of decisive moves.
 
 Lead with the strongest key you have:
-- TERRAIN AREA (surface du terrain, m²) is the strongest single key — near-unique inside a commune. Filter the commune's parcels on it and you usually get a handful. Use it first whenever it is given.
+- TERRAIN AREA (surface du terrain, m²) is the strongest single key — near-unique inside a commune. Use it first whenever it is given — BUT even a precise-looking figure like "4'213 m²" is not exact: it can differ a few % from the cadastral SURFACE (listing rounding, a shared-driveway or PPE quota, a slightly different measure, or plain error). So ALWAYS filter with a TOLERANCE BAND (roughly ±3–5%, wider if the commune is sparse), never an exact equality, and never reject a candidate because its parcel is a few % off the stated number. The band usually still leaves a handful of parcels.
 - NO terrain number given? Do NOT abandon the land key — ESTIMATE it. The plot size is often readable straight from the photos (garden depth, façade width, fence lines, the site plan) and measurable off an aerial once you are in the right area; even a ±20% band filters hard. A visual land-area estimate is a real, strong signal — don't skip it just because no number was printed. Cross the estimate with the building (footprint, era, floors, dwelling count, GWR heating type) — two keys together collapse a commune to a few EGIDs.
 - Still many candidates (a common house type, a mitoyenne, an assembled "parc" that is no single parcel)? The deciding signals are LOCATIONAL and sparse: a neighbour's pool within ~40 m, amenity distance-rings, slope/view orientation, the bearing to a background landmark. Filter the shortlist on those.
 
@@ -539,4 +539,34 @@ export async function saveListingPhotos(runDir: string, images: AgentImage[]): P
       return writeFile(path.join(runDir, `photo${i + 1}.${ext}`), Buffer.from(img.base64, "base64"));
     }),
   );
+}
+
+const EXT_MEDIA: Record<string, AgentImage["mediaType"]> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+// Read the saved listing photos (photo1.jpg, …) back out of a run dir, in order.
+// Used to relaunch a past investigation from its original photos.
+export async function loadListingPhotos(runDir: string): Promise<AgentImage[]> {
+  const { readdir, readFile } = await import("node:fs/promises");
+  let names: string[];
+  try {
+    names = await readdir(runDir);
+  } catch {
+    return [];
+  }
+  const photos = names
+    .map((n) => n.match(/^photo(\d+)\.(jpe?g|png|webp|gif)$/i))
+    .filter((m): m is RegExpMatchArray => !!m)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
+  const images: AgentImage[] = [];
+  for (const m of photos) {
+    const buf = await readFile(path.join(runDir, m[0]));
+    images.push({ base64: buf.toString("base64"), mediaType: EXT_MEDIA[m[2].toLowerCase()] ?? "image/jpeg" });
+  }
+  return images;
 }

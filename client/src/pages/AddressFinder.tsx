@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   Search,
   Terminal,
   X,
@@ -604,6 +605,22 @@ export default function AddressFinder() {
     }
   }, [jobId]);
 
+  // Relaunch a past investigation: one click starts a FRESH run from the same
+  // photos + municipality + listing text + model — no findings carried over.
+  const relaunch = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/geo/investigate/${id}/relaunch`, { method: "POST" });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error ?? "Could not relaunch");
+        navigate(`/i/${body.jobId as string}`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not relaunch");
+      }
+    },
+    [navigate],
+  );
+
   // Resume a paused investigation from where it left off.
   const resume = useCallback(async () => {
     if (!jobId) return;
@@ -711,8 +728,8 @@ export default function AddressFinder() {
                 <ul className="space-y-1.5">
                   {recent.map((j) => (
                     <li key={j.id}>
-                      <Link href={`/i/${j.id}`}>
-                        <div className="rounded-lg border border-border bg-card px-3.5 py-2.5 hover:border-primary/40 transition-colors flex items-center gap-3 cursor-pointer">
+                      <div className="rounded-lg border border-border bg-card px-3.5 py-2.5 hover:border-primary/40 transition-colors flex items-center gap-3">
+                        <Link href={`/i/${j.id}`} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
                           <StatusDot status={j.status} />
                           <span className="text-sm text-foreground truncate flex-1">{j.title}</span>
                           <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
@@ -728,8 +745,17 @@ export default function AddressFinder() {
                           <span className="text-xs text-muted-foreground w-14 text-right hidden sm:inline">
                             {timeAgo(j.updatedAt)}
                           </span>
-                        </div>
-                      </Link>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void relaunch(j.id)}
+                          title="Run again — a fresh investigation from the same photos & instructions"
+                          className="shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          aria-label="Run again"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -928,6 +954,11 @@ export default function AddressFinder() {
                         <Building2 className="mr-1.5 h-3.5 w-3.5" /> Potential check
                       </>
                     )}
+                  </Button>
+                )}
+                {!running && jobId && (
+                  <Button variant="ghost" size="sm" onClick={() => void relaunch(jobId)} className="shrink-0">
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Run again
                   </Button>
                 )}
               </div>
