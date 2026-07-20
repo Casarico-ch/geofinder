@@ -61,6 +61,7 @@ export type JobStatus = "running" | "done" | "error" | "cancelled";
 export interface TokenUsage {
   input: number;
   output: number;
+  cached: number; // subset of input served from the prompt cache (cheap reads)
   total: number;
 }
 
@@ -102,7 +103,7 @@ export async function createJob(input: Job["input"]): Promise<Job> {
     input,
     steps: [],
     answer: null,
-    tokens: { input: 0, output: 0, total: 0 },
+    tokens: { input: 0, output: 0, cached: 0, total: 0 },
     runDir,
   };
   jobs.set(id, job);
@@ -110,10 +111,17 @@ export async function createJob(input: Job["input"]): Promise<Job> {
   return job;
 }
 
-// Accumulate token usage across the investigation's model turns.
-export async function addUsage(job: Job, input: number, output: number): Promise<void> {
+// Accumulate token usage across the investigation's model turns. `cached` is the
+// portion of `input` that was served from the prompt cache (billed ~10%).
+export async function addUsage(
+  job: Job,
+  input: number,
+  output: number,
+  cached: number,
+): Promise<void> {
   job.tokens.input += input;
   job.tokens.output += output;
+  job.tokens.cached += cached;
   job.tokens.total = job.tokens.input + job.tokens.output;
   job.updatedAt = nowIso();
   await persist(job);
@@ -168,7 +176,12 @@ export async function loadPersistedJobs(): Promise<void> {
       const parsed = JSON.parse(raw) as Omit<Job, "runDir">;
       const job: Job = {
         ...parsed,
-        tokens: parsed.tokens ?? { input: 0, output: 0, total: 0 },
+        tokens: {
+          input: parsed.tokens?.input ?? 0,
+          output: parsed.tokens?.output ?? 0,
+          cached: parsed.tokens?.cached ?? 0,
+          total: parsed.tokens?.total ?? 0,
+        },
         runDir: path.join(RUNS_ROOT, id),
       };
       if (job.status === "running") {

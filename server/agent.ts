@@ -228,8 +228,14 @@ export async function runInvestigation(
         model: MODEL,
         max_tokens: 16_000,
         thinking: { type: "adaptive" },
-        system: SYSTEM,
+        // Cache the static tools + system prompt (re-sent every turn). The
+        // breakpoint on the system block covers tools + system together.
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
         tools: TOOLS,
+        // Top-level auto-caching rolls a second breakpoint over the growing
+        // conversation — so the re-sent listing photos and the aerials the
+        // model has already downloaded are read from cache, not reprocessed.
+        cache_control: { type: "ephemeral" },
         messages,
       });
 
@@ -237,11 +243,9 @@ export async function runInvestigation(
       // total reflects what actually moved through the model).
       const u = resp.usage;
       if (u) {
-        const inTok =
-          (u.input_tokens ?? 0) +
-          (u.cache_read_input_tokens ?? 0) +
-          (u.cache_creation_input_tokens ?? 0);
-        await addUsage(job, inTok, u.output_tokens ?? 0);
+        const cacheRead = u.cache_read_input_tokens ?? 0;
+        const inTok = (u.input_tokens ?? 0) + cacheRead + (u.cache_creation_input_tokens ?? 0);
+        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead);
       }
 
       if (resp.stop_reason === "refusal") {

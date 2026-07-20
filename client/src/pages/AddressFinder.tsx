@@ -66,6 +66,7 @@ type JobStatus = "running" | "done" | "error" | "cancelled";
 interface TokenUsage {
   input: number;
   output: number;
+  cached: number;
   total: number;
 }
 
@@ -544,7 +545,7 @@ export default function AddressFinder() {
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" /> started {timeAgo(job.createdAt)}
                     {job.tokens.total > 0 &&
-                      ` · ${fmtTokens(job.tokens.input)} in / ${fmtTokens(job.tokens.output)} out`}
+                      ` · ${fmtTokens(job.tokens.input)} in${job.tokens.cached > 0 ? ` (${fmtTokens(job.tokens.cached)} cached)` : ""} / ${fmtTokens(job.tokens.output)} out`}
                     {running && " · runs in the background — safe to close this window"}
                   </p>
                 </div>
