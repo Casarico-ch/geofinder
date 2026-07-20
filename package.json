@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite --host",
     "dev:api": "PORT=3001 tsx watch server/index.ts",

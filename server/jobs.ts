@@ -7,6 +7,7 @@
 // finished job at any time. Jobs are mirrored to disk (RUNS_ROOT/<id>/job.json)
 // so a process restart or a reopened window recovers the full trace.
 // =============================================================================
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT, ensureRunDir } from "./sandbox";
@@ -221,6 +222,7 @@ export async function loadPersistedJobs(): Promise<void> {
 }
 
 function cryptoRandomId(): string {
-  // URL-safe short id; crypto.randomUUID is available on Node 18+.
-  return globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  // URL-safe short id. Use node:crypto's randomUUID (not globalThis.crypto,
+  // which isn't a global on Node < 20 — that crashed the Railway deploy).
+  return randomUUID().replace(/-/g, "").slice(0, 16);
 }

@@ -8,12 +8,9 @@
 // =============================================================================
 import type { Express, Request, Response } from "express";
 import express from "express";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { buildDossier } from "./enrich";
-import { RUNS_ROOT } from "./sandbox";
 import { costUsd, createJob, getJob, listJobs, requestCancel, setDossier } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -56,18 +53,6 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
 
 export function registerApiRoutes(app: Express) {
   app.use(express.json({ limit: "30mb" }));
-
-  // TEMP diagnostic — resolved runs dir + a live write test.
-  app.get("/api/geo/_debug", async (_req: Request, res: Response) => {
-    let write = "ok";
-    try {
-      await mkdir(RUNS_ROOT, { recursive: true });
-      await writeFile(path.join(RUNS_ROOT, ".t"), "x");
-    } catch (err) {
-      write = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    }
-    res.json({ runsRoot: RUNS_ROOT, cwd: process.cwd(), write });
-  });
 
   // Start an investigation. Returns immediately with a job id; the work runs in
   // the background and is polled via GET below.
