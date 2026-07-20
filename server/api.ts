@@ -21,6 +21,39 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 const VISION_MODEL = "claude-opus-4-8";
 
+// Public geodata sources for the "map the land" stage. These ground the
+// deduction against real map / aerial / building-register data to pin the
+// parcel. They are NOT used to look the listing up — only to match the
+// physical land the caller's photos and text describe.
+const OVERPASS_BASE = "https://overpass-api.de/api/interpreter";
+const GEOADMIN_IDENTIFY = "https://api3.geo.admin.ch/rest/services/api/MapServer/identify";
+const SWISSIMAGE_WMS = "https://wms.geo.admin.ch/";
+const GEO_USER_AGENT = "geofinder/1.0 (https://github.com/casarico-ch/geofinder)";
+
+function inSwitzerland(lat: number, lon: number): boolean {
+  return lat >= 45.8 && lat <= 47.9 && lon >= 5.9 && lon <= 10.6;
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function compassBearing(lat1: number, lon1: number, lat2: number, lon2: number): string {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180);
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon);
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(deg / 45) % 8];
+}
+
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 type MediaType = z.infer<typeof mediaTypeSchema>;
 
@@ -167,6 +200,367 @@ async function geolocate(
   return resp.parsed_output;
 }
 
+// =============================================================================
+// "Map the land" — ground the deduction against real geodata to pin the parcel
+//
+// Vision + text narrow the property to an area; matching its physical land —
+// the parcel and garden shape, the pool, the shoreline and lakeside structures,
+// the building height and roof, and its year built / floor count — against an
+// official aerial view, the Swiss building register, and OpenStreetMap is what
+// upgrades that area to a specific building. No listing lookup is involved.
+// =============================================================================
+
+interface LandDigest {
+  digest: string;
+  count: number;
+}
+
+const OSM_TAG_WHITELIST = [
+  "name",
+  "amenity",
+  "shop",
+  "leisure",
+  "tourism",
+  "historic",
+  "man_made",
+  "natural",
+  "waterway",
+  "railway",
+  "public_transport",
+  "highway",
+  "building",
+  "building:levels",
+  "building:colour",
+  "roof:shape",
+  "height",
+  "surface",
+  "operator",
+  "brand",
+  "addr:street",
+  "addr:housenumber",
+];
+
+// OpenStreetMap features near the point: addressed and tall building footprints,
+// named amenities, shoreline / marina / jetty features (for lakefront matching),
+// and transit stops — each returned with distance and bearing from the point.
+export async function fetchOsmFeatures(lat: number, lon: number): Promise<LandDigest | null> {
+  const at = `${lat.toFixed(7)},${lon.toFixed(7)}`;
+  const query = `[out:json][timeout:12];
+(
+  nwr["leisure"](around:350,${at});
+  nwr["amenity"]["name"](around:350,${at});
+  nwr["shop"](around:300,${at});
+  nwr["tourism"](around:350,${at});
+  nwr["historic"](around:350,${at});
+  nwr["man_made"~"^(pier|jetty|breakwater|tower)$"](around:450,${at});
+  nwr["leisure"="marina"](around:700,${at});
+  nwr["natural"="water"]["name"](around:900,${at});
+  nwr["building"]["addr:housenumber"](around:250,${at});
+  nwr["building:levels"~"^([4-9]|[1-9][0-9])$"](around:600,${at});
+  nwr["railway"~"^(station|halt|tram_stop)$"](around:500,${at});
+  nwr["highway"="bus_stop"](around:300,${at});
+);
+out center tags 400;`;
+
+  try {
+    const res = await fetch(OVERPASS_BASE, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": GEO_USER_AGENT },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      elements?: Array<{
+        lat?: number;
+        lon?: number;
+        center?: { lat: number; lon: number };
+        tags?: Record<string, string>;
+      }>;
+    };
+    const rows: { dist: number; line: string }[] = [];
+    for (const el of data.elements ?? []) {
+      const elLat = el.lat ?? el.center?.lat;
+      const elLon = el.lon ?? el.center?.lon;
+      const tags = el.tags ?? {};
+      const kept = OSM_TAG_WHITELIST.filter((k) => tags[k]).map((k) => `${k}=${tags[k]}`);
+      if (elLat === undefined || elLon === undefined || kept.length === 0) continue;
+      const dist = haversineMeters(lat, lon, elLat, elLon);
+      rows.push({
+        dist,
+        line: `- ${Math.round(dist)}m ${compassBearing(lat, lon, elLat, elLon)}: ${kept.join(", ")}`,
+      });
+    }
+    rows.sort((a, b) => a.dist - b.dist);
+    let digest = "";
+    let count = 0;
+    for (const { line } of rows) {
+      if (digest.length + line.length > 9000) break;
+      digest += line + "\n";
+      count++;
+    }
+    return { digest: digest.trimEnd() || "(no mapped features found)", count };
+  } catch (err) {
+    console.error("[api] overpass lookup failed:", err);
+    return null;
+  }
+}
+
+// Swiss Federal Register of Buildings and Dwellings (GWR) near the point: the
+// official address, commune, postcode, year built, and above-ground floor count
+// of each nearby building — the structured facts a listing's year/floors/rooms
+// can be matched against. Switzerland only.
+export async function fetchSwissBuildings(lat: number, lon: number): Promise<LandDigest | null> {
+  if (!inSwitzerland(lat, lon)) return null;
+  const params = new URLSearchParams({
+    geometry: `${lon},${lat}`,
+    geometryType: "esriGeometryPoint",
+    layers: "all:ch.bfs.gebaeude_wohnungs_register",
+    tolerance: "250",
+    sr: "4326",
+    returnGeometry: "true",
+    geometryFormat: "geojson",
+    mapExtent: `${lon - 0.006},${lat - 0.004},${lon + 0.006},${lat + 0.004}`,
+    imageDisplay: "1000,667,96",
+  });
+  try {
+    const res = await fetch(`${GEOADMIN_IDENTIFY}?${params.toString()}`, {
+      headers: { "User-Agent": GEO_USER_AGENT },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      results?: Array<{
+        // With geometryFormat=geojson each result is a GeoJSON Feature: the
+        // attributes are under `properties` (not `attributes`).
+        properties?: Record<string, unknown>;
+        geometry?: { coordinates?: [number, number] };
+      }>;
+    };
+    // GWR returns one row per building entrance ("Rue X 9", "9.1", "9.2"); keep
+    // one line per street address, preferring the row that carries year/floors.
+    const byAddress = new Map<string, { dist: number; line: string; rich: boolean }>();
+    for (const r of data.results ?? []) {
+      const a = r.properties ?? {};
+      const coords = r.geometry?.coordinates;
+      const label = typeof a.label === "string" ? a.label.replace(/\.\d+$/, "") : null;
+      if (!coords || !label) continue;
+      const dist = haversineMeters(lat, lon, coords[1], coords[0]);
+      const dir = compassBearing(lat, lon, coords[1], coords[0]);
+      const commune = typeof a.ggdename === "string" ? a.ggdename : "";
+      const postcode = a.dplz4 != null ? String(a.dplz4) : "";
+      const year = a.gbauj != null ? `, built ${a.gbauj}` : "";
+      const floors = a.gastw != null ? `, ${a.gastw} floors` : "";
+      const dwellings = a.ganzwhg != null ? `, ${a.ganzwhg} dwellings` : "";
+      const rich = a.gbauj != null || a.gastw != null;
+      const line = `- ${Math.round(dist)}m ${dir}: ${label}, ${[postcode, commune].filter(Boolean).join(" ")}${year}${floors}${dwellings}`;
+      const prev = byAddress.get(label);
+      if (!prev || (rich && !prev.rich) || dist < prev.dist) {
+        byAddress.set(label, { dist, line, rich });
+      }
+    }
+    const rows = Array.from(byAddress.values()).sort((a, b) => a.dist - b.dist);
+    let digest = "";
+    let count = 0;
+    for (const { line } of rows) {
+      if (digest.length + line.length > 9000) break;
+      digest += line + "\n";
+      count++;
+    }
+    if (count === 0) return { digest: "(no register buildings found)", count: 0 };
+    return { digest: digest.trimEnd(), count };
+  } catch (err) {
+    console.error("[api] swiss register lookup failed:", err);
+    return null;
+  }
+}
+
+// Official swisstopo SWISSIMAGE orthophoto centered on the point (~600 m across),
+// so the model can visually match the parcel, garden, pool, roof and shoreline
+// against the actual ground. Switzerland only.
+export async function fetchAerialImage(
+  lat: number,
+  lon: number,
+): Promise<{ imageBase64: string; mediaType: "image/jpeg" } | null> {
+  if (!inSwitzerland(lat, lon)) return null;
+  const dLat = 0.0027; // ~600 m north-south
+  const dLon = dLat / Math.cos((lat * Math.PI) / 180); // equal metres east-west (square ground)
+  // WMS 1.3.0 with EPSG:4326 uses lat,lon axis order.
+  const bbox = `${lat - dLat},${lon - dLon},${lat + dLat},${lon + dLon}`;
+  const params = new URLSearchParams({
+    SERVICE: "WMS",
+    REQUEST: "GetMap",
+    VERSION: "1.3.0",
+    LAYERS: "ch.swisstopo.swissimage",
+    STYLES: "",
+    CRS: "EPSG:4326",
+    BBOX: bbox,
+    WIDTH: "1024",
+    HEIGHT: "1024",
+    FORMAT: "image/jpeg",
+  });
+  try {
+    const res = await fetch(`${SWISSIMAGE_WMS}?${params.toString()}`, {
+      headers: { "User-Agent": GEO_USER_AGENT },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok || !(res.headers.get("content-type") ?? "").includes("image")) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 2000) return null; // near-empty tile (e.g. open water / no data)
+    return { imageBase64: buf.toString("base64"), mediaType: "image/jpeg" };
+  } catch (err) {
+    console.error("[api] aerial fetch failed:", err);
+    return null;
+  }
+}
+
+const mapVerdictSchema = z.object({
+  corroborated: z.boolean(),
+  matched_address: z.string().nullable(),
+  confidence: confidenceSchema,
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  matches: z.array(z.object({ evidence: z.string(), source: z.string() })),
+  mismatches: z.array(z.string()),
+  notes: z.string(),
+});
+export type MapVerdict = z.infer<typeof mapVerdictSchema>;
+
+export interface LandVerification {
+  status: "pinned" | "corroborated" | "inconclusive" | "unavailable" | "skipped";
+  matched_address: string | null;
+  matches: { evidence: string; source: string }[];
+  mismatches: string[];
+  notes: string | null;
+  aerialUsed: boolean;
+  sources: string[];
+}
+
+const MAP_SYSTEM_PROMPT = `You are the "map the land" verification stage of a property-geolocation pipeline. A first pass deduced the AREA a listing's property is in. You now receive the listing photos, usually an official aerial orthophoto centered on the estimate, and structured map data near the estimate: nearby buildings from the Swiss building register (official address, year built, number of floors) and OpenStreetMap features (addressed and tall building footprints, shoreline, marinas and jetties, amenities) — each with distance and compass bearing FROM the estimated point.
+
+Your job is to match the property's PHYSICAL LAND against this ground truth and pin the exact parcel or building.
+- The aerial view is your strongest evidence. Find the plot whose pool, garden shape and size, driveway, roof shape and colour, the building's position on the parcel, and the shoreline and any lakeside structures (pergola, jetty, boathouse) match what the photos show. Property boundaries, pools and roofs are clearly visible from above.
+- Corroborate with the register and OSM. The listing's stated facts — parcel area, habitable area, number of rooms, floors, year built — should line up with a specific building's register entry (year built, floor count) and its footprint. A building whose year and floors match, at a plausible waterfront/address position, is strong confirmation.
+- Use distance and bearing to keep the geometry consistent with the photos' orientation (the sun, the direction of the lake view).
+- If you can identify the exact plot, return its address (from the register or OSM) and a refined coordinate on that building, and set the confidence to "building" or "street". If the data only confirms the general area, keep the confidence where the first pass had it. If the data contradicts the estimate, downgrade it honestly.
+- NEVER invent an address, a matched feature, or a register fact. Cite only the aerial you can actually see and the addresses/features in the provided lists. Set corroborated=false when the land data does not let you confirm or refine the estimate.`;
+
+async function mapTheLand(
+  client: Anthropic,
+  images: ImageInput[],
+  listingText: string | undefined,
+  estimate: LocationEstimate,
+): Promise<{ verification: LandVerification; verdict: MapVerdict | null }> {
+  const skipped: LandVerification = {
+    status: "skipped",
+    matched_address: null,
+    matches: [],
+    mismatches: [],
+    notes: null,
+    aerialUsed: false,
+    sources: [],
+  };
+  const worthMapping = ["street", "building", "block", "neighborhood"].includes(estimate.confidence);
+  if (!worthMapping || estimate.latitude === null || estimate.longitude === null) {
+    return { verification: skipped, verdict: null };
+  }
+  const { latitude: lat, longitude: lon } = estimate;
+
+  const [osm, register, aerial] = await Promise.all([
+    fetchOsmFeatures(lat, lon),
+    fetchSwissBuildings(lat, lon),
+    fetchAerialImage(lat, lon),
+  ]);
+
+  const sources: string[] = [];
+  if (aerial) sources.push("swisstopo SWISSIMAGE aerial");
+  if (register && register.count > 0) sources.push("Swiss building register (GWR)");
+  if (osm && osm.count > 0) sources.push("OpenStreetMap");
+  if (sources.length === 0) {
+    return { verification: { ...skipped, status: "unavailable" }, verdict: null };
+  }
+
+  const briefing = `First-pass estimate:
+${JSON.stringify(
+    {
+      confidence: estimate.confidence,
+      place: estimate.place,
+      address: estimate.address,
+      city: estimate.city,
+      country: estimate.country,
+      latitude: lat,
+      longitude: lon,
+      clues: estimate.clues,
+    },
+    null,
+    2,
+  )}
+
+Listing facts to match (from the listing text; may name parcel/living area, rooms, floors, year built):
+${listingText ? `"${listingText}"` : "(none provided)"}
+
+Swiss building register near the estimate (distance & bearing FROM the point):
+${register && register.count > 0 ? register.digest : "(none / not in Switzerland)"}
+
+OpenStreetMap features near the estimate:
+${osm && osm.count > 0 ? osm.digest : "(none)"}
+
+${aerial ? "An official swisstopo aerial orthophoto centered on the estimate (~600 m across) is included above." : "No aerial view is available for this location."}
+
+Match the property's land against this data and pin the exact parcel/building, or confirm the area.`;
+
+  const content: Anthropic.Messages.ContentBlockParam[] = [
+    { type: "text", text: "Listing photos:" },
+    ...imageBlocks(images),
+  ];
+  if (aerial) {
+    content.push({ type: "text", text: "Official aerial view centered on the first-pass estimate:" });
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: aerial.mediaType, data: aerial.imageBase64 },
+    });
+  }
+  content.push({ type: "text", text: briefing });
+
+  const resp = await client.messages.parse({
+    model: VISION_MODEL,
+    max_tokens: 10000,
+    thinking: { type: "adaptive" },
+    system: MAP_SYSTEM_PROMPT,
+    messages: [{ role: "user", content }],
+    output_config: { format: zodOutputFormat(mapVerdictSchema) },
+  });
+
+  if (resp.stop_reason === "refusal" || !resp.parsed_output) {
+    return { verification: { ...skipped, status: "unavailable" }, verdict: null };
+  }
+
+  const verdict = resp.parsed_output;
+  const movedOrNamed =
+    verdict.matched_address !== null ||
+    verdict.confidence !== estimate.confidence ||
+    verdict.latitude !== estimate.latitude ||
+    verdict.longitude !== estimate.longitude;
+  const status: LandVerification["status"] = !verdict.corroborated
+    ? "inconclusive"
+    : movedOrNamed
+      ? "pinned"
+      : "corroborated";
+
+  return {
+    verification: {
+      status,
+      matched_address: verdict.matched_address,
+      matches: verdict.matches,
+      mismatches: verdict.mismatches,
+      notes: verdict.notes || null,
+      aerialUsed: aerial !== null,
+      sources,
+    },
+    verdict,
+  };
+}
+
 export function registerApiRoutes(app: Express) {
   app.use(express.json({ limit: "25mb" }));
 
@@ -202,7 +596,42 @@ export function registerApiRoutes(app: Express) {
         return;
       }
 
-      res.json({ estimate: result });
+      let estimate = result;
+
+      // Second stage: map the land — ground the deduction against aerial /
+      // register / OSM data to pin the parcel. Must never break the endpoint;
+      // degrades to the first-pass estimate.
+      let landVerification: LandVerification = {
+        status: "unavailable",
+        matched_address: null,
+        matches: [],
+        mismatches: [],
+        notes: null,
+        aerialUsed: false,
+        sources: [],
+      };
+      try {
+        const { verification, verdict } = await mapTheLand(
+          client,
+          input.images,
+          input.listingText,
+          estimate,
+        );
+        landVerification = verification;
+        if (verdict && verdict.corroborated) {
+          estimate = {
+            ...estimate,
+            confidence: verdict.confidence,
+            address: verdict.matched_address ?? estimate.address,
+            latitude: verdict.latitude ?? estimate.latitude,
+            longitude: verdict.longitude ?? estimate.longitude,
+          };
+        }
+      } catch (err) {
+        console.error("[api] map-the-land stage failed:", err);
+      }
+
+      res.json({ estimate, landVerification });
     } catch (err) {
       if (err instanceof Anthropic.AuthenticationError) {
         res.status(503).json({ error: "The configured Anthropic API key was rejected." });

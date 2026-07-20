@@ -1,15 +1,18 @@
 # GeoFinder
 
-Deduce the street address of a property from its listing — **purely from what you
-give it**: the listing text and an array of photos. Nothing is looked up. No web
-search, no map database, no geocoder, no EXIF or device location — only the pixels
-and the text.
+Deduce the street address of a property from its listing — the listing text and an
+array of photos. The listing itself is never looked up (no web/portal search), and
+no EXIF or device location is read. The area is deduced purely from the pixels and
+the text; the exact parcel is then pinned by matching the property's physical land
+against open map, aerial, and building-register data.
 
 ## How it works
 
-The Express API (`server/api.ts`) sends the photos and listing text to Claude
-(`claude-opus-4-8`, vision + adaptive thinking) in a single reasoning pass with no
-tools, and Claude deduces the location from the evidence alone:
+The Express API (`server/api.ts`) runs two stages with Claude (`claude-opus-4-8`,
+vision + adaptive thinking):
+
+**1. Deduce the area** — one reasoning pass over the photos and listing text, with
+no tools and nothing looked up:
 
 - **All photos together** — the exterior, the views out of the windows and balcony,
   the street and the entrance are reasoned over as one set, so they triangulate a
@@ -20,13 +23,29 @@ tools, and Claude deduces the location from the evidence alone:
   terrain and skyline, and **sun direction and shadows** for orientation and
   latitude.
 - **Text cues as constraints** — commune/quarter, street fragments or postcode,
-  floor and total floors (building height), year built, and proximity claims like
-  "station 100 m away" or "5 minutes from the university", each of which narrows
-  where the property can be.
-- **Honest confidence** — every result is labelled from `street`-level down to
-  `region`-level, with the clues used, the text read from the photos, and the
-  reasoning. An exact address is only returned when the evidence carries a locking
-  signal; otherwise it reports the tightest area it can defend.
+  floor and total floors, year built, and proximity claims like "station 100 m
+  away" or "5 minutes from the university", each of which narrows where the
+  property can be.
+
+**2. Map the land** — when the first stage is neighbourhood-tight or better, the
+property's physical land is matched against real geodata around the estimate to pin
+the exact parcel. This grounds the deduction against maps — it does **not** search
+for the listing:
+
+- An official **swisstopo aerial orthophoto** (SWISSIMAGE) centred on the estimate,
+  so the parcel and garden shape, the pool, driveways, roof and shoreline
+  structures (pergola, jetty) can be matched visually against the photos.
+- The **Swiss building register** (GWR) — nearby official addresses with year built
+  and floor count, matched against the listing's stated year/floors/rooms.
+- **OpenStreetMap** (Overpass) — addressed and tall building footprints, shoreline,
+  marinas and jetties, and amenities, each with distance and bearing.
+
+Corroborating matches upgrade the fix toward a specific building and can supply the
+address; contradictions downgrade the confidence. The Swiss sources apply inside
+Switzerland; OpenStreetMap is used everywhere. Every result is labelled from
+`street`-level down to `region`-level with the clues used, the text read, and the
+map evidence matched — an exact address is only returned when the evidence supports
+it, otherwise it reports the tightest area it can defend.
 
 The endpoint accepts `{ images: [{ imageBase64, mediaType }], listingText? }` (the
 legacy single-photo `{ imageBase64, mediaType, hint }` shape still works).
