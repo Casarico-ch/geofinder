@@ -1,0 +1,24 @@
+# Render Blueprint — GeoFinder
+# A persistent disk so investigations (their traces + reasoning) survive deploys,
+# instead of being wiped each time on Render's ephemeral filesystem.
+# NOTE: persistent disks require a paid instance type (Starter or above).
+services:
+  - type: web
+    name: geofinder
+    runtime: node
+    plan: starter
+    buildCommand: pnpm install && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Store runs on the mounted disk so they persist across deploys/restarts.
+      - key: RUNS_DIR
+        value: /var/data/runs
+      # Set this in the dashboard (never commit the key).
+      - key: ANTHROPIC_API_KEY
+        sync: false
+    disk:
+      name: geofinder-data
+      mountPath: /var/data
+      sizeGB: 1
