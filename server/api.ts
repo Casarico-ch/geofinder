@@ -83,10 +83,16 @@ export function registerApiRoutes(app: Express) {
         listingText,
         imageCount: images.length,
       });
-      await saveListingPhotos(job.runDir, images);
 
-      // Fire and forget — the job keeps running regardless of the client.
-      void runInvestigation(job, images, listingText).catch((err) => {
+      // Respond the instant the job exists. Writing the photos to disk and the
+      // whole investigation run happen in the background, so "Starting…" ends as
+      // soon as the job is created instead of waiting on the volume. The model's
+      // first turn gets the photos in-memory; the on-disk copies (for later
+      // read_file/crop) are written here, well before any read_file can occur.
+      void (async () => {
+        await saveListingPhotos(job.runDir, images);
+        await runInvestigation(job, images, listingText);
+      })().catch((err) => {
         console.error(`[api] investigation ${job.id} crashed:`, err);
       });
 
