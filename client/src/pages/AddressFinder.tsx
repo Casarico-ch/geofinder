@@ -740,13 +740,6 @@ export default function AddressFinder() {
           {/* ---------- New search ---------- */}
           {isNew && (
             <>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Add the listing's photos, its description, and the municipality. A model is given a real computer —
-                a shell, files, and eyes — and writes its own code to query the cadastre, download aerials and read
-                the building register, iterating until it reaches the exact door. It runs in the background: you can
-                close this window and come back.
-              </p>
-
               <div className="rounded-xl border border-border bg-card p-5 space-y-5">
                 <Field label="Photos">
                   <div
