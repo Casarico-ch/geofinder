@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle,
+  ArrowDown,
   Brain,
   Building2,
   CheckCircle2,
@@ -159,6 +160,12 @@ async function fileToJpegBase64(file: File, maxEdge = 2048): Promise<string> {
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+
+// True when the window is scrolled to (near) the bottom — used to decide
+// whether newly-arrived trace steps are already in view.
+function isNearBottom(threshold = 200): boolean {
+  return window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - threshold;
 }
 
 function mapEmbedUrl(lat: number, lon: number, wide: boolean) {
@@ -405,6 +412,8 @@ export default function AddressFinder() {
   const [enriching, setEnriching] = useState(false);
   const [recent, setRecent] = useState<JobSummary[]>([]);
   const traceEndRef = useRef<HTMLDivElement | null>(null);
+  const [newSteps, setNewSteps] = useState(0);
+  const prevLenRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => pictures.forEach((p) => URL.revokeObjectURL(p.url));
@@ -459,9 +468,42 @@ export default function AddressFinder() {
     };
   }, [jobId]);
 
+  // Reset the "new steps" tracker when switching to another investigation.
   useEffect(() => {
-    if (job?.status === "running") traceEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [job?.steps.length, job?.status]);
+    prevLenRef.current = null;
+    setNewSteps(0);
+  }, [jobId]);
+
+  // Never auto-scroll. When new trace steps arrive while the user is NOT already
+  // at the bottom, count them so a small pill can offer to jump down — the page
+  // stays exactly where the user left it.
+  useEffect(() => {
+    if (!job) return;
+    const len = job.steps.length;
+    if (prevLenRef.current === null) {
+      prevLenRef.current = len; // baseline on first load; don't flag existing steps
+      return;
+    }
+    if (len > prevLenRef.current) {
+      const delta = len - prevLenRef.current;
+      prevLenRef.current = len;
+      if (!isNearBottom()) setNewSteps((n) => n + delta);
+    }
+  }, [job]);
+
+  // If the user scrolls to the bottom themselves, they've caught up — clear it.
+  useEffect(() => {
+    const onScroll = () => {
+      if (isNearBottom()) setNewSteps(0);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    traceEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setNewSteps(0);
+  }, []);
 
   const addFiles = useCallback((list: FileList | File[]) => {
     const chosen = Array.from(list).filter(
@@ -987,6 +1029,17 @@ export default function AddressFinder() {
           swisstopo, GWR, OpenStreetMap).
         </div>
       </footer>
+
+      {/* Non-intrusive cue that new trace steps arrived; click to jump down. */}
+      {isDetail && newSteps > 0 && (
+        <button
+          onClick={jumpToLatest}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg ring-1 ring-black/5 hover:opacity-90 transition-opacity"
+        >
+          <ArrowDown className="h-4 w-4" />
+          {newSteps} new step{newSteps > 1 ? "s" : ""}
+        </button>
+      )}
     </div>
   );
 }
