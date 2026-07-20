@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import express from "express";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 // =============================================================================
 // Address Finder API — vision-only geolocation
@@ -16,7 +17,8 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org";
 const NOMINATIM_USER_AGENT =
-  "manus-github-test-address-finder/2.0 (https://github.com/ImmoRessource/manus-github-test)";
+  "geofinder/1.0 (https://github.com/casarico-ch/geofinder)";
+const OVERPASS_BASE = "https://overpass-api.de/api/interpreter";
 
 const VISION_MODEL = "claude-opus-4-8";
 
@@ -75,19 +77,21 @@ async function reverseGeocode(lat: number, lon: number): Promise<FormattedAddres
   };
 }
 
+const confidenceSchema = z.enum([
+  "street",
+  "building",
+  "block",
+  "neighborhood",
+  "city",
+  "region",
+  "country",
+  "unknown",
+]);
+
 // The structured verdict we ask the model to emit and then validate.
 const estimateSchema = z.object({
   location_found: z.boolean(),
-  confidence: z.enum([
-    "street",
-    "building",
-    "block",
-    "neighborhood",
-    "city",
-    "region",
-    "country",
-    "unknown",
-  ]),
+  confidence: confidenceSchema,
   address: z.string().nullable(),
   place: z.string(),
   city: z.string().nullable(),
@@ -177,6 +181,255 @@ function extractJson(text: string): unknown | null {
   return null;
 }
 
+// =============================================================================
+// OSM verification — cross-check the vision estimate against OpenStreetMap
+// ground truth (Overpass API). Vision narrows to a neighborhood; matching
+// pixel features (a playground's surface, a shopfront, tower positions)
+// against mapped features is what upgrades that to a specific building.
+// =============================================================================
+
+interface OsmFeatureDigest {
+  digest: string;
+  featureCount: number;
+}
+
+const OSM_TAG_WHITELIST = [
+  "name",
+  "amenity",
+  "shop",
+  "leisure",
+  "tourism",
+  "historic",
+  "man_made",
+  "railway",
+  "public_transport",
+  "highway",
+  "building",
+  "building:levels",
+  "building:colour",
+  "height",
+  "surface",
+  "operator",
+  "brand",
+  "religion",
+  "addr:street",
+  "addr:housenumber",
+];
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function compassBearing(lat1: number, lon1: number, lat2: number, lon2: number): string {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180);
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon);
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
+interface OverpassElement {
+  type: string;
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+}
+
+// Pull mapped features near the estimated point: named/addressed buildings,
+// shops, playgrounds, transit stops close in; tall buildings a bit further out
+// (they show on skylines). Returns null if Overpass is unreachable — the
+// caller degrades to the unverified estimate.
+export async function fetchNearbyOsmFeatures(lat: number, lon: number): Promise<OsmFeatureDigest | null> {
+  const at = `${lat.toFixed(7)},${lon.toFixed(7)}`;
+  // Named amenities only — unnamed street furniture (benches, waste baskets)
+  // drowns out the features that can actually be matched against a photo.
+  const query = `[out:json][timeout:12];
+(
+  nwr["leisure"](around:300,${at});
+  nwr["amenity"]["name"](around:300,${at});
+  nwr["shop"](around:300,${at});
+  nwr["tourism"](around:300,${at});
+  nwr["historic"](around:300,${at});
+  nwr["building"]["addr:housenumber"](around:220,${at});
+  nwr["building:levels"~"^([6-9]|[1-9][0-9])$"](around:600,${at});
+  nwr["railway"~"^(station|halt|tram_stop)$"](around:450,${at});
+  nwr["highway"="bus_stop"](around:300,${at});
+);
+out center tags 400;`;
+
+  try {
+    const res = await fetch(OVERPASS_BASE, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": NOMINATIM_USER_AGENT },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { elements?: OverpassElement[] };
+    const elements = data.elements ?? [];
+
+    const lines: { dist: number; line: string }[] = [];
+    for (const el of elements) {
+      const elLat = el.lat ?? el.center?.lat;
+      const elLon = el.lon ?? el.center?.lon;
+      const tags = el.tags ?? {};
+      const kept = OSM_TAG_WHITELIST.filter((k) => tags[k]).map((k) => `${k}=${tags[k]}`);
+      if (elLat === undefined || elLon === undefined || kept.length === 0) continue;
+      const dist = haversineMeters(lat, lon, elLat, elLon);
+      const dir = compassBearing(lat, lon, elLat, elLon);
+      lines.push({ dist, line: `- ${Math.round(dist)}m ${dir}: ${kept.join(", ")}` });
+    }
+    lines.sort((a, b) => a.dist - b.dist);
+
+    let digest = "";
+    let count = 0;
+    for (const { line } of lines) {
+      if (digest.length + line.length > 12000) break;
+      digest += line + "\n";
+      count++;
+    }
+    if (count === 0) return { digest: "(no mapped features found near this point)", featureCount: 0 };
+    return { digest: digest.trimEnd(), featureCount: count };
+  } catch (err) {
+    console.error("[api] overpass lookup failed:", err);
+    return null;
+  }
+}
+
+const osmVerdictSchema = z.object({
+  corroborated: z.boolean(),
+  matches: z.array(
+    z.object({
+      feature: z.string(),
+      clue: z.string(),
+    }),
+  ),
+  mismatches: z.array(z.string()),
+  confidence: confidenceSchema,
+  address: z.string().nullable(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  notes: z.string(),
+});
+export type OsmVerdict = z.infer<typeof osmVerdictSchema>;
+
+export interface OsmVerification {
+  status: "verified" | "unverified" | "skipped" | "unavailable";
+  matches: { feature: string; clue: string }[];
+  mismatches: string[];
+  notes: string | null;
+  refined: boolean;
+}
+
+const VERIFY_SYSTEM_PROMPT = `You are the map-verification stage of a visual geolocation pipeline. A first pass estimated where a photo was taken. You receive the same photo, that estimate, and a list of real OpenStreetMap features mapped near the estimated point (each with its distance and compass bearing FROM the estimated point).
+
+Your job: test the estimate against this ground truth.
+- Match concrete features visible in the photo (playgrounds and their surface, shopfronts, building heights and colours, addresses, transit stops, towers on the skyline) against the mapped features.
+- Use distances and bearings: if the photo shows tall buildings in the background and the map lists high-rises 300m NE, the camera likely faces NE — check that the rest of the scene is consistent with that.
+- A distinctive feature that appears in BOTH the photo and the map data (e.g. a rubber-surfaced playground, a specific shop brand) is strong corroboration. Features the photo clearly shows but the map does not list nearby are weak evidence against — OSM coverage is incomplete, so weigh mismatches carefully.
+- Refine when justified: if the matches pin the camera to a specific building or address, return the tighter position and confidence. If the map data contradicts the estimate, downgrade the confidence honestly.
+- NEVER invent map features or matches. Only cite features from the provided list.`;
+
+async function verifyWithOsm(
+  client: Anthropic,
+  input: { imageBase64: string; mediaType: string },
+  estimate: LocationEstimate,
+): Promise<{ verification: OsmVerification; verdict: OsmVerdict | null }> {
+  const skipped: OsmVerification = {
+    status: "skipped",
+    matches: [],
+    mismatches: [],
+    notes: null,
+    refined: false,
+  };
+  const verifiable = ["street", "building", "block", "neighborhood"].includes(estimate.confidence);
+  if (!verifiable || estimate.latitude === null || estimate.longitude === null) {
+    return { verification: skipped, verdict: null };
+  }
+
+  const features = await fetchNearbyOsmFeatures(estimate.latitude, estimate.longitude);
+  if (features === null) {
+    return { verification: { ...skipped, status: "unavailable" }, verdict: null };
+  }
+
+  const briefing = `First-pass estimate:
+${JSON.stringify(
+    {
+      confidence: estimate.confidence,
+      address: estimate.address,
+      place: estimate.place,
+      latitude: estimate.latitude,
+      longitude: estimate.longitude,
+      clues: estimate.clues,
+      text_read: estimate.text_read,
+    },
+    null,
+    2,
+  )}
+
+OpenStreetMap features near the estimated point (distance and bearing are FROM that point):
+${features.digest}
+
+Verify the estimate against the photo and this map data, then refine or downgrade it as the evidence dictates.`;
+
+  const resp = await client.messages.parse({
+    model: VISION_MODEL,
+    max_tokens: 4000,
+    thinking: { type: "adaptive" },
+    system: VERIFY_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: input.mediaType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+              data: input.imageBase64,
+            },
+          },
+          { type: "text", text: briefing },
+        ],
+      },
+    ],
+    output_config: { format: zodOutputFormat(osmVerdictSchema) },
+  });
+
+  if (resp.stop_reason === "refusal" || !resp.parsed_output) {
+    return { verification: { ...skipped, status: "unavailable" }, verdict: null };
+  }
+
+  const verdict = resp.parsed_output;
+  const refined =
+    verdict.corroborated &&
+    (verdict.latitude !== estimate.latitude ||
+      verdict.longitude !== estimate.longitude ||
+      verdict.confidence !== estimate.confidence ||
+      verdict.address !== estimate.address);
+
+  return {
+    verification: {
+      status: verdict.corroborated ? "verified" : "unverified",
+      matches: verdict.matches,
+      mismatches: verdict.mismatches,
+      notes: verdict.notes || null,
+      refined,
+    },
+    verdict,
+  };
+}
+
 interface GeolocateResult {
   estimate: LocationEstimate;
   searchUsed: boolean;
@@ -259,9 +512,37 @@ export function registerApiRoutes(app: Express) {
         return;
       }
 
-      const { estimate, searchUsed } = result;
+      const { searchUsed } = result;
+      let { estimate } = result;
 
-      // If the model produced coordinates, format them into a canonical street
+      // Second pass: cross-check the estimate against OpenStreetMap ground
+      // truth. Must never break the endpoint — degrades to the raw estimate.
+      let osmVerification: OsmVerification = {
+        status: "unavailable",
+        matches: [],
+        mismatches: [],
+        notes: null,
+        refined: false,
+      };
+      try {
+        const { verification, verdict } = await verifyWithOsm(client, parsed.data, estimate);
+        osmVerification = verification;
+        if (verdict && verification.status === "verified") {
+          estimate = {
+            ...estimate,
+            confidence: verdict.confidence,
+            address: verdict.address ?? estimate.address,
+            latitude: verdict.latitude ?? estimate.latitude,
+            longitude: verdict.longitude ?? estimate.longitude,
+          };
+        } else if (verdict && verification.status === "unverified") {
+          estimate = { ...estimate, confidence: verdict.confidence };
+        }
+      } catch (err) {
+        console.error("[api] OSM verification failed:", err);
+      }
+
+      // Format the (possibly refined) coordinates into a canonical street
       // address for display (formatting the vision estimate — not a file lookup).
       let resolvedAddress: FormattedAddress | null = null;
       if (estimate.latitude !== null && estimate.longitude !== null) {
@@ -272,7 +553,7 @@ export function registerApiRoutes(app: Express) {
         }
       }
 
-      res.json({ estimate, resolvedAddress, searchUsed });
+      res.json({ estimate, resolvedAddress, searchUsed, osmVerification });
     } catch (err) {
       if (err instanceof Anthropic.AuthenticationError) {
         res.status(503).json({ error: "The configured Anthropic API key was rejected." });

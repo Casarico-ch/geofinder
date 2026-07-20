@@ -10,6 +10,7 @@ import {
   ImageIcon,
   Loader2,
   MapPin,
+  MapPinned,
   RefreshCw,
   ScanSearch,
   Sparkles,
@@ -47,10 +48,19 @@ interface ResolvedAddress {
   longitude: number;
 }
 
+interface OsmVerification {
+  status: "verified" | "unverified" | "skipped" | "unavailable";
+  matches: { feature: string; clue: string }[];
+  mismatches: string[];
+  notes: string | null;
+  refined: boolean;
+}
+
 interface AnalyzeResponse {
   estimate: LocationEstimate;
   resolvedAddress: ResolvedAddress | null;
   searchUsed: boolean;
+  osmVerification?: OsmVerification;
 }
 
 type Stage =
@@ -165,6 +175,7 @@ export default function AddressFinder() {
   const analyzing = stage.kind === "analyzing";
   const est = stage.kind === "resolved" ? stage.data.estimate : null;
   const resolved = stage.kind === "resolved" ? stage.data.resolvedAddress : null;
+  const osm = stage.kind === "resolved" ? (stage.data.osmVerification ?? null) : null;
   const coords =
     est && est.latitude !== null && est.longitude !== null
       ? { lat: est.latitude, lon: est.longitude }
@@ -189,7 +200,8 @@ export default function AddressFinder() {
           <p className="text-sm text-muted-foreground leading-relaxed">
             Drop a photo. The address is worked out purely from what's <strong className="text-primary">visible</strong> in
             the picture — architecture, signage, street furniture, terrain, and any readable text — optionally guided by a
-            note you add. Claude reads the scene, verifies distinctive clues with web search, and reports how sure it is.
+            note you add. Claude reads the scene, verifies distinctive clues with web search, cross-checks the result
+            against OpenStreetMap ground truth, and reports how sure it is.
           </p>
 
           <input
@@ -289,7 +301,8 @@ export default function AddressFinder() {
                 </Button>
                 {analyzing && (
                   <p className="text-[11px] text-muted-foreground text-center">
-                    Extracting clues and verifying with web search — this can take up to a minute.
+                    Extracting clues, verifying with web search, then cross-checking against map data — this can take a
+                    minute or two.
                   </p>
                 )}
               </CardContent>
@@ -327,6 +340,12 @@ export default function AddressFinder() {
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-background/40 text-[10px] font-bold tracking-wider text-muted-foreground">
                         <ScanSearch className="h-3 w-3" />
                         WEB-VERIFIED
+                      </span>
+                    )}
+                    {osm?.status === "verified" && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-border bg-background/40 text-[10px] font-bold tracking-wider text-muted-foreground">
+                        <MapPinned className="h-3 w-3" />
+                        MAP-VERIFIED
                       </span>
                     )}
                   </div>
@@ -377,6 +396,29 @@ export default function AddressFinder() {
                           </span>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {osm && (osm.matches.length > 0 || osm.mismatches.length > 0) && (
+                    <div className="border border-border/60 bg-background/30 rounded p-3">
+                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                        <MapPinned className="h-3 w-3" /> MAP CROSS-CHECK
+                      </p>
+                      <ul className="space-y-1">
+                        {osm.matches.map((m, i) => (
+                          <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">
+                            · {m.clue} — matches {m.feature}
+                          </li>
+                        ))}
+                        {osm.mismatches.map((m, i) => (
+                          <li key={`x-${i}`} className="text-[11px] text-destructive/80 leading-relaxed">
+                            · {m}
+                          </li>
+                        ))}
+                      </ul>
+                      {osm.status === "unverified" && osm.notes && (
+                        <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">{osm.notes}</p>
+                      )}
                     </div>
                   )}
 
@@ -447,7 +489,7 @@ export default function AddressFinder() {
       </main>
 
       <footer className="border-t border-border py-4 text-[11px] text-muted-foreground">
-        <div className="container">Vision only · web-search verified · geocoding by OpenStreetMap / Nominatim</div>
+        <div className="container">Vision only · verified with web search and OpenStreetMap · geocoding by Nominatim</div>
       </footer>
     </div>
   );

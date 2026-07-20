@@ -15,9 +15,15 @@ only the pixels travel.
 2. **Web-search verification** — Claude uses the web-search tool to look up the
    specific clues it reads and resolve them to a real street address and
    coordinates.
-3. **Honest confidence** — every result is labelled from `street`-level down to
-   `region`-level, with the clues used, the text read from the image, the
-   reasoning, and the sources.
+3. **Map cross-check** — when the estimate is neighborhood-tight or better, the
+   server pulls real OpenStreetMap features around the estimated point (addressed
+   buildings, shops, playgrounds and their surfaces, transit stops, high-rises on
+   the skyline — each with distance and bearing, via Overpass) and a second Claude
+   pass tests the photo against that ground truth: corroborating matches upgrade
+   the fix toward a specific building; contradictions downgrade the confidence.
+4. **Honest confidence** — every result is labelled from `street`-level down to
+   `region`-level, with the clues used, the text read from the image, the map
+   features matched, the reasoning, and the sources.
 
 Coordinates are reverse-geocoded to a clean address via OpenStreetMap / Nominatim
 through the Express API (`server/api.ts`) — no map API key needed.
