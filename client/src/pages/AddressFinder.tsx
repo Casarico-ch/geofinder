@@ -119,6 +119,7 @@ interface Job {
   cost: number;
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
+  promptVersion?: string | null;
 }
 
 interface JobSummary {
@@ -132,6 +133,7 @@ interface JobSummary {
   tokens: number;
   cost: number;
   model?: ModelId;
+  promptVersion?: string | null;
 }
 
 interface Picture {
@@ -922,6 +924,20 @@ export default function AddressFinder() {
                     <Clock className="h-3 w-3 shrink-0" /> started {timeAgo(job.createdAt)}
                     {job.tokens.total > 0 &&
                       ` · ${fmtTokens(job.tokens.input)} in${job.tokens.cached > 0 ? ` (${fmtTokens(job.tokens.cached)} cached)` : ""} / ${fmtTokens(job.tokens.output)} out`}
+                    {job.promptVersion && (
+                      <>
+                        {" · "}
+                        <a
+                          href={`/runs/${job.id}/prompt.txt`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono hover:text-foreground hover:underline"
+                          title="View the exact prompt this run used"
+                        >
+                          prompt {job.promptVersion}
+                        </a>
+                      </>
+                    )}
                   </p>
                 </div>
 

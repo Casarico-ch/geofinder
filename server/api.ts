@@ -8,6 +8,8 @@
 // =============================================================================
 import type { Express, Request, Response } from "express";
 import express from "express";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import {
   loadListingPhotos,
@@ -78,6 +80,7 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
     tokens: job.tokens?.total ?? 0,
     cost: job.tokens ? costUsd(job.tokens, job.model) : 0,
     model: job.model,
+    promptVersion: job.promptVersion ?? null,
   };
 }
 
@@ -301,6 +304,25 @@ export function registerApiRoutes(app: Express) {
     }
     const { runDir: _runDir, steps, ...rest } = job;
     res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens, job.model) });
+  });
+
+  // The exact prompt text a run was governed by (saved at run start). This is
+  // what makes a past run's cost + reasoning attributable to a precise prompt.
+  app.get("/api/geo/investigate/:id/prompt", async (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    try {
+      const text = await readFile(path.join(job.runDir, "prompt.txt"), "utf8");
+      res.json({ promptVersion: job.promptVersion ?? null, prompt: text });
+    } catch {
+      res.status(404).json({
+        error: "No prompt was recorded for this investigation (it predates prompt tracking).",
+        promptVersion: job.promptVersion ?? null,
+      });
+    }
   });
 
   // A page of the trace. The client loads the first page on open and appends

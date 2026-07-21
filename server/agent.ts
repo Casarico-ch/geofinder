@@ -9,6 +9,7 @@
 // the documented trace the user asked for.
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
+import { createHash } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -23,6 +24,7 @@ import {
   addStep,
   addUsage,
   finishJob,
+  setPromptVersion,
 } from "./jobs";
 
 export const MODEL = "claude-opus-4-8";
@@ -144,6 +146,17 @@ Reason explicitly about why you run each command — your thinking is the saved 
 
 const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer. Work step by step, verify visually against the aerials, and call submit_answer when you are confident.`;
 
+// A content fingerprint of the exact prompt (SYSTEM + TASK) a run is governed
+// by. Stamped onto every job at start and saved to prompt.txt, so a past run's
+// cost and reasoning are always attributable to the precise prompt that
+// produced them — otherwise a prompt edit + redeploy leaves the history in the
+// dark about what was actually in force. Short hex of sha256 is enough to tell
+// two prompt versions apart at a glance.
+export const PROMPT_VERSION = createHash("sha256")
+  .update(`${SYSTEM}\n---TASK---\n${TASK}`)
+  .digest("hex")
+  .slice(0, 12);
+
 function initialContent(
   images: AgentImage[],
   listingText: string | undefined,
@@ -223,11 +236,30 @@ export async function runInvestigation(
   images: AgentImage[],
   listingText: string | undefined,
 ): Promise<void> {
+  // Attribute this run to the exact prompt it will use: stamp the version and
+  // save the full prompt text next to the trace. This is what lets a later
+  // post-mortem know which prompt produced these costs and this reasoning.
+  await stampPrompt(job);
   const messages: Anthropic.Messages.MessageParam[] = [
     { role: "user", content: initialContent(images, listingText) },
   ];
   await saveState(job, 0, messages);
   await runLoop(job, messages, 0);
+}
+
+// Record which prompt governs a run: the version hash on the job (persisted in
+// job.json) and the verbatim prompt in prompt.txt (served via /:id/prompt).
+async function stampPrompt(job: Job): Promise<void> {
+  try {
+    await writeFile(
+      path.join(job.runDir, "prompt.txt"),
+      `# SYSTEM (version ${PROMPT_VERSION})\n\n${SYSTEM}\n\n# TASK\n\n${TASK}\n`,
+      "utf8",
+    );
+  } catch (err) {
+    console.error(`[agent] failed to save prompt for ${job.id}:`, err);
+  }
+  await setPromptVersion(job, PROMPT_VERSION);
 }
 
 // Continue an investigation from its saved conversation — used both to recover a
@@ -248,11 +280,19 @@ export async function resumeInvestigation(job: Job): Promise<void> {
   job.pauseRequested = false;
   job.cancelRequested = false;
   await finishJob(job, { status: "running" });
+  // The prompt is read live each turn, so a run resumed after a redeploy will
+  // finish under whatever prompt is now deployed. If that differs from the one
+  // it started under, record the switch in the trace and re-stamp, so the
+  // post-mortem isn't misled about which prompt governed the later turns.
+  const changed = job.promptVersion && job.promptVersion !== PROMPT_VERSION;
   await addStep(job, {
     kind: "note",
     title: "Resumed",
-    detail: `Continuing from turn ${state.turn}.`,
+    detail: changed
+      ? `Continuing from turn ${state.turn}. Prompt changed since start (${job.promptVersion} → ${PROMPT_VERSION}); remaining turns run under the new prompt.`
+      : `Continuing from turn ${state.turn}.`,
   });
+  if (changed) await stampPrompt(job);
   await runLoop(job, state.messages, state.turn);
 }
 

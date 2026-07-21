@@ -93,6 +93,7 @@ export interface Job {
   createdAt: string;
   updatedAt: string;
   model: ModelId; // which Claude model runs this investigation
+  promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   input: { municipality?: string; listingText?: string; imageCount: number };
   steps: Step[];
   answer: Answer | null;
@@ -174,6 +175,13 @@ export function requestCancel(job: Job): void {
 // (terminal), a paused job keeps its saved conversation and can be resumed.
 export function requestPause(job: Job): void {
   job.pauseRequested = true;
+}
+
+// Record which prompt version governed this run (see agent.ts stampPrompt).
+export async function setPromptVersion(job: Job, version: string): Promise<void> {
+  job.promptVersion = version;
+  job.updatedAt = nowIso();
+  await persist(job);
 }
 
 export async function setPotentialStatus(job: Job, status: PotentialStatus): Promise<void> {
