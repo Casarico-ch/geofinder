@@ -21,10 +21,13 @@ import {
   type Answer,
   type Confidence,
   type Job,
+  type Signature,
   addStep,
   addUsage,
   finishJob,
+  markStarted,
   setPromptVersion,
+  setSignature,
 } from "./jobs";
 
 export const MODEL = "claude-opus-4-8";
@@ -76,6 +79,26 @@ export const COMPUTER_TOOLS = [
 
 const TOOLS = [
   ...COMPUTER_TOOLS,
+  {
+    name: "record_signature",
+    description:
+      "Call this ONCE, first, before searching: from the listing photos, describe what this property looks like FROM ABOVE, as an ordered list of aerial-visible clues — biggest discriminator first (topology/context, e.g. 'bar of attached houses' / 'detached villa next to a forest' / 'next to a church'; then the plot: garden size, pool, shape, trees, roads on which sides; then the arrangement: a second building in the garden, driveway, terrace, topiary, conservatory; then fine detail: roof shape, dormers, solar panels). This is the signature you'll match against the map.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clues: {
+          type: "array",
+          items: { type: "string" },
+          description: "Ordered clues, biggest/most-discriminating filter FIRST, finest detail last.",
+        },
+        schematic_svg: {
+          type: ["string", "null"],
+          description: "Optional: a small top-down SVG sketch of the target (house, row, garden outline, positions of tree/path/pool/dependency, which sides have roads).",
+        },
+      },
+      required: ["clues"],
+    },
+  },
   {
     name: "submit_answer",
     description: "Call once, when you are confident, to report the final result (or found=false).",
@@ -144,7 +167,11 @@ SOURCES (starting points, not limits; set a User-Agent header)
 
 Reason explicitly about why you run each command — your thinking is the saved trace of the investigation.`;
 
-const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer. Work step by step, verify visually against the aerials, and call submit_answer when you are confident.`;
+const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer.
+
+FIRST, before any searching: study the photos and call record_signature — describe what this property looks like FROM ABOVE as an ordered list of aerial-visible clues, biggest discriminator first (is it a bar of attached houses, a detached villa, next to a forest/church/field; then the plot — garden size, pool, shape, trees, roads around it; then the arrangement — a second building in the garden, driveway, terrace, topiary; then fine roof detail). A property can be several parcels fused into one visual unit — describe the whole unit. Then use that signature to search: apply the biggest filter over the map first, narrow, and confirm.
+
+Work step by step, verify visually against the aerials, and call submit_answer when you are confident.`;
 
 // A content fingerprint of the exact prompt (SYSTEM + TASK) a run is governed
 // by. Stamped onto every job at start and saved to prompt.txt, so a past run's
@@ -206,6 +233,18 @@ export function extractReasoning(content: Anthropic.Messages.ContentBlock[]): st
   return clip(parts.join("\n\n").trim(), 20_000);
 }
 
+function coerceSignature(input: Record<string, unknown>): Signature {
+  const raw = Array.isArray(input.clues) ? input.clues : [];
+  const clues = raw
+    .map((c) => (typeof c === "string" ? c.trim() : String(c ?? "").trim()))
+    .filter(Boolean)
+    .slice(0, 30);
+  const svg = typeof input.schematic_svg === "string" && input.schematic_svg.trim()
+    ? clip(input.schematic_svg, 20_000)
+    : undefined;
+  return { clues, schematicSvg: svg };
+}
+
 function coerceAnswer(input: Record<string, unknown>): Answer {
   const conf = String(input.confidence ?? "unknown") as Confidence;
   const num = (v: unknown): number | null =>
@@ -240,6 +279,7 @@ export async function runInvestigation(
   // save the full prompt text next to the trace. This is what lets a later
   // post-mortem know which prompt produced these costs and this reasoning.
   await stampPrompt(job);
+  await markStarted(job); // start the elapsed-time clock
   const messages: Anthropic.Messages.MessageParam[] = [
     { role: "user", content: initialContent(images, listingText) },
   ];
@@ -389,6 +429,17 @@ async function runLoop(
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
           await finishJob(job, { status: "done", answer });
           return;
+        }
+        if (tu.name === "record_signature") {
+          const sig = coerceSignature(tu.input as Record<string, unknown>);
+          await setSignature(job, sig);
+          await addStep(job, {
+            kind: "note",
+            title: "Target signature",
+            detail: sig.clues.map((c, i) => `${i + 1}. ${c}`).join("\n"),
+          });
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
+          continue;
         }
         const out = await dispatchTool(job, tu.name, tu.input as Record<string, unknown>);
         results.push({ type: "tool_result", tool_use_id: tu.id, content: out });

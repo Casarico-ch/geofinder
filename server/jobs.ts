@@ -87,13 +87,26 @@ export function costUsd(t: TokenUsage, model?: string): number {
   return (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
 }
 
+// The target's "visual signature" — what the property should look like from
+// above, as an ordered list of aerial-detectable clues, biggest discriminator
+// first (topology/context → plot → arrangement → fine detail). The finder
+// records this before searching; we keep it on the job so a post-mortem can
+// see what it was hunting for and how well the clue list matched the truth.
+export interface Signature {
+  clues: string[]; // ordered, biggest filter first
+  schematicSvg?: string; // optional top-down sketch of the target
+}
+
 export interface Job {
   id: string;
   status: JobStatus;
   createdAt: string;
+  startedAt?: string; // when the investigation actually began running
+  finishedAt?: string; // when it reached a terminal state (done/error/cancelled)
   updatedAt: string;
   model: ModelId; // which Claude model runs this investigation
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
+  signature?: Signature; // the target's aerial signature (recorded up front)
   input: { municipality?: string; listingText?: string; imageCount: number };
   steps: Step[];
   answer: Answer | null;
@@ -104,6 +117,14 @@ export interface Job {
   cancelRequested?: boolean;
   pauseRequested?: boolean;
   runDir: string;
+}
+
+// Wall-clock time the investigation has taken, in ms: start → finish, or
+// start → now while it is still running (frozen at updatedAt while paused).
+export function elapsedMs(job: Job): number {
+  const start = job.startedAt ?? job.createdAt;
+  const end = job.finishedAt ?? (job.status === "running" ? nowIso() : job.updatedAt);
+  return Math.max(0, new Date(end).getTime() - new Date(start).getTime());
 }
 
 const jobs = new Map<string, Job>();
@@ -184,6 +205,22 @@ export async function setPromptVersion(job: Job, version: string): Promise<void>
   await persist(job);
 }
 
+// Stamp the moment the investigation actually starts running (once; a resume
+// must not reset it, so the elapsed clock reflects total time from the start).
+export async function markStarted(job: Job): Promise<void> {
+  if (job.startedAt) return;
+  job.startedAt = nowIso();
+  job.updatedAt = job.startedAt;
+  await persist(job);
+}
+
+// Store the target's aerial signature (the ordered clue list) — see agent.ts.
+export async function setSignature(job: Job, signature: Signature): Promise<void> {
+  job.signature = signature;
+  job.updatedAt = nowIso();
+  await persist(job);
+}
+
 export async function setPotentialStatus(job: Job, status: PotentialStatus): Promise<void> {
   job.potentialStatus = status;
   job.updatedAt = nowIso();
@@ -204,6 +241,11 @@ export async function finishJob(
   job.status = patch.status;
   if (patch.answer !== undefined) job.answer = patch.answer;
   if (patch.error !== undefined) job.error = patch.error;
+  // Stamp the finish time on terminal states only — a pause is not the end, so
+  // the elapsed clock resumes counting when the run is picked back up.
+  if (patch.status === "done" || patch.status === "error" || patch.status === "cancelled") {
+    job.finishedAt = nowIso();
+  }
   job.updatedAt = nowIso();
   await persist(job);
 }

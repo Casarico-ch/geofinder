@@ -120,6 +120,8 @@ interface Job {
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
   promptVersion?: string | null;
+  signature?: { clues: string[]; schematicSvg?: string } | null;
+  elapsedMs?: number;
 }
 
 interface JobSummary {
@@ -134,6 +136,7 @@ interface JobSummary {
   cost: number;
   model?: ModelId;
   promptVersion?: string | null;
+  elapsedMs?: number;
 }
 
 interface Picture {
@@ -196,6 +199,17 @@ function fmtTokens(n: number): string {
 function fmtCost(n: number): string {
   if (n > 0 && n < 0.01) return "<$0.01";
   return `$${n.toFixed(2)}`;
+}
+
+// Wall-clock duration as m:ss (or h:mm:ss for long runs).
+function fmtDuration(ms?: number): string {
+  if (!ms || ms < 0) return "0:00";
+  const s = Math.round(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
 
 const STEP_ICON: Record<StepKind, typeof Terminal> = {
@@ -737,6 +751,10 @@ export default function AddressFinder() {
                           <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
                             {j.steps} steps
                           </span>
+                          <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {fmtDuration(j.elapsedMs)}
+                          </span>
                           <span className="text-xs text-muted-foreground tabular-nums inline-flex items-center gap-1">
                             <Coins className="h-3 w-3" />
                             {fmtTokens(j.tokens)}
@@ -916,7 +934,7 @@ export default function AddressFinder() {
                     <span className="text-muted-foreground font-normal">
                       {" · "}
                       {job.model ? `${MODEL_LABEL[job.model]} · ` : ""}
-                      {job.stepCount} steps · {fmtTokens(job.tokens.total)} tokens ·{" "}
+                      {job.stepCount} steps · {fmtDuration(job.elapsedMs)} · {fmtTokens(job.tokens.total)} tokens ·{" "}
                       <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
                     </span>
                   </p>
@@ -982,6 +1000,28 @@ export default function AddressFinder() {
               {job.error && (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
                   <p className="text-sm text-destructive">{job.error}</p>
+                </div>
+              )}
+
+              {job.signature && job.signature.clues.length > 0 && (
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                    Target signature — what we're looking for, biggest filter first
+                  </p>
+                  <ol className="space-y-1 text-sm text-foreground list-decimal list-inside">
+                    {job.signature.clues.map((c, i) => (
+                      <li key={i} className={i === 0 ? "font-medium" : ""}>
+                        {c}
+                      </li>
+                    ))}
+                  </ol>
+                  {job.signature.schematicSvg && (
+                    <img
+                      alt="Target schematic"
+                      className="mt-3 max-w-full rounded-lg border border-border bg-white"
+                      src={`data:image/svg+xml;utf8,${encodeURIComponent(job.signature.schematicSvg)}`}
+                    />
+                  )}
                 </div>
               )}
 

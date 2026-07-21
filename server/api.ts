@@ -24,6 +24,7 @@ import {
   addStep,
   costUsd,
   createJob,
+  elapsedMs,
   finishJob,
   getJob,
   listJobs,
@@ -81,6 +82,7 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
     cost: job.tokens ? costUsd(job.tokens, job.model) : 0,
     model: job.model,
     promptVersion: job.promptVersion ?? null,
+    elapsedMs: elapsedMs(job),
   };
 }
 
@@ -303,7 +305,7 @@ export function registerApiRoutes(app: Express) {
       return;
     }
     const { runDir: _runDir, steps, ...rest } = job;
-    res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens, job.model) });
+    res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens, job.model), elapsedMs: elapsedMs(job) });
   });
 
   // The exact prompt text a run was governed by (saved at run start). This is
