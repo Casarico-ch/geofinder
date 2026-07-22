@@ -19,6 +19,7 @@ import {
 } from "./sandbox";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
+import { shortlistBuildings } from "./shortlist";
 import {
   type Answer,
   type Confidence,
@@ -99,6 +100,22 @@ const TOOLS = [
         },
       },
       required: ["clues"],
+    },
+  },
+  {
+    name: "shortlist_buildings",
+    description:
+      "Enumerate EVERY building in a Geneva commune from the cadastre and get back a RECALL-FIRST shortlist that still contains the target. You pass your best estimates and this filters SAFELY so the right house can't be dropped: floors as a ±1 range (never exact — the register counts a habitable attic as a level), footprint a wide band, single-dwelling residential, and attached-vs-detached decided by shared-wall geometry. It deliberately has NO era filter — the register's construction date routinely disagrees with how old a house looks, and filtering on age drops the truth. Returns candidates with EGID + lat/lon (feed straight into render_roofs), footprint, floors, attached. Use this instead of hand-writing the cadastre filter. Do NOT then re-filter the result by era or exact floors. Geneva communes only; elsewhere enumerate yourself with the same rules.",
+    input_schema: {
+      type: "object",
+      properties: {
+        commune: { type: "string" },
+        floors: { type: "number", description: "your estimate of above-ground floors (matched ±1)" },
+        footprintM2: { type: "number", description: "your estimate of the MAIN building's ground footprint in m² (NOT the listing's living area). Matched as a wide band." },
+        attached: { type: "boolean", description: "true if it's an attached/row house, false if free-standing; omit if unsure" },
+        maxResults: { type: "number" },
+      },
+      required: ["commune"],
     },
   },
   {
@@ -184,7 +201,7 @@ Never web-search, and never look up the listing, the agency, or the property onl
 METHOD — enumerate, don't scan
 Treat the commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
 1. Read the building's HARD structural attributes off the photos: number of above-ground floors (a two-storey block + single-storey wing reads as ~3 levels in the register), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
-2. Pull EVERY building in the commune from the cadastre and filter down: keep residential buildings whose FLOORS match and whose FOOTPRINT is within ~±20% of your estimate; if the property is attached, keep only footprints that share an edge with a neighbour (a real row house). That yields a short candidate list that CONTAINS the answer. (Geneva: CAD_BATIMENT_HORSOL, where=COMMUNE='X', fields NIVEAUX_HORSOL, SURFACE, EGID, returnGeometry=true for the shared-edge test. Elsewhere: geodienste ms:LCSF footprints.)
+2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, attached). It enumerates every building in the commune and filters SAFELY so the target cannot be dropped (floors matched ±1, footprint wide, single-dwelling, and NO era filter). Two things to get right when you pass estimates: (a) footprintM2 is the MAIN building's GROUND footprint, NOT the listing's living area — a "262 m² house" over ~3 levels is only ~90–130 m² on the ground; (b) estimate floors generously — a two-storey block with a habitable attic is registered as 3. Then treat the returned list as your candidate set and do NOT re-filter it by era or exact floors — that is exactly how the right house gets discarded. (Outside Geneva, enumerate the cadastre yourself — geodienste ms:LCSF — with the same rules: floors ±1, footprint wide, never era.)
 3. Match the BUILDING FOOTPRINT, never the plot/parcel land-area. A property is usually several parcels summed (house parcel + garden parcels), so the listing's land area (e.g. 1481 m²) matches NO single parcel — but the house is ONE building footprint (~130 m²). Land-area matching is a trap; ignore it.
 4. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
 
@@ -611,6 +628,30 @@ export async function dispatchTool(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await addStep(job, { kind: "error", title: `read ${p} failed`, detail: message });
+      return `error: ${message}`;
+    }
+  }
+
+  if (name === "shortlist_buildings") {
+    const commune = String(input.commune ?? "").trim();
+    if (!commune) return "error: pass { commune, floors?, footprintM2?, attached? }";
+    try {
+      const r = await shortlistBuildings({
+        commune,
+        floors: typeof input.floors === "number" ? input.floors : undefined,
+        footprintM2: typeof input.footprintM2 === "number" ? input.footprintM2 : undefined,
+        attached: typeof input.attached === "boolean" ? input.attached : undefined,
+        maxResults: typeof input.maxResults === "number" ? input.maxResults : undefined,
+      });
+      await addStep(job, {
+        kind: "bash",
+        title: `shortlist_buildings(${commune})`,
+        detail: `${r.enumerated} enumerated → ${r.residential} residential → ${r.survivors} survivors; returned ${r.candidates.length}`,
+      });
+      return clip(`${r.note}\n\n${JSON.stringify(r.candidates)}`, MAX_TOOL_TEXT);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await addStep(job, { kind: "error", title: `shortlist_buildings failed`, detail: message });
       return `error: ${message}`;
     }
   }
