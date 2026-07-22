@@ -82,7 +82,7 @@ const TOOLS = [
   {
     name: "record_signature",
     description:
-      "Call this ONCE, first, before searching: from the listing photos, describe what this property looks like FROM ABOVE, as an ordered list of aerial-visible clues — biggest discriminator first (topology/context, e.g. 'bar of attached houses' / 'detached villa next to a forest' / 'next to a church'; then the plot: garden size, pool, shape, trees, roads on which sides; then the arrangement: a second building in the garden, driveway, terrace, topiary, conservatory; then fine detail: roof shape, dormers, solar panels). This is the signature you'll match against the map.",
+      "Call this ONCE, first, before searching: from the listing photos, describe what this property looks like FROM ABOVE, as an ordered list of aerial-visible clues, biggest discriminator first. LEAD with the hard, cadastre-matchable STRUCTURE — number of floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda/conservatory, pool — because those are what filter the building register. Then topology/context ('bar of attached houses' / 'detached villa next to a forest' / 'next to a church'), then the plot (garden size, shape, roads on which sides), then fine roof detail (shape, dormers, solar). Rank vegetation (hedges, topiary, trees) LAST — it barely shows from above. This signature drives the enumerate-and-filter search.",
     input_schema: {
       type: "object",
       properties: {
@@ -155,8 +155,15 @@ ENVIRONMENT
 GROUNDING ONLY
 Never web-search, and never look up the listing, the agency, or the property online. Deduce everything from the given photos + text, grounded only against neutral geodata (cadastre, aerials, building register, OSM). Nominatim is fine solely to turn a place NAME into coordinates.
 
-ANSWER HONESTLY
-Submit your best-supported answer at a confidence that reflects the evidence (building / block / neighborhood…), name what's still uncertain and any runner-up candidates, and never fabricate a precise number or address to seem more certain than you are.
+METHOD — enumerate, don't scan
+Treat the commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
+1. Read the building's HARD structural attributes off the photos: number of above-ground floors (a two-storey block + single-storey wing reads as ~3 levels in the register), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
+2. Pull EVERY building in the commune from the cadastre and filter down: keep residential buildings whose FLOORS match and whose FOOTPRINT is within ~±20% of your estimate; if the property is attached, keep only footprints that share an edge with a neighbour (a real row house). That yields a short candidate list that CONTAINS the answer. (Geneva: CAD_BATIMENT_HORSOL, where=COMMUNE='X', fields NIVEAUX_HORSOL, SURFACE, EGID, returnGeometry=true for the shared-edge test. Elsewhere: geodienste ms:LCSF footprints.)
+3. Match the BUILDING FOOTPRINT, never the plot/parcel land-area. A property is usually several parcels summed (house parcel + garden parcels), so the listing's land area (e.g. 1481 m²) matches NO single parcel — but the house is ONE building footprint (~130 m²). Land-area matching is a trap; ignore it.
+4. Confirm survivors on the aerial by ARRANGEMENT: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. Rely on BUILT STRUCTURE — vegetation (hedges, topiary, trees) does not reliably read from above.
+
+ANSWER HONESTLY — a shortlist beats a wrong pin
+Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
 
 SOURCES (starting points, not limits; set a User-Agent header)
 - Geneva cadastre (SITG, ArcGIS REST, f=json&outSR=4326). Parcels: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_PARCELLE_MENSU/MapServer/0/query — NO_PARCELLE, SURFACE, COMMUNE; filter by where=COMMUNE='X' AND SURFACE BETWEEN a AND b, or geometry=lon,lat&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects; returnGeometry=true → geometry.rings. Buildings: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_BATIMENT_HORSOL/MapServer/0/query — EPOQUE_CONSTRUCTION, NIVEAUX_HORSOL, SURFACE (footprint), EGID.
@@ -169,9 +176,9 @@ Reason explicitly about why you run each command — your thinking is the saved 
 
 const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer.
 
-FIRST, before any searching: study the photos and call record_signature — describe what this property looks like FROM ABOVE as an ordered list of aerial-visible clues, biggest discriminator first (is it a bar of attached houses, a detached villa, next to a forest/church/field; then the plot — garden size, pool, shape, trees, roads around it; then the arrangement — a second building in the garden, driveway, terrace, topiary; then fine roof detail). A property can be several parcels fused into one visual unit — describe the whole unit. Then use that signature to search: apply the biggest filter over the map first, narrow, and confirm.
+FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
 
-Work step by step, verify visually against the aerials, and call submit_answer when you are confident.`;
+Then follow METHOD: enumerate every building in the commune, filter by floors + footprint (never plot land-area) + attached-or-not down to a short candidate list that contains the answer, and confirm the survivors on the aerial by their built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when the aerial confirms it and it clearly beats the runner-up — otherwise submit your ranked shortlist honestly.`;
 
 // A content fingerprint of the exact prompt (SYSTEM + TASK) a run is governed
 // by. Stamped onto every job at start and saved to prompt.txt, so a past run's
