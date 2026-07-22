@@ -17,6 +17,7 @@ import {
   writeSandboxFile,
   readSandboxFile,
 } from "./sandbox";
+import { seedGeoHelper } from "./geo-helper";
 import {
   type Answer,
   type Confidence,
@@ -151,6 +152,7 @@ PRIMITIVES
 ENVIRONMENT
 - Each bash call is a fresh process: no cd, use paths relative to the working directory. The photos are already there as photo1.jpg, photo2.jpg, … (also shown inline). Save what you fetch there and read images back to look at them.
 - No Python/pip, no image libraries. To zoom, re-fetch a WMS aerial with a tighter bbox centred on the point — never crop or compute GPS→pixels.
+- A tested helper geo.mjs is already in your working directory — import it instead of hand-rolling the fiddly geometry (that is where the mistakes creep in, and it is why hand-computed distances are unreliable): wmsBbox4326(lat,lon,spanM) gives the correct lat,lon-order BBOX for a swisstopo WMS aerial; also haversine, bearing, wgs84ToLv95, polygonAreaMetres, polygonCentroid, pointInPolygon, and minEdgeDistanceMetres(ringA,ringB) — ≈0 means two footprints share a wall, i.e. an attached row house. Rings are [lon,lat] arrays. e.g. node -e "import('./geo.mjs').then(g=>console.log(g.wmsBbox4326(46.16,6.04,140)))".
 
 GROUNDING ONLY
 Never web-search, and never look up the listing, the agency, or the property online. Deduce everything from the given photos + text, grounded only against neutral geodata (cadastre, aerials, building register, OSM). Nominatim is fine solely to turn a place NAME into coordinates.
@@ -286,6 +288,7 @@ export async function runInvestigation(
   // save the full prompt text next to the trace. This is what lets a later
   // post-mortem know which prompt produced these costs and this reasoning.
   await stampPrompt(job);
+  await seedGeoHelper(job.runDir); // drop the tested geo.mjs into the working dir
   await markStarted(job); // start the elapsed-time clock
   const messages: Anthropic.Messages.MessageParam[] = [
     { role: "user", content: initialContent(images, listingText) },
