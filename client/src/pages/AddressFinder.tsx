@@ -918,9 +918,11 @@ export default function AddressFinder() {
 
           {isDetail && job && (
             <>
-              <div className="sticky top-[68px] z-10 rounded-xl border border-border bg-card/95 backdrop-blur p-4 flex items-center gap-3 shadow-sm">
-                <StatusDot status={job.status} />
-                <div className="flex-1 min-w-0">
+              <div className="sticky top-[68px] z-10 rounded-xl border border-border bg-card/95 backdrop-blur p-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <StatusDot status={job.status} />
+                    <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
                     {running
                       ? "Investigating…"
@@ -957,8 +959,10 @@ export default function AddressFinder() {
                       </>
                     )}
                   </p>
-                </div>
+                    </div>
+                  </div>
 
+                  <div className="flex items-center gap-2 flex-wrap sm:justify-end shrink-0">
                 {/* Contextual CTA: pause while running, resume while paused, and
                     the construction-potential check once it's done. */}
                 {running && (
@@ -995,6 +999,8 @@ export default function AddressFinder() {
                     <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Run again
                   </Button>
                 )}
+                  </div>
+                </div>
               </div>
 
               {job.error && (
