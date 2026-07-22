@@ -18,6 +18,7 @@ import {
   readSandboxFile,
 } from "./sandbox";
 import { seedGeoHelper } from "./geo-helper";
+import { renderCandidateRoofs, readRoofPng } from "./roofs";
 import {
   type Answer,
   type Confidence,
@@ -101,6 +102,29 @@ const TOOLS = [
     },
   },
   {
+    name: "render_roofs",
+    description:
+      "Given your shortlist of candidate buildings (each with lat/lon), render each one's REAL roof from swissBUILDINGS3D — swisstopo's national 3D building models — as a clean two-angle oblique 3D view, and get the images back to LOOK at. Use this in the confirm step to separate near-identical row houses: compare each candidate's roof SHAPE against the roof in the listing photos — hip vs gable, ridge direction, the step down to a lower wing. Pure built structure; vegetation is irrelevant here. Pass 2–12 candidates. Covers all of Switzerland.",
+    input_schema: {
+      type: "object",
+      properties: {
+        candidates: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "a short id you'll recognise, e.g. the parcel no. or address" },
+              lat: { type: "number" },
+              lon: { type: "number" },
+            },
+            required: ["label", "lat", "lon"],
+          },
+        },
+      },
+      required: ["candidates"],
+    },
+  },
+  {
     name: "submit_answer",
     description: "Call once, when you are confident, to report the final result (or found=false).",
     input_schema: {
@@ -162,7 +186,7 @@ Treat the commune as a FINITE, listable set of buildings, not a map to eyeball. 
 1. Read the building's HARD structural attributes off the photos: number of above-ground floors (a two-storey block + single-storey wing reads as ~3 levels in the register), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
 2. Pull EVERY building in the commune from the cadastre and filter down: keep residential buildings whose FLOORS match and whose FOOTPRINT is within ~±20% of your estimate; if the property is attached, keep only footprints that share an edge with a neighbour (a real row house). That yields a short candidate list that CONTAINS the answer. (Geneva: CAD_BATIMENT_HORSOL, where=COMMUNE='X', fields NIVEAUX_HORSOL, SURFACE, EGID, returnGeometry=true for the shared-edge test. Elsewhere: geodienste ms:LCSF footprints.)
 3. Match the BUILDING FOOTPRINT, never the plot/parcel land-area. A property is usually several parcels summed (house parcel + garden parcels), so the listing's land area (e.g. 1481 m²) matches NO single parcel — but the house is ONE building footprint (~130 m²). Land-area matching is a trap; ignore it.
-4. Confirm survivors on the aerial by ARRANGEMENT: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. Rely on BUILT STRUCTURE — vegetation (hedges, topiary, trees) does not reliably read from above.
+4. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
 
 ANSWER HONESTLY — a shortlist beats a wrong pin
 Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
@@ -589,6 +613,43 @@ export async function dispatchTool(
       await addStep(job, { kind: "error", title: `read ${p} failed`, detail: message });
       return `error: ${message}`;
     }
+  }
+
+  if (name === "render_roofs") {
+    const raw = Array.isArray(input.candidates) ? input.candidates : [];
+    const list = raw
+      .map((c, i) => {
+        const o = (c ?? {}) as Record<string, unknown>;
+        return { label: String(o.label ?? `cand${i + 1}`), lat: Number(o.lat), lon: Number(o.lon) };
+      })
+      .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon))
+      .slice(0, 12);
+    if (list.length === 0) return "error: pass candidates:[{label,lat,lon}, …]";
+    const rendered = await renderCandidateRoofs(job.runDir, list);
+    const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [
+      {
+        type: "text",
+        text: "Real roofs from swissBUILDINGS3D (each: two oblique angles). Match roof SHAPE to the listing photos — hip vs gable, ridge direction, the low-wing step.",
+      },
+    ];
+    for (const r of rendered) {
+      if (r.relPath) {
+        await addStep(job, {
+          kind: "read",
+          title: `rendered roof: ${r.label}`,
+          detail: `${r.faces} roof faces`,
+          image: `/runs/${job.id}/${r.relPath}`,
+        });
+        blocks.push({ type: "text", text: `${r.label} (${r.faces} faces):` });
+        blocks.push({
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data: await readRoofPng(job.runDir, r.relPath) },
+        });
+      } else {
+        blocks.push({ type: "text", text: `${r.label}: ${r.note}` });
+      }
+    }
+    return blocks;
   }
 
   return `Unknown tool: ${name}`;
