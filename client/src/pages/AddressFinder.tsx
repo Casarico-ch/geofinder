@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   Plus,
+  Layers,
   RefreshCw,
   Search,
   Terminal,
@@ -78,10 +79,28 @@ interface TokenUsage {
   total: number;
 }
 
-type ModelId = "claude-opus-4-8" | "claude-fable-5";
+const MODEL_IDS = [
+  "claude-opus-4-8",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-fable-5",
+  "claude-fable-5-1",
+] as const;
+type ModelId = (typeof MODEL_IDS)[number];
 const MODEL_LABEL: Record<ModelId, string> = {
   "claude-opus-4-8": "Opus 4.8",
+  "claude-opus-5-5": "Opus 5.5",
+  "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
+  "claude-fable-5-1": "Fable 5.1",
+};
+// Price relative to the Opus 4.8 default ($5 in / $25 out per 1M tokens).
+const MODEL_COST_HINT: Record<ModelId, string> = {
+  "claude-opus-4-8": "default",
+  "claude-opus-5-5": "0.8×",
+  "claude-sonnet-5-5": "0.4×",
+  "claude-fable-5": "2×",
+  "claude-fable-5-1": "2×",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -364,7 +383,14 @@ export default function AddressFinder() {
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [municipality, setMunicipality] = useState("");
   const [description, setDescription] = useState("");
-  const [model, setModel] = useState<ModelId>("claude-opus-4-8");
+  // One investigation is started per selected model, all from the same inputs,
+  // so several models can be compared on the first try.
+  const [models, setModels] = useState<ModelId[]>(["claude-opus-4-8"]);
+  const toggleModel = useCallback((m: ModelId) => {
+    setModels((cur) =>
+      cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
+    );
+  }, []);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -556,27 +582,34 @@ export default function AddressFinder() {
     // still read them once we've navigated away.
     const files = pictures.map((p) => p.file);
     try {
-      // 1) Create the job on a tiny metadata request — returns in milliseconds.
-      const res = await fetch("/api/geo/investigate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageCount: files.length,
-          listingText: description || undefined,
-          municipality: municipality || undefined,
-          model,
+      // 1) Create one job per selected model on tiny metadata requests — each
+      //    returns in milliseconds.
+      const jobIds = await Promise.all(
+        models.map(async (model) => {
+          const res = await fetch("/api/geo/investigate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageCount: files.length,
+              listingText: description || undefined,
+              municipality: municipality || undefined,
+              model,
+            }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(body?.error ?? "Could not start the investigation");
+          return body.jobId as string;
         }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? "Could not start the investigation");
-      const jobId = body.jobId as string;
+      );
 
-      // 2) Navigate immediately — the user is free to move on right now.
+      // 2) Navigate immediately — the user is free to move on right now. With
+      //    several models, open the first; the rest are listed in History.
       clearForm();
-      navigate(`/i/${jobId}`);
+      navigate(`/i/${jobIds[0]}`);
+      if (jobIds.length > 1) toast.success(`Started ${jobIds.length} runs — compare them in History`);
 
-      // 3) Encode + upload the photos in the background. The investigation
-      //    starts the moment they land; the user isn't waiting on any of this.
+      // 3) Encode the photos once and upload them to every job in the
+      //    background. Each investigation starts the moment its photos land.
       void (async () => {
         try {
           const images = await Promise.all(
@@ -585,12 +618,19 @@ export default function AddressFinder() {
               mediaType: "image/jpeg" as const,
             })),
           );
-          const up = await fetch(`/api/geo/investigate/${jobId}/photos`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ images }),
-          });
-          if (!up.ok) throw new Error();
+          const payload = JSON.stringify({ images });
+          const uploads = await Promise.allSettled(
+            jobIds.map((id) =>
+              fetch(`/api/geo/investigate/${id}/photos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+              }).then((up) => {
+                if (!up.ok) throw new Error();
+              }),
+            ),
+          );
+          if (uploads.some((u) => u.status === "rejected")) throw new Error();
         } catch {
           toast.error("Could not upload the photos — please retry this investigation.");
         }
@@ -600,7 +640,7 @@ export default function AddressFinder() {
     } finally {
       setSubmitting(false);
     }
-  }, [pictures, municipality, description, model, clearForm, navigate]);
+  }, [pictures, municipality, description, models, clearForm, navigate]);
 
   const copyText = useCallback((text: string) => {
     navigator.clipboard
@@ -636,6 +676,26 @@ export default function AddressFinder() {
     },
     [navigate],
   );
+
+  // Compare models: run the same photos + listing text + municipality on every
+  // OTHER model, as fresh runs. The results show up side by side in History.
+  const compareModels = useCallback(async (id: string, current?: ModelId) => {
+    const others = MODEL_IDS.filter((m) => m !== current);
+    const results = await Promise.allSettled(
+      others.map(async (m) => {
+        const res = await fetch(`/api/geo/investigate/${id}/relaunch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: m }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error ?? `Could not start ${MODEL_LABEL[m]}`);
+      }),
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed === 0) toast.success(`Started ${others.length} runs — compare them in History`);
+    else toast.error(`${failed} of ${others.length} comparison runs could not start`);
+  }, []);
 
   // Resume a paused investigation from where it left off.
   const resume = useCallback(async () => {
@@ -748,6 +808,9 @@ export default function AddressFinder() {
                         <Link href={`/i/${j.id}`} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
                           <StatusDot status={j.status} />
                           <span className="text-sm text-foreground truncate flex-1">{j.title}</span>
+                          {j.model && (
+                            <span className="text-xs text-muted-foreground shrink-0">{MODEL_LABEL[j.model]}</span>
+                          )}
                           <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
                             {j.steps} steps
                           </span>
@@ -857,21 +920,22 @@ export default function AddressFinder() {
                   />
                 </Field>
 
-                <Field label="Model">
-                  <div className="flex gap-2">
-                    {(["claude-opus-4-8", "claude-fable-5"] as ModelId[]).map((m) => (
+                <Field label="Models — pick one or more to compare">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {MODEL_IDS.map((m) => (
                       <button
                         key={m}
                         type="button"
-                        onClick={() => setModel(m)}
-                        className={`flex-1 h-9 rounded-md border text-sm font-medium transition-colors ${
-                          model === m
+                        onClick={() => toggleModel(m)}
+                        aria-pressed={models.includes(m)}
+                        className={`h-9 px-2 rounded-md border text-sm font-medium transition-colors truncate ${
+                          models.includes(m)
                             ? "border-primary bg-primary/10 text-foreground"
                             : "border-input bg-card text-muted-foreground hover:border-primary/40"
                         }`}
                       >
                         {MODEL_LABEL[m]}
-                        {m === "claude-opus-4-8" ? " · default" : " · 2× cost"}
+                        {` · ${MODEL_COST_HINT[m]}`}
                       </button>
                     ))}
                   </div>
@@ -883,6 +947,8 @@ export default function AddressFinder() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Starting…
                     </>
+                  ) : models.length > 1 ? (
+                    `Find address · ${models.length} models`
                   ) : (
                     "Find address"
                   )}
@@ -997,6 +1063,17 @@ export default function AddressFinder() {
                 {!running && jobId && (
                   <Button variant="ghost" size="sm" onClick={() => void relaunch(jobId)} className="shrink-0">
                     <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Run again
+                  </Button>
+                )}
+                {jobId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void compareModels(jobId, job.model)}
+                    className="shrink-0"
+                    title="Run the same listing on every other model"
+                  >
+                    <Layers className="mr-1.5 h-3.5 w-3.5" /> Compare models
                   </Button>
                 )}
                   </div>

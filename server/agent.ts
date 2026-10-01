@@ -425,6 +425,9 @@ async function runLoop(
         // adaptive thinking is valid on both models (Fable rejects only
         // disabled/budget_tokens, which we never send).
         thinking: { type: "adaptive", display: "summarized" },
+        // Pin effort so every model runs at the same depth — Opus 5.5 would
+        // otherwise default to "medium" while the others default to "high".
+        output_config: { effort: "high" },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
