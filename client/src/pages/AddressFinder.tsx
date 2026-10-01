@@ -97,10 +97,10 @@ const MODEL_LABEL: Record<ModelId, string> = {
 // Price relative to the Opus 4.8 default ($5 in / $25 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
   "claude-opus-4-8": "default",
-  "claude-opus-5-5": "0.8× cost",
-  "claude-sonnet-5-5": "0.4× cost",
-  "claude-fable-5": "2× cost",
-  "claude-fable-5-1": "2× cost",
+  "claude-opus-5-5": "0.8×",
+  "claude-sonnet-5-5": "0.4×",
+  "claude-fable-5": "2×",
+  "claude-fable-5-1": "2×",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -383,7 +383,14 @@ export default function AddressFinder() {
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [municipality, setMunicipality] = useState("");
   const [description, setDescription] = useState("");
-  const [model, setModel] = useState<ModelId>("claude-opus-4-8");
+  // One investigation is started per selected model, all from the same inputs,
+  // so several models can be compared on the first try.
+  const [models, setModels] = useState<ModelId[]>(["claude-opus-4-8"]);
+  const toggleModel = useCallback((m: ModelId) => {
+    setModels((cur) =>
+      cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
+    );
+  }, []);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -575,27 +582,34 @@ export default function AddressFinder() {
     // still read them once we've navigated away.
     const files = pictures.map((p) => p.file);
     try {
-      // 1) Create the job on a tiny metadata request — returns in milliseconds.
-      const res = await fetch("/api/geo/investigate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageCount: files.length,
-          listingText: description || undefined,
-          municipality: municipality || undefined,
-          model,
+      // 1) Create one job per selected model on tiny metadata requests — each
+      //    returns in milliseconds.
+      const jobIds = await Promise.all(
+        models.map(async (model) => {
+          const res = await fetch("/api/geo/investigate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageCount: files.length,
+              listingText: description || undefined,
+              municipality: municipality || undefined,
+              model,
+            }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok) throw new Error(body?.error ?? "Could not start the investigation");
+          return body.jobId as string;
         }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? "Could not start the investigation");
-      const jobId = body.jobId as string;
+      );
 
-      // 2) Navigate immediately — the user is free to move on right now.
+      // 2) Navigate immediately — the user is free to move on right now. With
+      //    several models, open the first; the rest are listed in History.
       clearForm();
-      navigate(`/i/${jobId}`);
+      navigate(`/i/${jobIds[0]}`);
+      if (jobIds.length > 1) toast.success(`Started ${jobIds.length} runs — compare them in History`);
 
-      // 3) Encode + upload the photos in the background. The investigation
-      //    starts the moment they land; the user isn't waiting on any of this.
+      // 3) Encode the photos once and upload them to every job in the
+      //    background. Each investigation starts the moment its photos land.
       void (async () => {
         try {
           const images = await Promise.all(
@@ -604,12 +618,19 @@ export default function AddressFinder() {
               mediaType: "image/jpeg" as const,
             })),
           );
-          const up = await fetch(`/api/geo/investigate/${jobId}/photos`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ images }),
-          });
-          if (!up.ok) throw new Error();
+          const payload = JSON.stringify({ images });
+          const uploads = await Promise.allSettled(
+            jobIds.map((id) =>
+              fetch(`/api/geo/investigate/${id}/photos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+              }).then((up) => {
+                if (!up.ok) throw new Error();
+              }),
+            ),
+          );
+          if (uploads.some((u) => u.status === "rejected")) throw new Error();
         } catch {
           toast.error("Could not upload the photos — please retry this investigation.");
         }
@@ -619,7 +640,7 @@ export default function AddressFinder() {
     } finally {
       setSubmitting(false);
     }
-  }, [pictures, municipality, description, model, clearForm, navigate]);
+  }, [pictures, municipality, description, models, clearForm, navigate]);
 
   const copyText = useCallback((text: string) => {
     navigator.clipboard
@@ -899,15 +920,16 @@ export default function AddressFinder() {
                   />
                 </Field>
 
-                <Field label="Model">
+                <Field label="Models — pick one or more to compare">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {MODEL_IDS.map((m) => (
                       <button
                         key={m}
                         type="button"
-                        onClick={() => setModel(m)}
+                        onClick={() => toggleModel(m)}
+                        aria-pressed={models.includes(m)}
                         className={`h-9 px-2 rounded-md border text-sm font-medium transition-colors truncate ${
-                          model === m
+                          models.includes(m)
                             ? "border-primary bg-primary/10 text-foreground"
                             : "border-input bg-card text-muted-foreground hover:border-primary/40"
                         }`}
@@ -925,6 +947,8 @@ export default function AddressFinder() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Starting…
                     </>
+                  ) : models.length > 1 ? (
+                    `Find address · ${models.length} models`
                   ) : (
                     "Find address"
                   )}
@@ -1041,7 +1065,7 @@ export default function AddressFinder() {
                     <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Run again
                   </Button>
                 )}
-                {!running && jobId && (
+                {jobId && (
                   <Button
                     variant="ghost"
                     size="sm"
