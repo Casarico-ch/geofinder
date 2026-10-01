@@ -51,6 +51,8 @@ const createSchema = z.object({
 
 const photosSchema = z.object({ images: imagesSchema });
 
+const relaunchSchema = z.object({ model: z.enum(MODELS).optional() });
+
 // If the photos never arrive (e.g. the tab was closed mid-upload), don't leave
 // the job "running" forever — fail it after this long.
 const PHOTO_UPLOAD_TIMEOUT_MS = 5 * 60_000;
@@ -223,10 +225,17 @@ export function registerApiRoutes(app: Express) {
   // Relaunch: start a FRESH investigation from a past one's original inputs
   // (municipality, listing text, model, photos). It carries over NONE of the
   // prior run's findings or state — just the instructions, so it's a clean redo.
+  // An optional { model } runs the same instructions on a different model, which
+  // is how runs are compared across models.
   app.post("/api/geo/investigate/:id/relaunch", async (req: Request, res: Response) => {
     const src = getJob(req.params.id);
     if (!src) {
       res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    const override = relaunchSchema.safeParse(req.body ?? {});
+    if (!override.success) {
+      res.status(400).json({ error: "Unknown model" });
       return;
     }
     try {
@@ -241,7 +250,7 @@ export function registerApiRoutes(app: Express) {
           listingText: src.input.listingText,
           imageCount: images.length,
         },
-        src.model,
+        override.data.model ?? src.model,
       );
       void (async () => {
         await saveListingPhotos(job.runDir, images);

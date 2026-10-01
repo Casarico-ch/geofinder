@@ -176,6 +176,9 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
         model: job.model ?? MODEL,
         max_tokens: 16_000,
         thinking: { type: "adaptive", display: "summarized" },
+        // Pin effort so every model runs at the same depth — Opus 5.5 would
+        // otherwise default to "medium" while the others default to "high".
+        output_config: { effort: "high" },
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
         tools: TOOLS,
         cache_control: { type: "ephemeral" },

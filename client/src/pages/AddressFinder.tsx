@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   Plus,
+  Layers,
   RefreshCw,
   Search,
   Terminal,
@@ -78,10 +79,28 @@ interface TokenUsage {
   total: number;
 }
 
-type ModelId = "claude-opus-4-8" | "claude-fable-5";
+const MODEL_IDS = [
+  "claude-opus-4-8",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-fable-5",
+  "claude-fable-5-1",
+] as const;
+type ModelId = (typeof MODEL_IDS)[number];
 const MODEL_LABEL: Record<ModelId, string> = {
   "claude-opus-4-8": "Opus 4.8",
+  "claude-opus-5-5": "Opus 5.5",
+  "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
+  "claude-fable-5-1": "Fable 5.1",
+};
+// Price relative to the Opus 4.8 default ($5 in / $25 out per 1M tokens).
+const MODEL_COST_HINT: Record<ModelId, string> = {
+  "claude-opus-4-8": "default",
+  "claude-opus-5-5": "0.8× cost",
+  "claude-sonnet-5-5": "0.4× cost",
+  "claude-fable-5": "2× cost",
+  "claude-fable-5-1": "2× cost",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -637,6 +656,26 @@ export default function AddressFinder() {
     [navigate],
   );
 
+  // Compare models: run the same photos + listing text + municipality on every
+  // OTHER model, as fresh runs. The results show up side by side in History.
+  const compareModels = useCallback(async (id: string, current?: ModelId) => {
+    const others = MODEL_IDS.filter((m) => m !== current);
+    const results = await Promise.allSettled(
+      others.map(async (m) => {
+        const res = await fetch(`/api/geo/investigate/${id}/relaunch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: m }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error ?? `Could not start ${MODEL_LABEL[m]}`);
+      }),
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed === 0) toast.success(`Started ${others.length} runs — compare them in History`);
+    else toast.error(`${failed} of ${others.length} comparison runs could not start`);
+  }, []);
+
   // Resume a paused investigation from where it left off.
   const resume = useCallback(async () => {
     if (!jobId) return;
@@ -748,6 +787,9 @@ export default function AddressFinder() {
                         <Link href={`/i/${j.id}`} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
                           <StatusDot status={j.status} />
                           <span className="text-sm text-foreground truncate flex-1">{j.title}</span>
+                          {j.model && (
+                            <span className="text-xs text-muted-foreground shrink-0">{MODEL_LABEL[j.model]}</span>
+                          )}
                           <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
                             {j.steps} steps
                           </span>
@@ -858,20 +900,20 @@ export default function AddressFinder() {
                 </Field>
 
                 <Field label="Model">
-                  <div className="flex gap-2">
-                    {(["claude-opus-4-8", "claude-fable-5"] as ModelId[]).map((m) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {MODEL_IDS.map((m) => (
                       <button
                         key={m}
                         type="button"
                         onClick={() => setModel(m)}
-                        className={`flex-1 h-9 rounded-md border text-sm font-medium transition-colors ${
+                        className={`h-9 px-2 rounded-md border text-sm font-medium transition-colors truncate ${
                           model === m
                             ? "border-primary bg-primary/10 text-foreground"
                             : "border-input bg-card text-muted-foreground hover:border-primary/40"
                         }`}
                       >
                         {MODEL_LABEL[m]}
-                        {m === "claude-opus-4-8" ? " · default" : " · 2× cost"}
+                        {` · ${MODEL_COST_HINT[m]}`}
                       </button>
                     ))}
                   </div>
@@ -997,6 +1039,17 @@ export default function AddressFinder() {
                 {!running && jobId && (
                   <Button variant="ghost" size="sm" onClick={() => void relaunch(jobId)} className="shrink-0">
                     <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Run again
+                  </Button>
+                )}
+                {!running && jobId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void compareModels(jobId, job.model)}
+                    className="shrink-0"
+                    title="Run the same listing on every other model"
+                  >
+                    <Layers className="mr-1.5 h-3.5 w-3.5" /> Compare models
                   </Button>
                 )}
                   </div>

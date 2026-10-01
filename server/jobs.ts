@@ -71,14 +71,23 @@ export interface TokenUsage {
 }
 
 // Per-model pricing, USD per 1M tokens: [fresh input, cache read (~0.1x),
-// cache write (1.25x, 5-min TTL), output]. Fable 5 is ~2x Opus 4.8.
-export const MODELS = ["claude-opus-4-8", "claude-fable-5"] as const;
+// cache write (1.25x, 5-min TTL), output]. Fable is ~2x Opus 4.8.
+export const MODELS = [
+  "claude-opus-4-8",
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-fable-5",
+  "claude-fable-5-1",
+] as const;
 export type ModelId = (typeof MODELS)[number];
 export const DEFAULT_MODEL: ModelId = "claude-opus-4-8";
 
 const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: number; out: number }> = {
   "claude-opus-4-8": { in: 5, cacheRead: 0.5, cacheWrite: 6.25, out: 25 },
+  "claude-opus-5-5": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
+  "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
+  "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {
