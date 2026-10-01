@@ -18,6 +18,8 @@ services:
       # Set this in the dashboard (never commit the key).
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: POPETY_API_KEY
+        sync: false
     disk:
       name: geofinder-data
       mountPath: /var/data

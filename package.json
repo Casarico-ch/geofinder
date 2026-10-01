@@ -13,6 +13,7 @@
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "try:listing": "tsx scripts/try-listing.ts",
+    "try:popety": "tsx --env-file-if-exists=.env scripts/try-popety.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write ."
   },
