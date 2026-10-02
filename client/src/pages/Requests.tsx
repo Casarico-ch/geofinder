@@ -322,7 +322,7 @@ function RequestRow({ r }: { r: PlatformRequest }) {
       >
         <StatusIcon status={r.status} />
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground w-16 shrink-0">
-          {r.kind === "address" ? "Address" : `${r.input.imageCount ?? 0} photos`}
+          {r.kind === "address" ? "Property" : "Address"}
         </span>
         <span className="text-sm text-foreground truncate flex-1 min-w-0">{summaryOf(r)}</span>
         {r.kind === "listing" &&

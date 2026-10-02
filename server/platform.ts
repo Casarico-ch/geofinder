@@ -2,9 +2,9 @@
 // Platform API (/v1) — GeoFinder as a private service for our own platform.
 //
 // Every /v1 call needs `Authorization: Bearer <GEOFINDER_API_KEY>`.
-//   POST /v1/properties/by-address  { address }                       → Popety profile now (CHF 3.80)
-//   POST /v1/properties/by-listing  { images, listingText?, municipality? } → 202 + requestId
-//   GET  /v1/requests/:id                                              → status + each model's address
+//   POST /v1/address   { images, listingText?, municipality? } → 202 + requestId (finds the address)
+//   GET  /v1/requests/:id                                     → status + each model's address
+//   POST /v1/property  { address }                            → Popety property data now (CHF 3.80)
 // The admin website reads the same records through /api/requests.
 // =============================================================================
 import { timingSafeEqual } from "node:crypto";
@@ -85,7 +85,7 @@ function publicView(r: PlatformRequest) {
 export function registerPlatformRoutes(app: Express) {
   app.use("/v1", requireApiKey);
 
-  app.post("/v1/properties/by-address", async (req: Request, res: Response) => {
+  app.post("/v1/property", async (req: Request, res: Response) => {
     const parsed = addressSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Expected { address }" });
@@ -124,7 +124,7 @@ export function registerPlatformRoutes(app: Express) {
     }
   });
 
-  app.post("/v1/properties/by-listing", async (req: Request, res: Response) => {
+  app.post("/v1/address", async (req: Request, res: Response) => {
     if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
       res.status(503).json({ error: "Not configured. Set ANTHROPIC_API_KEY on the server." });
       return;

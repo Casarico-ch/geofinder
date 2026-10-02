@@ -4,7 +4,7 @@
 // An address request is answered on the spot with a Popety property profile.
 // A listing request runs the investigation on several models side by side (one
 // GeoFinder job each) and reports the address each model found — no Popety
-// lookup; the platform calls by-address for that. The admin website lists these records
+// lookup; the platform calls /v1/property for that. The admin website lists these records
 // one per row, with each model's result inside. Records are mirrored to disk
 // (RUNS_ROOT/_requests/<id>.json) like jobs, so they survive restarts.
 // =============================================================================
