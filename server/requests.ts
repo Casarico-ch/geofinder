@@ -32,7 +32,14 @@ export interface PlatformRequest {
   createdAt: string;
   updatedAt: string;
   finishedAt?: string;
-  input: { address?: string; listingText?: string; municipality?: string; imageCount?: number };
+  input: {
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    listingText?: string;
+    municipality?: string;
+    imageCount?: number;
+  };
   // address requests
   profile?: PropertyProfile | null;
   candidates?: LandCandidate[];

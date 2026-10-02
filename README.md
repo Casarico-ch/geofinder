@@ -61,7 +61,7 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 |---|---|
 | `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality? }` | Finds the address from a listing. Runs two models side by side and returns `202` with a `requestId`. |
 | `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer` (address, coordinates, confidence). |
-| `POST /v1/property` `{ address }` | Returns the property data for an address right away (CHF 3.80 on Popety). `300` with `candidates` when the address matches several parcels, `404` when none. |
+| `POST /v1/property` `{ address }` or `{ latitude, longitude }` | Returns the property data right away (CHF 3.80 on Popety). Coordinates also work for plots with no building, and `/v1/address` returns them for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
 
 A **property profile** holds the Popety scores, the buildings, the zoning rules,
 the built-vs-allowed ratios, the parcel outline and a swisstopo map window

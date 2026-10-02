@@ -73,7 +73,14 @@ interface PlatformRequest {
   status: "running" | "done" | "error";
   createdAt: string;
   finishedAt?: string;
-  input: { address?: string; listingText?: string; municipality?: string; imageCount?: number };
+  input: {
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    listingText?: string;
+    municipality?: string;
+    imageCount?: number;
+  };
   profile?: Profile | null;
   candidates?: { landId: string; address: string | null }[];
   results?: ModelResult[];
@@ -304,7 +311,11 @@ function ModelColumn({ r }: { r: ModelResult }) {
 }
 
 function summaryOf(r: PlatformRequest): string {
-  if (r.kind === "address") return r.input.address ?? "Address";
+  if (r.kind === "address") {
+    if (r.input.address) return r.input.address;
+    if (r.input.latitude != null) return r.profile?.address ?? `${r.input.latitude}, ${r.input.longitude}`;
+    return "Property";
+  }
   const text = r.input.listingText?.trim() || r.input.municipality || "Listing";
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
