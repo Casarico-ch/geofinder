@@ -12,13 +12,14 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { MODELS, createJob, getJob, type ModelId } from "./jobs";
+import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import {
   PROFILE_COST_CHF,
   PopetyError,
   combineProfiles,
   findLandByAddress,
   findLandByCoordinates,
+  findLandByEgrid,
   findLandByPlot,
   getProfileByLandId,
 } from "./popety";
@@ -26,14 +27,16 @@ import {
   type PlatformRequest,
   createRequest,
   createRequestFromJobs,
+  deleteRows,
   getRequest,
+  listRequests,
   listRequestsWithLooseJobs,
   saveRequest,
   watchListingRequest,
 } from "./requests";
 
 // The models every listing request runs on, side by side.
-const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-opus-4-8,claude-opus-5-5")
+const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
@@ -43,28 +46,49 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-opus-
 const plotSchema = z.union([
   z.object({ address: z.string().trim().min(3).max(300) }).strict(),
   z.object({ latitude: z.number().min(45.7).max(47.9), longitude: z.number().min(5.9).max(10.6) }).strict(),
-  z.object({ commune: z.string().trim().min(2).max(100), plot: z.string().trim().min(1).max(40) }).strict(),
+  // A plot as /v1/address returns it in parcels[]; the EGRID, when given, is used first.
+  z
+    .object({
+      commune: z.string().trim().min(2).max(100),
+      plot: z.string().trim().min(1).max(40),
+      egrid: z.string().trim().max(40).nullish(),
+    })
+    .strict(),
+  z.object({ egrid: z.string().trim().min(6).max(40) }).strict(),
 ]);
 type PlotInput = z.infer<typeof plotSchema>;
-// One plot, or { plots: [...] } to look at several together as one site.
-const propertySchema = z.union([plotSchema, z.object({ plots: z.array(plotSchema).min(2).max(10) }).strict()]);
+// One plot, or { plots: [...] } (several looked at together as one site; the
+// parcels[] that /v1/address returns can be sent as is).
+const propertySchema = z.union([plotSchema, z.object({ plots: z.array(plotSchema).min(1).max(10) }).strict()]);
 
-const resolvePlot = (p: PlotInput) =>
-  "address" in p
-    ? findLandByAddress(p.address)
-    : "plot" in p
-      ? findLandByPlot(p.commune, p.plot)
-      : findLandByCoordinates(p.latitude, p.longitude);
+const resolvePlot = async (p: PlotInput) => {
+  if ("address" in p) return findLandByAddress(p.address);
+  if ("egrid" in p && p.egrid) {
+    const byEgrid = await findLandByEgrid(p.egrid);
+    if (byEgrid.kind === "match" || !("plot" in p)) return byEgrid;
+  }
+  if ("plot" in p) return findLandByPlot(p.commune, p.plot);
+  if ("latitude" in p) return findLandByCoordinates(p.latitude, p.longitude);
+  return { kind: "none" } as const;
+};
 
 const describePlot = (p: PlotInput) =>
-  "address" in p ? p.address : "plot" in p ? `${p.commune} ${p.plot}` : `${p.latitude}, ${p.longitude}`;
+  "address" in p
+    ? p.address
+    : "plot" in p
+      ? `${p.commune} ${p.plot}`
+      : "latitude" in p
+        ? `${p.latitude}, ${p.longitude}`
+        : `EGRID ${p.egrid}`;
 
 const notFoundMessage = (p: PlotInput) =>
   "address" in p
     ? "No parcel matches this address."
     : "plot" in p
       ? "No parcel with this plot number in this commune (accents count, e.g. Genève)."
-      : "No parcel at these coordinates.";
+      : "latitude" in p
+        ? "No parcel at these coordinates."
+        : "No parcel with this EGRID.";
 
 const listingSchema = z.object({
   images: z
@@ -130,8 +154,8 @@ export function registerPlatformRoutes(app: Express) {
     if (!parsed.success) {
       res.status(400).json({
         error:
-          "Expected one of { address }, { latitude, longitude } (a point in Switzerland) or { commune, plot }, " +
-          "or { plots: [...] } with 2 to 10 of those",
+          "Expected one of { address }, { latitude, longitude } (a point in Switzerland), { commune, plot, egrid? } " +
+          "or { egrid }, or { plots: [...] } with 1 to 10 of those (e.g. the parcels[] /v1/address returns)",
       });
       return;
     }
@@ -246,6 +270,42 @@ export function registerPlatformRoutes(app: Express) {
   // ---- admin website (same records, including the job ids for the traces) ----
   app.get("/api/requests", (_req: Request, res: Response) => {
     res.json({ requests: listRequestsWithLooseJobs().slice(0, 200) });
+  });
+
+  // Delete rows from the admin table (bulk). Row ids are request ids; runs
+  // that belong to no request come as job ids.
+  app.post("/api/requests/delete", async (req: Request, res: Response) => {
+    const parsed = z
+      .object({ requestIds: z.array(z.string()).max(500).default([]), jobIds: z.array(z.string()).max(2000).default([]) })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Expected { requestIds?, jobIds? }" });
+      return;
+    }
+    const deleted = await deleteRows(parsed.data.requestIds, parsed.data.jobIds);
+    res.json({ deleted });
+  });
+
+  // Everything the Usage page needs: one line per AI run and one per Popety
+  // charge. The page filters by date and aggregates in the browser.
+  app.get("/api/usage", (_req: Request, res: Response) => {
+    const runs = listJobs().map((j) => ({
+      id: j.id,
+      model: j.model,
+      createdAt: j.createdAt,
+      status: j.status,
+      found: j.answer?.found ?? null,
+      confidence: j.answer?.confidence ?? null,
+      tokens: j.tokens,
+      costUsd: costUsd(j.tokens, j.model),
+      elapsedMs: elapsedMs(j),
+      steps: j.steps.length,
+      title: j.input.municipality ?? j.input.listingText?.replace(/^Municipality \/ commune: [^\n]*\n*/, "").slice(0, 80) ?? null,
+    }));
+    const popety = listRequests()
+      .filter((r) => r.popetyCostChf > 0)
+      .map((r) => ({ id: r.id, createdAt: r.createdAt, costChf: r.popetyCostChf, plots: r.profiles?.length ?? 1 }));
+    res.json({ runs, popety });
   });
 
   // The website's New search form starts one job per chosen model, then calls

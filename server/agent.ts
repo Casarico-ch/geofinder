@@ -150,10 +150,26 @@ const TOOLS = [
         found: { type: "boolean" },
         address: { type: ["string", "null"] },
         parcel: { type: ["string", "null"], description: "e.g. 'Plan-les-Ouates 10917'" },
+        parcels: {
+          type: "array",
+          description:
+            "Every exact cadastral plot the property covers, when you have pinned them (one entry per plot). Use the commune name with accents and the plot number exactly as the land register writes it (e.g. 'HN12522'). For building land with no address, this IS the answer.",
+          items: {
+            type: "object",
+            properties: {
+              commune: { type: "string" },
+              plot: { type: "string" },
+              egrid: { type: ["string", "null"] },
+            },
+            required: ["commune", "plot"],
+          },
+        },
         commune: { type: ["string", "null"] },
         confidence: {
           type: "string",
-          enum: ["street", "building", "block", "neighborhood", "city", "region", "country", "unknown"],
+          enum: ["street", "building", "parcel", "block", "neighborhood", "city", "region", "country", "unknown"],
+          description:
+            "street/building: exact address. parcel: the exact plot(s) are pinned in parcels[] but there is no address (e.g. vacant building land). Then wider areas.",
         },
         latitude: { type: ["number", "null"] },
         longitude: { type: ["number", "null"] },
@@ -207,6 +223,7 @@ Treat the commune as a FINITE, listable set of buildings, not a map to eyeball. 
 
 ANSWER HONESTLY — a shortlist beats a wrong pin
 Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
+Exact plots are a full result too: when you have pinned the exact cadastral plot(s) the property covers, list every one in parcels[] (commune + plot number as the land register writes it). For building land or other plots with no street address, that is a success: found=true, confidence "parcel". When it also has an address, give both.
 
 SOURCES (starting points, not limits; set a User-Agent header)
 - Geneva cadastre (SITG, ArcGIS REST, f=json&outSR=4326). Parcels: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_PARCELLE_MENSU/MapServer/0/query — NO_PARCELLE, SURFACE, COMMUNE; filter by where=COMMUNE='X' AND SURFACE BETWEEN a AND b, or geometry=lon,lat&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects; returnGeometry=true → geometry.rings. Buildings: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_BATIMENT_HORSOL/MapServer/0/query — EPOQUE_CONSTRUCTION, NIVEAUX_HORSOL, SURFACE (footprint), EGID.
@@ -305,6 +322,10 @@ function coerceAnswer(input: Record<string, unknown>): Answer {
     found: Boolean(input.found),
     address: str(input.address),
     parcel: str(input.parcel),
+    parcels: (Array.isArray(input.parcels) ? input.parcels : [])
+      .map((p) => (p ?? {}) as Record<string, unknown>)
+      .filter((p) => str(p.commune) && str(p.plot))
+      .map((p) => ({ commune: String(p.commune).trim(), plot: String(p.plot).trim(), egrid: str(p.egrid) })),
     commune: str(input.commune),
     confidence: conf,
     latitude: num(input.latitude),

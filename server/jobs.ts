@@ -8,7 +8,7 @@
 // so a process restart or a reopened window recovers the full trace.
 // =============================================================================
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT, ensureRunDir } from "./sandbox";
 import type { BuildPotential } from "./potential";
@@ -17,6 +17,7 @@ export type PotentialStatus = "running" | "done" | "error";
 
 export type Confidence =
   | "street"
+  | "parcel" // the exact plot(s) are pinned, but there is no street address (e.g. building land)
   | "building"
   | "block"
   | "neighborhood"
@@ -31,10 +32,19 @@ export interface AnswerCandidate {
   note: string;
 }
 
+export interface ParcelRef {
+  commune: string;
+  plot: string; // cadastral plot number as the land register writes it, e.g. "HN12522"
+  egrid?: string | null;
+}
+
 export interface Answer {
   found: boolean;
   address: string | null;
   parcel: string | null;
+  // The exact plot(s) the property covers. A valid result on its own: building
+  // land has plots but no address. Pass straight to /v1/property { plots }.
+  parcels: ParcelRef[];
   commune: string | null;
   confidence: Confidence;
   latitude: number | null;
@@ -132,12 +142,30 @@ export interface Job {
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
   cancelRequested?: boolean;
+  deleted?: boolean; // removed by the admin; never written to disk again
   pauseRequested?: boolean;
   runDir: string;
 }
 
 // Wall-clock time the investigation has taken, in ms: start → finish, or
 // start → now while it is still running (frozen at updatedAt while paused).
+// Answers saved before parcels[] existed: read the plots back out of the
+// free-text parcel ("Horgen HN12522 + HN12523", "Plan-les-Ouates 10917").
+export function withParcels(answer: Answer | null): Answer | null {
+  if (!answer || (Array.isArray(answer.parcels) && answer.parcels.length)) return answer;
+  const m = answer.parcel?.trim().match(/^(.+?)\s+([A-Z]{0,4}\d[\w./-]*(?:\s*[+,&]\s*[A-Z]{0,4}\d[\w./-]*)*)$/);
+  const parcels = m
+    ? m[2].split(/\s*[+,&]\s*/).map((plot) => ({ commune: answer.commune ?? m[1], plot }))
+    : [];
+  // A found answer that named exact plots but no address pinned the plots
+  // themselves, which is what "parcel" confidence now records.
+  const confidence =
+    parcels.length && answer.found && !answer.address && ["block", "neighborhood"].includes(answer.confidence)
+      ? "parcel"
+      : answer.confidence;
+  return { ...answer, parcels, confidence };
+}
+
 export function elapsedMs(job: Job): number {
   const start = job.startedAt ?? job.createdAt;
   const end = job.finishedAt ?? (job.status === "running" ? nowIso() : job.updatedAt);
@@ -274,6 +302,7 @@ function serialize(job: Job): string {
 }
 
 async function persist(job: Job): Promise<void> {
+  if (job.deleted) return;
   try {
     await mkdir(job.runDir, { recursive: true });
     await writeFile(path.join(job.runDir, "job.json"), serialize(job), "utf8");
@@ -300,6 +329,7 @@ export async function loadPersistedJobs(): Promise<Job[]> {
       const parsed = JSON.parse(raw) as Omit<Job, "runDir">;
       const job: Job = {
         ...parsed,
+        answer: withParcels(parsed.answer),
         model: (MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
         tokens: {
           input: parsed.tokens?.input ?? 0,
@@ -324,6 +354,21 @@ export async function loadPersistedJobs(): Promise<Job[]> {
     }
   }
   return resumable;
+}
+
+// Delete an investigation and its files. A running one is told to stop first;
+// its folder is removed again a minute later in case the run wrote into it
+// while stopping.
+export async function deleteJob(id: string): Promise<boolean> {
+  const job = jobs.get(id);
+  if (!job) return false;
+  if (job.status === "running") requestCancel(job);
+  job.deleted = true;
+  jobs.delete(id);
+  const remove = () => rm(job.runDir, { recursive: true, force: true }).catch(() => {});
+  await remove();
+  setTimeout(() => void remove(), 60_000);
+  return true;
 }
 
 function cryptoRandomId(): string {
