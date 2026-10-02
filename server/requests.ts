@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
-import { getJob, costUsd, type Answer, type JobStatus, type ModelId } from "./jobs";
+import { getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type ModelId } from "./jobs";
 import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 
 export type RequestStatus = "running" | "done" | "error";
@@ -54,6 +54,7 @@ export interface PlatformRequest {
   results?: ModelResult[];
   popetyCostChf: number;
   error?: string;
+  source?: "platform" | "website";
 }
 
 const requests = new Map<string, PlatformRequest>();
@@ -80,6 +81,7 @@ export async function createRequest(
     updatedAt: nowIso(),
     input,
     popetyCostChf: 0,
+    source: "platform",
   };
   requests.set(req.id, req);
   await saveRequest(req);
@@ -118,6 +120,45 @@ export async function loadPersistedRequests(): Promise<void> {
   for (const req of Array.from(requests.values())) {
     if (req.kind === "listing" && req.status === "running") watchListingRequest(req);
   }
+}
+
+// A website search: the jobs started together from the New search form (one
+// per chosen model) grouped into one request, like a platform call.
+export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformRequest> {
+  const first = jobs[0];
+  const req = await createRequest("listing", {
+    listingText: first.input.listingText,
+    municipality: first.input.municipality,
+    imageCount: first.input.imageCount,
+  });
+  req.source = "website";
+  req.createdAt = jobs.map((j) => j.createdAt).sort()[0];
+  req.results = jobs.map((j) => ({ model: j.model, jobId: j.id, status: j.status, answer: j.answer, aiCostUsd: 0 }));
+  await saveRequest(req);
+  watchListingRequest(req);
+  return req;
+}
+
+// Requests plus every investigation that belongs to none (older website
+// searches, relaunches), each shown as a one-model request.
+export function listRequestsWithLooseJobs(): PlatformRequest[] {
+  const all = listRequests();
+  const claimed = new Set(all.flatMap((r) => (r.results ?? []).map((m) => m.jobId)));
+  const loose: PlatformRequest[] = listJobs()
+    .filter((j) => !claimed.has(j.id))
+    .map((j) => ({
+      id: `job-${j.id}`,
+      kind: "listing",
+      source: "website",
+      status: j.status === "done" ? "done" : j.status === "running" || j.status === "paused" ? "running" : "error",
+      createdAt: j.createdAt,
+      updatedAt: j.updatedAt,
+      finishedAt: j.finishedAt,
+      input: { listingText: j.input.listingText, municipality: j.input.municipality, imageCount: j.input.imageCount },
+      results: [{ model: j.model, jobId: j.id, status: j.status, answer: j.answer, aiCostUsd: costUsd(j.tokens, j.model) }],
+      popetyCostChf: 0,
+    }));
+  return [...all, ...loose].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 const TERMINAL: JobStatus[] = ["done", "error", "cancelled"];

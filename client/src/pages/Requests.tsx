@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, MapPin, Pause } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, MapPin, Pause, Search } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -113,6 +113,7 @@ interface PlatformRequest {
   results?: ModelResult[];
   popetyCostChf: number;
   error?: string;
+  source?: "platform" | "website";
 }
 
 const MODEL_LABEL: Record<string, string> = {
@@ -177,7 +178,7 @@ function ParcelMap({ map, outlines, label }: { map: MapWindow; outlines: [number
   const [cadastre, setCadastre] = useState(false);
   const bar = 20 / map.metresPerPixel;
   return (
-    <div className="rounded-lg border border-border overflow-hidden bg-card">
+    <div className="rounded-lg border border-border overflow-hidden bg-card max-w-md">
       <div className="flex text-xs font-medium">
         {(["Aerial photo", "Cadastral map"] as const).map((t, i) => (
           <button
@@ -420,6 +421,9 @@ function RequestRow({ r }: { r: PlatformRequest }) {
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground w-16 shrink-0">
           {r.kind === "address" ? "Property" : "Address"}
         </span>
+        <span className="text-[11px] text-muted-foreground w-14 shrink-0 hidden sm:inline">
+          {r.source === "website" ? "Website" : "Platform"}
+        </span>
         <span className="text-sm text-foreground truncate flex-1 min-w-0">{summaryOf(r)}</span>
         {r.kind === "listing" &&
           (r.results ?? []).map((m) => (
@@ -506,13 +510,19 @@ export default function Requests() {
             <MapPin className="h-5 w-5 text-primary" />
             <div>
               <h1 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors">GeoFinder</h1>
-              <p className="text-xs text-muted-foreground">Requests from the platform</p>
+              <p className="text-xs text-muted-foreground">One row per property request, each model's search inside</p>
             </div>
           </Link>
           <div className="flex-1" />
-          <Link href="/">
+          <Link href="/investigations">
             <Button variant="ghost" size="sm">
-              Investigations
+              All investigations
+            </Button>
+          </Link>
+          <Link href="/new">
+            <Button size="sm">
+              <Search className="mr-1.5 h-3.5 w-3.5" />
+              New search
             </Button>
           </Link>
         </div>
@@ -529,7 +539,7 @@ export default function Requests() {
             <div className="rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
               <p className="text-sm font-medium text-foreground">No requests yet</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Each call from the platform to the GeoFinder API shows up here as one row.
+                Each property request, from the platform or a New search here, shows up as one row.
               </p>
             </div>
           )}

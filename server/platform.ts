@@ -12,7 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { MODELS, createJob, type ModelId } from "./jobs";
+import { MODELS, createJob, getJob, type ModelId } from "./jobs";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -25,8 +25,9 @@ import {
 import {
   type PlatformRequest,
   createRequest,
+  createRequestFromJobs,
   getRequest,
-  listRequests,
+  listRequestsWithLooseJobs,
   saveRequest,
   watchListingRequest,
 } from "./requests";
@@ -240,7 +241,20 @@ export function registerPlatformRoutes(app: Express) {
 
   // ---- admin website (same records, including the job ids for the traces) ----
   app.get("/api/requests", (_req: Request, res: Response) => {
-    res.json({ requests: listRequests().slice(0, 200) });
+    res.json({ requests: listRequestsWithLooseJobs().slice(0, 200) });
+  });
+
+  // The website's New search form starts one job per chosen model, then calls
+  // this to group them into one request on the main table.
+  app.post("/api/requests/group", async (req: Request, res: Response) => {
+    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(10) }).safeParse(req.body);
+    const jobs = parsed.success ? parsed.data.jobIds.map((id) => getJob(id)) : [];
+    if (!parsed.success || jobs.some((j) => !j)) {
+      res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
+      return;
+    }
+    const record = await createRequestFromJobs(jobs as NonNullable<(typeof jobs)[number]>[]);
+    res.status(201).json({ requestId: record.id });
   });
 
   app.get("/api/requests/:id", (req: Request, res: Response) => {
