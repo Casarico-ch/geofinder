@@ -43,6 +43,8 @@ export interface PlatformRequest {
     listingText?: string;
     municipality?: string;
     imageCount?: number;
+    listingId?: string;
+    listingUrl?: string;
   };
   // address requests
   profile?: PropertyProfile | null;
@@ -131,6 +133,8 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
     listingText: first.input.listingText,
     municipality: first.input.municipality,
     imageCount: first.input.imageCount,
+    listingId: first.input.listingId,
+    listingUrl: first.input.listingUrl,
   });
   req.source = "website";
   req.createdAt = jobs.map((j) => j.createdAt).sort()[0];
@@ -143,8 +147,9 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
 const GROUP_WINDOW_MS = 10 * 60_000;
 
 // Requests plus every investigation that belongs to none (older website
-// searches, relaunches, other apps). Loose runs of the same listing started
-// within a few minutes of each other are shown together as one request.
+// searches, relaunches, other apps), one row per listing: everything sent with
+// the same listingId is one row. Loose runs without one are grouped when they
+// carry the same listing and started within a few minutes of each other.
 export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const all = listRequests();
   const claimed = new Set(all.flatMap((r) => (r.results ?? []).map((m) => m.jobId)));
@@ -153,10 +158,15 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   const groups: Job[][] = [];
-  const keyOf = (j: Job) => JSON.stringify([j.input.listingText ?? "", j.input.municipality ?? "", j.input.imageCount]);
+  const keyOf = (j: Job) =>
+    j.input.listingId
+      ? `id:${j.input.listingId}`
+      : JSON.stringify([j.input.listingText ?? "", j.input.municipality ?? "", j.input.imageCount]);
   for (const j of loose) {
     const g = groups.find(
-      (g) => keyOf(g[0]) === keyOf(j) && Date.parse(j.createdAt) - Date.parse(g[0].createdAt) <= GROUP_WINDOW_MS,
+      (g) =>
+        keyOf(g[0]) === keyOf(j) &&
+        (j.input.listingId || Date.parse(j.createdAt) - Date.parse(g[0].createdAt) <= GROUP_WINDOW_MS),
     );
     if (g) g.push(j);
     else groups.push([j]);
@@ -178,7 +188,13 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       status: overallStatus(results),
       createdAt: first.createdAt,
       updatedAt: g.map((j) => j.updatedAt).sort().at(-1)!,
-      input: { listingText: first.input.listingText, municipality: first.input.municipality, imageCount: first.input.imageCount },
+      input: {
+        listingText: first.input.listingText,
+        municipality: first.input.municipality,
+        imageCount: first.input.imageCount,
+        listingId: first.input.listingId,
+        listingUrl: g.find((j) => j.input.listingUrl)?.input.listingUrl,
+      },
       results,
       popetyCostChf: 0,
     };
@@ -187,7 +203,32 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const shown = all.map((r) =>
     r.kind === "listing" && r.status === "running" ? { ...r, status: overallStatus(r.results ?? []) } : r,
   );
-  return [...shown, ...looseRequests].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return mergeByListingId([...shown, ...looseRequests]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// Address searches (platform calls or loose runs) that share a listingId
+// become one row holding every model's search.
+function mergeByListingId(rows: PlatformRequest[]): PlatformRequest[] {
+  const byId = new Map<string, PlatformRequest>();
+  const out: PlatformRequest[] = [];
+  for (const r of rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+    const id = r.kind === "listing" ? r.input.listingId : undefined;
+    const into = id ? byId.get(id) : undefined;
+    if (!id) {
+      out.push(r);
+    } else if (!into) {
+      const copy = { ...r, input: { ...r.input }, results: [...(r.results ?? [])] };
+      byId.set(id, copy);
+      out.push(copy);
+    } else {
+      into.results = [...(into.results ?? []), ...(r.results ?? [])];
+      into.input.listingUrl ??= r.input.listingUrl;
+      if (r.updatedAt > into.updatedAt) into.updatedAt = r.updatedAt;
+      if (r.source === "platform") into.source = "platform";
+      into.status = overallStatus(into.results);
+    }
+  }
+  return out;
 }
 
 // Running while any run still works; paused when the unfinished ones are all paused.

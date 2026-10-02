@@ -104,6 +104,8 @@ interface PlatformRequest {
     listingText?: string;
     municipality?: string;
     imageCount?: number;
+    listingId?: string;
+    listingUrl?: string;
   };
   profile?: Profile | null;
   candidates?: { landId: string; address: string | null }[];
@@ -426,6 +428,11 @@ function RequestRow({ r }: { r: PlatformRequest }) {
         <span className="text-[11px] text-muted-foreground w-14 shrink-0 hidden sm:inline">
           {r.source === "website" ? "Website" : "Platform"}
         </span>
+        {r.input.listingId && (
+          <span className="text-xs font-mono text-muted-foreground shrink-0 max-w-32 truncate" title={r.input.listingId}>
+            {r.input.listingId}
+          </span>
+        )}
         <span className="text-sm text-foreground truncate flex-1 min-w-0">{summaryOf(r)}</span>
         {r.kind === "listing" &&
           (r.results ?? []).map((m) => (
@@ -461,6 +468,16 @@ function RequestRow({ r }: { r: PlatformRequest }) {
           {r.kind === "address" && r.profile && <ProfileView p={r.profile} />}
           {r.kind === "listing" && (
             <>
+              {r.input.listingUrl && (
+                <a
+                  href={r.input.listingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary inline-flex items-center gap-1 hover:underline break-all"
+                >
+                  {r.input.listingUrl} <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+              )}
               {r.input.listingText && (
                 <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>
               )}
