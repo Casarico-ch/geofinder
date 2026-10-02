@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, MapPin, Pause } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, MapPin, Pause, Search } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -57,6 +57,27 @@ interface Profile {
   builtVsAllowed: Record<"siteCoverage" | "floorAreaRatio" | "grossFloorRatio" | "volumeRatio", RatioIndex>;
 }
 
+interface MapWindow {
+  width: number;
+  height: number;
+  metresPerPixel: number;
+  aerialUrl: string;
+  cadastreUrl: string;
+}
+
+interface Combined {
+  plotCount: number;
+  totalAreaM2: number;
+  plots: { landId: string; parcelNumber: string; egrid: string; areaM2: number }[];
+  municipalities: string[];
+  zones: string[];
+  sameZone: boolean;
+  buildingCount: number;
+  builtVsAllowed: Profile["builtVsAllowed"];
+  floorArea: { currentM2: number | null; allowedM2: number | null; remainingM2: number | null };
+  map: (MapWindow & { parcelsPixels: [number, number][][] }) | null;
+}
+
 type JobStatus = "running" | "done" | "error" | "cancelled" | "paused";
 
 interface ModelResult {
@@ -73,12 +94,26 @@ interface PlatformRequest {
   status: "running" | "done" | "error";
   createdAt: string;
   finishedAt?: string;
-  input: { address?: string; listingText?: string; municipality?: string; imageCount?: number };
+  input: {
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    commune?: string;
+    plot?: string;
+    plots?: { address?: string; commune?: string; plot?: string; latitude?: number; longitude?: number }[];
+    listingText?: string;
+    municipality?: string;
+    imageCount?: number;
+  };
   profile?: Profile | null;
   candidates?: { landId: string; address: string | null }[];
+  profiles?: Profile[];
+  combined?: Combined;
+  plotErrors?: { plot: string; error: string }[];
   results?: ModelResult[];
   popetyCostChf: number;
   error?: string;
+  source?: "platform" | "website";
 }
 
 const MODEL_LABEL: Record<string, string> = {
@@ -139,12 +174,11 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-function ParcelMap({ map, label }: { map: NonNullable<Profile["map"]>; label: string }) {
+function ParcelMap({ map, outlines, label }: { map: MapWindow; outlines: [number, number][][]; label: string }) {
   const [cadastre, setCadastre] = useState(false);
-  const points = map.parcelPixels.map((p) => p.join(",")).join(" ");
   const bar = 20 / map.metresPerPixel;
   return (
-    <div className="rounded-lg border border-border overflow-hidden bg-card">
+    <div className="rounded-lg border border-border overflow-hidden bg-card max-w-md">
       <div className="flex text-xs font-medium">
         {(["Aerial photo", "Cadastral map"] as const).map((t, i) => (
           <button
@@ -159,9 +193,16 @@ function ParcelMap({ map, label }: { map: NonNullable<Profile["map"]>; label: st
       </div>
       <svg viewBox={`0 0 ${map.width} ${map.height}`} className="w-full h-auto block" role="img" aria-label={label}>
         <image href={cadastre ? map.cadastreUrl : map.aerialUrl} width={map.width} height={map.height} />
-        <polygon points={points} fill="#e8364f" fillOpacity={0.18} />
-        <polygon points={points} fill="none" stroke="#fff" strokeOpacity={0.85} strokeWidth={9} strokeLinejoin="round" />
-        <polygon points={points} fill="none" stroke="#e0243f" strokeWidth={5} strokeLinejoin="round" />
+        {outlines.map((outline, i) => {
+          const points = outline.map((p) => p.join(",")).join(" ");
+          return (
+            <g key={i}>
+              <polygon points={points} fill="#e8364f" fillOpacity={0.18} />
+              <polygon points={points} fill="none" stroke="#fff" strokeOpacity={0.85} strokeWidth={9} strokeLinejoin="round" />
+              <polygon points={points} fill="none" stroke="#e0243f" strokeWidth={5} strokeLinejoin="round" />
+            </g>
+          );
+        })}
         <g transform={`translate(24,${map.height - 36})`}>
           <rect x={-10} y={-22} width={bar + 86} height={40} rx={4} fill="#fff" fillOpacity={0.9} />
           <line x1={0} y1={0} x2={bar} y2={0} stroke="#18232b" strokeWidth={3} />
@@ -191,7 +232,7 @@ function ProfileView({ p }: { p: Profile }) {
         </p>
       </div>
 
-      {p.map && <ParcelMap map={p.map} label={`Parcel ${p.parcelNumber} on a swisstopo map`} />}
+      {p.map && <ParcelMap map={p.map} outlines={[p.map.parcelPixels]} label={`Parcel ${p.parcelNumber} on a swisstopo map`} />}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {Object.entries(p.scores ?? {}).map(([k, v]) => {
@@ -247,8 +288,15 @@ function ProfileView({ p }: { p: Profile }) {
         </dl>
       </div>
 
+      <RatioTable ratios={p.builtVsAllowed} />
+    </div>
+  );
+}
+
+function RatioTable({ ratios, title = "Built today vs. allowed" }: { ratios: Profile["builtVsAllowed"]; title?: string }) {
+  return (
       <div>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Built today vs. allowed</h4>
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{title}</h4>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -260,7 +308,7 @@ function ProfileView({ p }: { p: Profile }) {
               </tr>
             </thead>
             <tbody>
-              {Object.entries(p.builtVsAllowed).map(([k, r]) => (
+              {Object.entries(ratios).map(([k, r]) => (
                 <tr key={k} className="border-t border-border">
                   <td className="py-1.5">{RATIO_LABEL[k] ?? k}</td>
                   <td className="py-1.5 text-right pr-3 tabular-nums">{num(r.current)}</td>
@@ -276,6 +324,46 @@ function ProfileView({ p }: { p: Profile }) {
           </table>
         </div>
       </div>
+  );
+}
+
+function CombinedView({ c, profiles }: { c: Combined; profiles: Profile[] }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          {c.plotCount} plots together · {num(c.totalAreaM2, " m²")}
+        </p>
+        <p className="text-xs text-muted-foreground tabular-nums">
+          {c.plots.map((p) => `${p.parcelNumber} (${num(p.areaM2, " m²")})`).join(" + ")}
+          {c.municipalities.length ? ` · ${c.municipalities.join(", ")}` : ""}
+        </p>
+      </div>
+      {c.map && <ParcelMap map={c.map} outlines={c.map.parcelsPixels} label={`${c.plotCount} plots on a swisstopo map`} />}
+      <dl>
+        <Row k="Zone" v={c.sameZone ? c.zones[0] ?? "—" : `Different zones: ${c.zones.join(" / ")}`} />
+        <Row k="Buildings" v={num(c.buildingCount)} />
+        <Row k="Floor area built" v={num(c.floorArea.currentM2, " m²")} />
+        <Row k="Floor area allowed" v={num(c.floorArea.allowedM2, " m²")} />
+        <Row k="Floor area left to build" v={num(c.floorArea.remainingM2, " m²")} />
+      </dl>
+      <RatioTable ratios={c.builtVsAllowed} title="Built today vs. allowed, all plots" />
+      {!c.sameZone && (
+        <p className="text-xs text-amber-700">
+          The plots sit in different zones, so the combined maximums are an area-weighted average of each zone's rules.
+        </p>
+      )}
+      {profiles.map((p) => (
+        <details key={p.landId} className="rounded-lg border border-border bg-background">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+            Plot {p.parcelNumber}
+            {p.address ? ` · ${p.address}` : ""}
+          </summary>
+          <div className="p-3 border-t border-border">
+            <ProfileView p={p} />
+          </div>
+        </details>
+      ))}
     </div>
   );
 }
@@ -304,7 +392,16 @@ function ModelColumn({ r }: { r: ModelResult }) {
 }
 
 function summaryOf(r: PlatformRequest): string {
-  if (r.kind === "address") return r.input.address ?? "Address";
+  if (r.kind === "address") {
+    if (r.input.address) return r.input.address;
+    if (r.input.plot) return `${r.input.commune} ${r.input.plot}`;
+    if (r.input.plots)
+      return r.input.plots
+        .map((p) => p.address ?? (p.plot ? `${p.commune} ${p.plot}` : `${p.latitude}, ${p.longitude}`))
+        .join(" + ");
+    if (r.input.latitude != null) return r.profile?.address ?? `${r.input.latitude}, ${r.input.longitude}`;
+    return "Property";
+  }
   const text = r.input.listingText?.trim() || r.input.municipality || "Listing";
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
@@ -323,6 +420,9 @@ function RequestRow({ r }: { r: PlatformRequest }) {
         <StatusIcon status={r.status} />
         <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground w-16 shrink-0">
           {r.kind === "address" ? "Property" : "Address"}
+        </span>
+        <span className="text-[11px] text-muted-foreground w-14 shrink-0 hidden sm:inline">
+          {r.source === "website" ? "Website" : "Platform"}
         </span>
         <span className="text-sm text-foreground truncate flex-1 min-w-0">{summaryOf(r)}</span>
         {r.kind === "listing" &&
@@ -350,6 +450,12 @@ function RequestRow({ r }: { r: PlatformRequest }) {
               ))}
             </ul>
           )}
+          {r.plotErrors?.map((e) => (
+            <p key={e.plot} className="text-sm text-destructive">
+              {e.plot}: {e.error}
+            </p>
+          ))}
+          {r.kind === "address" && r.combined && <CombinedView c={r.combined} profiles={r.profiles ?? []} />}
           {r.kind === "address" && r.profile && <ProfileView p={r.profile} />}
           {r.kind === "listing" && (
             <>
@@ -404,13 +510,19 @@ export default function Requests() {
             <MapPin className="h-5 w-5 text-primary" />
             <div>
               <h1 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors">GeoFinder</h1>
-              <p className="text-xs text-muted-foreground">Requests from the platform</p>
+              <p className="text-xs text-muted-foreground">One row per property request, each model's search inside</p>
             </div>
           </Link>
           <div className="flex-1" />
-          <Link href="/">
+          <Link href="/investigations">
             <Button variant="ghost" size="sm">
-              Investigations
+              All investigations
+            </Button>
+          </Link>
+          <Link href="/new">
+            <Button size="sm">
+              <Search className="mr-1.5 h-3.5 w-3.5" />
+              New search
             </Button>
           </Link>
         </div>
@@ -427,7 +539,7 @@ export default function Requests() {
             <div className="rounded-xl border border-dashed border-border bg-card px-6 py-14 text-center">
               <p className="text-sm font-medium text-foreground">No requests yet</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Each call from the platform to the GeoFinder API shows up here as one row.
+                Each property request, from the platform or a New search here, shows up as one row.
               </p>
             </div>
           )}

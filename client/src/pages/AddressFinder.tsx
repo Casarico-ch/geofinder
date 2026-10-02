@@ -602,11 +602,18 @@ export default function AddressFinder() {
         }),
       );
 
+      // Group the runs into one request on the main table (one search per model).
+      void fetch("/api/requests/group", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobIds }),
+      }).catch(() => {});
+
       // 2) Navigate immediately — the user is free to move on right now. With
-      //    several models, open the first; the rest are listed in History.
+      //    several models, open the first; all of them sit in one row on Requests.
       clearForm();
       navigate(`/i/${jobIds[0]}`);
-      if (jobIds.length > 1) toast.success(`Started ${jobIds.length} runs — compare them in History`);
+      if (jobIds.length > 1) toast.success(`Started ${jobIds.length} runs — compare them on the Requests page`);
 
       // 3) Encode the photos once and upload them to every job in the
       //    background. Each investigation starts the moment its photos land.
@@ -755,18 +762,12 @@ export default function AddressFinder() {
             </div>
           </Link>
           <div className="flex-1" />
-          <Link href="/requests">
+          <Link href="/">
             <Button variant="ghost" size="sm">
               Requests
             </Button>
           </Link>
-          {isNew ? (
-            <Link href="/">
-              <Button variant="ghost" size="sm">
-                Overview
-              </Button>
-            </Link>
-          ) : (
+          {isNew ? null : (
             <Link href="/new">
               <Button size="sm">
                 <Search className="mr-1.5 h-3.5 w-3.5" />

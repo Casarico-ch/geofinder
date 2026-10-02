@@ -61,7 +61,14 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 |---|---|
 | `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality? }` | Finds the address from a listing. Runs two models side by side and returns `202` with a `requestId`. |
 | `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer` (address, coordinates, confidence). |
-| `POST /v1/property` `{ address }` | Returns the property data for an address right away (CHF 3.80 on Popety). `300` with `candidates` when the address matches several parcels, `404` when none. |
+| `POST /v1/property` `{ address }`, `{ latitude, longitude }` or `{ commune, plot }` | Returns the property data for one plot right away (CHF 3.80 on Popety). Coordinates and plot numbers (e.g. `{ "commune": "Horgen", "plot": "HN12522" }`) also work for plots with no building; `/v1/address` returns coordinates for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
+
+To look at several plots as one site, send `{ "plots": [ ...2 to 10 of the inputs above ] }`,
+for example `{ "plots": [{ "commune": "Horgen", "plot": "HN12522" }, { "commune": "Horgen", "plot": "HN12523" }] }`.
+The answer has every plot's data in `profiles` and a `combined` view: total area, the zones,
+built vs. allowed for the whole site (each plot weighted by its area), floor area built,
+allowed and left to build, and all outlines on one map (`combined.map.parcelsPixels`).
+Plots are only charged (CHF 3.80 each) once every one of them has been found.
 
 A **property profile** holds the Popety scores, the buildings, the zoning rules,
 the built-vs-allowed ratios, the parcel outline and a swisstopo map window

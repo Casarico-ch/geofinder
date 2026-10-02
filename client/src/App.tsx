@@ -10,7 +10,8 @@ import Requests from "./pages/Requests";
 function Router() {
   return (
     <Switch>
-      <Route path={"/"} component={AddressFinder} />
+      <Route path={"/"} component={Requests} />
+      <Route path={"/investigations"} component={AddressFinder} />
       <Route path={"/new"} component={AddressFinder} />
       <Route path={"/i/:id"} component={AddressFinder} />
       <Route path={"/requests"} component={Requests} />
