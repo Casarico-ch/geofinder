@@ -15,7 +15,8 @@ import { RUNS_ROOT } from "./sandbox";
 import { getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type ModelId } from "./jobs";
 import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 
-export type RequestStatus = "running" | "done" | "error";
+// "paused" is display-only: a request whose unfinished runs are all paused.
+export type RequestStatus = "running" | "paused" | "done" | "error";
 
 export interface ModelResult {
   model: ModelId;
@@ -139,26 +140,62 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
   return req;
 }
 
+const GROUP_WINDOW_MS = 10 * 60_000;
+
 // Requests plus every investigation that belongs to none (older website
-// searches, relaunches), each shown as a one-model request.
+// searches, relaunches, other apps). Loose runs of the same listing started
+// within a few minutes of each other are shown together as one request.
 export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const all = listRequests();
   const claimed = new Set(all.flatMap((r) => (r.results ?? []).map((m) => m.jobId)));
-  const loose: PlatformRequest[] = listJobs()
+  const loose = listJobs()
     .filter((j) => !claimed.has(j.id))
-    .map((j) => ({
-      id: `job-${j.id}`,
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const groups: Job[][] = [];
+  const keyOf = (j: Job) => JSON.stringify([j.input.listingText ?? "", j.input.municipality ?? "", j.input.imageCount]);
+  for (const j of loose) {
+    const g = groups.find(
+      (g) => keyOf(g[0]) === keyOf(j) && Date.parse(j.createdAt) - Date.parse(g[0].createdAt) <= GROUP_WINDOW_MS,
+    );
+    if (g) g.push(j);
+    else groups.push([j]);
+  }
+
+  const looseRequests: PlatformRequest[] = groups.map((g) => {
+    const results: ModelResult[] = g.map((j) => ({
+      model: j.model,
+      jobId: j.id,
+      status: j.status,
+      answer: j.answer,
+      aiCostUsd: costUsd(j.tokens, j.model),
+    }));
+    const first = g[0];
+    return {
+      id: `job-${first.id}`,
       kind: "listing",
       source: "website",
-      status: j.status === "done" ? "done" : j.status === "running" || j.status === "paused" ? "running" : "error",
-      createdAt: j.createdAt,
-      updatedAt: j.updatedAt,
-      finishedAt: j.finishedAt,
-      input: { listingText: j.input.listingText, municipality: j.input.municipality, imageCount: j.input.imageCount },
-      results: [{ model: j.model, jobId: j.id, status: j.status, answer: j.answer, aiCostUsd: costUsd(j.tokens, j.model) }],
+      status: overallStatus(results),
+      createdAt: first.createdAt,
+      updatedAt: g.map((j) => j.updatedAt).sort().at(-1)!,
+      input: { listingText: first.input.listingText, municipality: first.input.municipality, imageCount: first.input.imageCount },
+      results,
       popetyCostChf: 0,
-    }));
-  return [...all, ...loose].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    };
+  });
+
+  const shown = all.map((r) =>
+    r.kind === "listing" && r.status === "running" ? { ...r, status: overallStatus(r.results ?? []) } : r,
+  );
+  return [...shown, ...looseRequests].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// Running while any run still works; paused when the unfinished ones are all paused.
+function overallStatus(results: ModelResult[]): RequestStatus {
+  const live = results.map((r) => getJob(r.jobId)?.status ?? r.status);
+  if (live.some((s) => s === "running")) return "running";
+  if (live.some((s) => s === "paused")) return "paused";
+  return live.some((s) => s === "done") ? "done" : "error";
 }
 
 const TERMINAL: JobStatus[] = ["done", "error", "cancelled"];

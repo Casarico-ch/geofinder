@@ -91,7 +91,7 @@ interface ModelResult {
 interface PlatformRequest {
   id: string;
   kind: "address" | "listing";
-  status: "running" | "done" | "error";
+  status: "running" | "paused" | "done" | "error";
   createdAt: string;
   finishedAt?: string;
   input: {
@@ -402,7 +402,9 @@ function summaryOf(r: PlatformRequest): string {
     if (r.input.latitude != null) return r.profile?.address ?? `${r.input.latitude}, ${r.input.longitude}`;
     return "Property";
   }
-  const text = r.input.listingText?.trim() || r.input.municipality || "Listing";
+  // Runs started from the form carry the commune folded into the text; show it once.
+  const body = (r.input.listingText ?? "").replace(/^Municipality \/ commune: [^\n]*\n*/, "").trim();
+  const text = [r.input.municipality?.trim(), body].filter(Boolean).join(" · ") || "Listing";
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
