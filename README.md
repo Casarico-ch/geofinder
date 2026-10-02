@@ -60,14 +60,14 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 | Call | What it does |
 |---|---|
 | `POST /v1/properties/by-address` `{ address }` | Returns the property profile right away. `300` with `candidates` when the address matches several parcels, `404` when none. |
-| `POST /v1/properties/by-listing` `{ images: [{ imageBase64, mediaType }], listingText?, municipality? }` | Starts the investigation on two models side by side and returns `202` with a `requestId`. |
-| `GET /v1/requests/:id` | Status of a request. A listing request has one entry per model in `results`, each with the model's `answer` and the `profile` of the parcel it found. |
+| `POST /v1/properties/by-listing` `{ images: [{ imageBase64, mediaType }], listingText?, municipality? }` | Starts the investigation on two models side by side and returns `202` with a `requestId`. Finds the address only; no Popety call. |
+| `GET /v1/requests/:id` | Status of a request. A listing request has one entry per model in `results`, each with the model's `answer` (address, coordinates, confidence). |
 
 A **property profile** holds the Popety scores, the buildings, the zoning rules,
 the built-vs-allowed ratios, the parcel outline and a swisstopo map window
 (`map.aerialUrl`, `map.cadastreUrl`, with the outline already in image pixels in
-`map.parcelPixels`). It costs CHF 3.80 on Popety per parcel; two models that find
-the same parcel share one lookup.
+`map.parcelPixels`). It costs CHF 3.80 on Popety per call, and only the
+by-address endpoint fetches it.
 
 The models a listing runs on are set by `GEOFINDER_MODELS` (comma-separated,
 default `claude-opus-4-8,claude-opus-5-5`).

@@ -64,8 +64,6 @@ interface ModelResult {
   jobId: string;
   status: JobStatus;
   answer: { found: boolean; address: string | null; confidence: string; reasoning: string } | null;
-  profile: Profile | null;
-  profileError?: string;
   aiCostUsd: number;
 }
 
@@ -301,8 +299,6 @@ function ModelColumn({ r }: { r: ModelResult }) {
           <p className="text-xs text-muted-foreground capitalize">Confidence: {r.answer.confidence}</p>
         </div>
       )}
-      {r.profileError && <p className="text-xs text-destructive">{r.profileError}</p>}
-      {r.profile && <ProfileView p={r.profile} />}
     </div>
   );
 }
@@ -339,8 +335,7 @@ function RequestRow({ r }: { r: PlatformRequest }) {
             </span>
           ))}
         <span className="text-xs tabular-nums text-foreground shrink-0">
-          CHF {r.popetyCostChf.toFixed(2)}
-          {r.kind === "listing" ? ` + $${aiCost.toFixed(2)}` : ""}
+          {r.kind === "listing" ? `$${aiCost.toFixed(2)}` : `CHF ${r.popetyCostChf.toFixed(2)}`}
         </span>
         <span className="text-xs text-muted-foreground w-14 text-right shrink-0 hidden sm:inline">{timeAgo(r.createdAt)}</span>
         <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />

@@ -3,8 +3,8 @@
 //
 // An address request is answered on the spot with a Popety property profile.
 // A listing request runs the investigation on several models side by side (one
-// GeoFinder job each); as each model settles, the parcel it found is looked up
-// on Popety and its profile attached. The admin website lists these records
+// GeoFinder job each) and reports the address each model found — no Popety
+// lookup; the platform calls by-address for that. The admin website lists these records
 // one per row, with each model's result inside. Records are mirrored to disk
 // (RUNS_ROOT/_requests/<id>.json) like jobs, so they survive restarts.
 // =============================================================================
@@ -13,13 +13,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
 import { getJob, costUsd, type Answer, type JobStatus, type ModelId } from "./jobs";
-import {
-  PROFILE_COST_CHF,
-  findLandByCoordinates,
-  getProfileByLandId,
-  type LandCandidate,
-  type PropertyProfile,
-} from "./popety";
+import type { LandCandidate, PropertyProfile } from "./popety";
 
 export type RequestStatus = "running" | "done" | "error";
 
@@ -28,8 +22,6 @@ export interface ModelResult {
   jobId: string;
   status: JobStatus;
   answer: Answer | null;
-  profile: PropertyProfile | null;
-  profileError?: string;
   aiCostUsd: number;
 }
 
@@ -117,47 +109,11 @@ export async function loadPersistedRequests(): Promise<void> {
 const TERMINAL: JobStatus[] = ["done", "error", "cancelled"];
 const POLL_MS = 5_000;
 
-// Follow each model's job until it settles, then fetch the Popety profile for
-// the parcel it found. Two models landing on the same parcel share one lookup
-// (and one CHF 3.80 charge).
+// Follow each model's job until it settles and record its answer.
 export function watchListingRequest(req: PlatformRequest): void {
-  const profiles = new Map<string, Promise<PropertyProfile>>();
-
-  const profileFor = (landId: string, address: string | null) => {
-    let p = profiles.get(landId);
-    if (!p) {
-      p = getProfileByLandId(landId, address);
-      profiles.set(landId, p);
-      p.then(
-        async () => {
-          req.popetyCostChf = Math.round((req.popetyCostChf + PROFILE_COST_CHF) * 100) / 100;
-          await saveRequest(req);
-        },
-        () => {},
-      );
-    }
-    return p;
-  };
-
-  const settle = async (r: ModelResult) => {
-    const answer = r.answer;
-    if (r.status !== "done" || !answer?.found || answer.latitude == null || answer.longitude == null) return;
-    try {
-      const match = await findLandByCoordinates(answer.latitude, answer.longitude);
-      if (match.kind !== "match") {
-        r.profileError = "Popety has no parcel at the location this model found.";
-        return;
-      }
-      r.profile = await profileFor(match.landId, match.matchedAddress ?? answer.address);
-    } catch (err) {
-      r.profileError = err instanceof Error ? err.message : String(err);
-    }
-  };
-
   // Returns true once every model has settled.
   const tick = async (): Promise<boolean> => {
     let changed = false;
-    const settling: Promise<void>[] = [];
     for (const r of req.results ?? []) {
       if (TERMINAL.includes(r.status)) continue;
       const job = getJob(r.jobId);
@@ -170,12 +126,8 @@ export function watchListingRequest(req: PlatformRequest): void {
       if (job.status !== r.status || cost !== r.aiCostUsd) changed = true;
       r.status = job.status;
       r.aiCostUsd = cost;
-      if (TERMINAL.includes(job.status)) {
-        r.answer = job.answer;
-        settling.push(settle(r));
-      }
+      if (TERMINAL.includes(job.status)) r.answer = job.answer;
     }
-    await Promise.all(settling);
     const all = req.results ?? [];
     if (all.every((r) => TERMINAL.includes(r.status))) {
       req.status = all.some((r) => r.status === "done") ? "done" : "error";
@@ -183,7 +135,7 @@ export function watchListingRequest(req: PlatformRequest): void {
       await saveRequest(req);
       return true;
     }
-    if (changed || settling.length) await saveRequest(req);
+    if (changed) await saveRequest(req);
     return false;
   };
 

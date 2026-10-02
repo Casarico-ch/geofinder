@@ -2,9 +2,9 @@
 // Platform API (/v1) — GeoFinder as a private service for our own platform.
 //
 // Every /v1 call needs `Authorization: Bearer <GEOFINDER_API_KEY>`.
-//   POST /v1/properties/by-address  { address }                       → profile now
+//   POST /v1/properties/by-address  { address }                       → Popety profile now (CHF 3.80)
 //   POST /v1/properties/by-listing  { images, listingText?, municipality? } → 202 + requestId
-//   GET  /v1/requests/:id                                              → status + results
+//   GET  /v1/requests/:id                                              → status + each model's address
 // The admin website reads the same records through /api/requests.
 // =============================================================================
 import { timingSafeEqual } from "node:crypto";
@@ -75,8 +75,6 @@ function publicView(r: PlatformRequest) {
             model: m.model,
             status: m.status,
             answer: m.answer,
-            profile: m.profile,
-            profileError: m.profileError,
           })),
         }),
     popetyCostChf: r.popetyCostChf,
@@ -151,7 +149,7 @@ export function registerPlatformRoutes(app: Express) {
       record.results = [];
       for (const model of LISTING_MODELS) {
         const job = await createJob({ municipality, listingText, imageCount: images.length }, model);
-        record.results.push({ model, jobId: job.id, status: "running", answer: null, profile: null, aiCostUsd: 0 });
+        record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
         void (async () => {
           await saveListingPhotos(job.runDir, images);
           await runInvestigation(job, images, listingText);
