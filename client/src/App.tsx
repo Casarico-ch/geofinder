@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import AddressFinder from "./pages/AddressFinder";
+import Requests from "./pages/Requests";
 
 function Router() {
   return (
@@ -12,6 +13,7 @@ function Router() {
       <Route path={"/"} component={AddressFinder} />
       <Route path={"/new"} component={AddressFinder} />
       <Route path={"/i/:id"} component={AddressFinder} />
+      <Route path={"/requests"} component={Requests} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>

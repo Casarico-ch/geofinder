@@ -5,6 +5,8 @@ import { fileURLToPath } from "url";
 import { resumeInvestigation } from "./agent";
 import { registerApiRoutes } from "./api";
 import { loadPersistedJobs } from "./jobs";
+import { registerPlatformRoutes } from "./platform";
+import { loadPersistedRequests } from "./requests";
 import { RUNS_ROOT, initRunsRoot } from "./sandbox";
 
 // Never let a stray async error take the process down (Node 15+ exits on
@@ -24,7 +26,23 @@ async function startServer() {
   await initRunsRoot();
   const resumable = await loadPersistedJobs();
 
+  await loadPersistedRequests();
+
+  // The admin website (everything except the platform's /v1 API) sits behind
+  // a browser password prompt when ADMIN_PASSWORD is set.
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminPassword) {
+    app.use((req, res, next) => {
+      if (req.path.startsWith("/v1/")) return next();
+      const [, encoded] = (req.header("authorization") ?? "").split(" ");
+      const password = Buffer.from(encoded ?? "", "base64").toString().split(":").slice(1).join(":");
+      if (password === adminPassword) return next();
+      res.set("WWW-Authenticate", 'Basic realm="GeoFinder admin"').status(401).send("Password required");
+    });
+  }
+
   registerApiRoutes(app);
+  registerPlatformRoutes(app);
 
   // Resume any investigation that was still running when the previous process
   // exited (e.g. a redeploy) so the work continues instead of dying with the
@@ -49,7 +67,7 @@ async function startServer() {
   app.use("/runs", express.static(RUNS_ROOT));
 
   // Unmatched API paths must not fall through to the SPA catchall below.
-  app.use("/api", (_req, res) => {
+  app.use(["/api", "/v1"], (_req, res) => {
     res.status(404).json({ error: "Not found" });
   });
 

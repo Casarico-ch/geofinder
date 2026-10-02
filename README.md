@@ -52,6 +52,33 @@ it, otherwise it reports the tightest area it can defend.
 The endpoint accepts `{ images: [{ imageBase64, mediaType }], listingText? }` (the
 legacy single-photo `{ imageBase64, mediaType, hint }` shape still works).
 
+## Platform API
+
+GeoFinder runs as a private service for our platform. Every `/v1` call needs
+`Authorization: Bearer $GEOFINDER_API_KEY`.
+
+| Call | What it does |
+|---|---|
+| `POST /v1/properties/by-address` `{ address }` | Returns the property profile right away. `300` with `candidates` when the address matches several parcels, `404` when none. |
+| `POST /v1/properties/by-listing` `{ images: [{ imageBase64, mediaType }], listingText?, municipality? }` | Starts the investigation on two models side by side and returns `202` with a `requestId`. |
+| `GET /v1/requests/:id` | Status of a request. A listing request has one entry per model in `results`, each with the model's `answer` and the `profile` of the parcel it found. |
+
+A **property profile** holds the Popety scores, the buildings, the zoning rules,
+the built-vs-allowed ratios, the parcel outline and a swisstopo map window
+(`map.aerialUrl`, `map.cadastreUrl`, with the outline already in image pixels in
+`map.parcelPixels`). It costs CHF 3.80 on Popety per parcel; two models that find
+the same parcel share one lookup.
+
+The models a listing runs on are set by `GEOFINDER_MODELS` (comma-separated,
+default `claude-opus-4-8,claude-opus-5-5`).
+
+The admin website lists every request at `/requests`, one row each, with every
+model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the
+website (everything except `/v1`) behind a password prompt.
+
+Environment: `ANTHROPIC_API_KEY`, `POPETY_API_KEY`, `GEOFINDER_API_KEY`,
+`ADMIN_PASSWORD`, and optionally `GEOFINDER_MODELS`.
+
 ## Stack
 
 React 19 + Vite + Tailwind 4 + shadcn/ui on the client, Express + the Anthropic
