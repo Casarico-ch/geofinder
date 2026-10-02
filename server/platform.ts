@@ -4,7 +4,7 @@
 // Every /v1 call needs `Authorization: Bearer <GEOFINDER_API_KEY>`.
 //   POST /v1/address   { images, listingText?, municipality? } → 202 + requestId (finds the address)
 //   GET  /v1/requests/:id                                     → status + each model's address
-//   POST /v1/property  { address } or { latitude, longitude } → Popety property data now (CHF 3.80)
+//   POST /v1/property  { address } | { latitude, longitude } | { commune, plot } → Popety property data (CHF 3.80)
 // The admin website reads the same records through /api/requests.
 // =============================================================================
 import { timingSafeEqual } from "node:crypto";
@@ -12,7 +12,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { MODELS, createJob, type ModelId } from "./jobs";
-import { PROFILE_COST_CHF, PopetyError, findLandByAddress, findLandByCoordinates, getProfileByLandId } from "./popety";
+import { PROFILE_COST_CHF, PopetyError, findLandByAddress, findLandByCoordinates, findLandByPlot, getProfileByLandId } from "./popety";
 import {
   type PlatformRequest,
   createRequest,
@@ -28,11 +28,12 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-opus-
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
 
-// Either an address or coordinates (WGS84) — coordinates also find plots
-// with no building and so no address.
+// An address, coordinates (WGS84) or a commune + plot number. The last two
+// also find plots with no building and so no address.
 const propertySchema = z.union([
   z.object({ address: z.string().trim().min(3).max(300) }).strict(),
   z.object({ latitude: z.number().min(45.7).max(47.9), longitude: z.number().min(5.9).max(10.6) }).strict(),
+  z.object({ commune: z.string().trim().min(2).max(100), plot: z.string().trim().min(1).max(40) }).strict(),
 ]);
 
 const listingSchema = z.object({
@@ -93,16 +94,20 @@ export function registerPlatformRoutes(app: Express) {
   app.post("/v1/property", async (req: Request, res: Response) => {
     const parsed = propertySchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Expected { address } or { latitude, longitude } (a point in Switzerland)" });
+      res.status(400).json({
+        error: "Expected one of { address }, { latitude, longitude } (a point in Switzerland) or { commune, plot }",
+      });
       return;
     }
     const input = parsed.data;
-    const byAddress = "address" in input;
     const record = await createRequest("address", input);
     try {
-      const match = byAddress
-        ? await findLandByAddress(input.address)
-        : await findLandByCoordinates(input.latitude, input.longitude);
+      const match =
+        "address" in input
+          ? await findLandByAddress(input.address)
+          : "plot" in input
+            ? await findLandByPlot(input.commune, input.plot)
+            : await findLandByCoordinates(input.latitude, input.longitude);
       if (match.kind === "ambiguous") {
         record.status = "done";
         record.candidates = match.candidates;
@@ -113,12 +118,17 @@ export function registerPlatformRoutes(app: Express) {
       }
       if (match.kind === "none") {
         record.status = "error";
-        record.error = byAddress ? "No parcel matches this address." : "No parcel at these coordinates.";
+        record.error =
+          "address" in input
+            ? "No parcel matches this address."
+            : "plot" in input
+              ? "No parcel with this plot number in this commune (accents count, e.g. Genève)."
+              : "No parcel at these coordinates.";
         await saveRequest(record);
         res.status(404).json(publicView(record));
         return;
       }
-      record.profile = await getProfileByLandId(match.landId, match.matchedAddress ?? (byAddress ? input.address : null));
+      record.profile = await getProfileByLandId(match.landId, match.matchedAddress ?? ("address" in input ? input.address : null));
       record.popetyCostChf = PROFILE_COST_CHF;
       record.status = "done";
       await saveRequest(record);

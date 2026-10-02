@@ -77,6 +77,8 @@ interface PlatformRequest {
     address?: string;
     latitude?: number;
     longitude?: number;
+    commune?: string;
+    plot?: string;
     listingText?: string;
     municipality?: string;
     imageCount?: number;
@@ -313,6 +315,7 @@ function ModelColumn({ r }: { r: ModelResult }) {
 function summaryOf(r: PlatformRequest): string {
   if (r.kind === "address") {
     if (r.input.address) return r.input.address;
+    if (r.input.plot) return `${r.input.commune} ${r.input.plot}`;
     if (r.input.latitude != null) return r.profile?.address ?? `${r.input.latitude}, ${r.input.longitude}`;
     return "Property";
   }

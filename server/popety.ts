@@ -87,6 +87,16 @@ export async function findLandByCoordinates(lat: number, lon: number): Promise<L
   return { kind: "match", landId: body.popetyio_land_id, matchedAddress: body.matched_address ?? null };
 }
 
+/** Free. Commune name (accents required, any case) + cadastral plot number, e.g. "Horgen" + "HN12522". */
+export async function findLandByPlot(commune: string, plot: string): Promise<LandMatch> {
+  const { status, body } = await popetyRaw(
+    `/v1/lands/find-by-plot-number/${encodeURIComponent(commune)}/${encodeURIComponent(plot)}`,
+  );
+  if (status === 404 || (status === 200 && !body.popetyio_land_id)) return { kind: "none" };
+  if (status !== 200) throw new PopetyError(status, `Popety ${status} on find-by-plot-number: ${JSON.stringify(body).slice(0, 500)}`);
+  return { kind: "match", landId: body.popetyio_land_id, matchedAddress: body.matched_address ?? null };
+}
+
 export type PropertyProfile = ReturnType<typeof toPropertyProfile>;
 
 /** What one profile costs on Popety, in CHF (1 credit = CHF 1). */

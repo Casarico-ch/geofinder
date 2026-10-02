@@ -36,6 +36,8 @@ export interface PlatformRequest {
     address?: string;
     latitude?: number;
     longitude?: number;
+    commune?: string;
+    plot?: string;
     listingText?: string;
     municipality?: string;
     imageCount?: number;
