@@ -755,6 +755,11 @@ export default function AddressFinder() {
             </div>
           </Link>
           <div className="flex-1" />
+          <Link href="/requests">
+            <Button variant="ghost" size="sm">
+              Requests
+            </Button>
+          </Link>
           {isNew ? (
             <Link href="/">
               <Button variant="ghost" size="sm">

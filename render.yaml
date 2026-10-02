@@ -20,6 +20,12 @@ services:
         sync: false
       - key: POPETY_API_KEY
         sync: false
+      # Bearer key the platform sends to /v1 (pick any long random string).
+      - key: GEOFINDER_API_KEY
+        sync: false
+      # Password for the admin website (any username).
+      - key: ADMIN_PASSWORD
+        sync: false
     disk:
       name: geofinder-data
       mountPath: /var/data
