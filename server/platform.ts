@@ -12,7 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { MODELS, createJob, getJob, type ModelId } from "./jobs";
+import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -26,7 +26,9 @@ import {
   type PlatformRequest,
   createRequest,
   createRequestFromJobs,
+  deleteRows,
   getRequest,
+  listRequests,
   listRequestsWithLooseJobs,
   saveRequest,
   watchListingRequest,
@@ -246,6 +248,42 @@ export function registerPlatformRoutes(app: Express) {
   // ---- admin website (same records, including the job ids for the traces) ----
   app.get("/api/requests", (_req: Request, res: Response) => {
     res.json({ requests: listRequestsWithLooseJobs().slice(0, 200) });
+  });
+
+  // Delete rows from the admin table (bulk). Row ids are request ids; runs
+  // that belong to no request come as job ids.
+  app.post("/api/requests/delete", async (req: Request, res: Response) => {
+    const parsed = z
+      .object({ requestIds: z.array(z.string()).max(500).default([]), jobIds: z.array(z.string()).max(2000).default([]) })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Expected { requestIds?, jobIds? }" });
+      return;
+    }
+    const deleted = await deleteRows(parsed.data.requestIds, parsed.data.jobIds);
+    res.json({ deleted });
+  });
+
+  // Everything the Usage page needs: one line per AI run and one per Popety
+  // charge. The page filters by date and aggregates in the browser.
+  app.get("/api/usage", (_req: Request, res: Response) => {
+    const runs = listJobs().map((j) => ({
+      id: j.id,
+      model: j.model,
+      createdAt: j.createdAt,
+      status: j.status,
+      found: j.answer?.found ?? null,
+      confidence: j.answer?.confidence ?? null,
+      tokens: j.tokens,
+      costUsd: costUsd(j.tokens, j.model),
+      elapsedMs: elapsedMs(j),
+      steps: j.steps.length,
+      title: j.input.municipality ?? j.input.listingText?.replace(/^Municipality \/ commune: [^\n]*\n*/, "").slice(0, 80) ?? null,
+    }));
+    const popety = listRequests()
+      .filter((r) => r.popetyCostChf > 0)
+      .map((r) => ({ id: r.id, createdAt: r.createdAt, costChf: r.popetyCostChf, plots: r.profiles?.length ?? 1 }));
+    res.json({ runs, popety });
   });
 
   // The website's New search form starts one job per chosen model, then calls

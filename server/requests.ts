@@ -9,10 +9,10 @@
 // (RUNS_ROOT/_requests/<id>.json) like jobs, so they survive restarts.
 // =============================================================================
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
-import { getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type ModelId } from "./jobs";
+import { deleteJob, getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type ModelId } from "./jobs";
 import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 
 // "paused" is display-only: a request whose unfinished runs are all paused.
@@ -92,6 +92,7 @@ export async function createRequest(
 }
 
 export async function saveRequest(req: PlatformRequest): Promise<void> {
+  if (!requests.has(req.id)) return; // deleted
   req.updatedAt = nowIso();
   if (req.status !== "running" && !req.finishedAt) req.finishedAt = req.updatedAt;
   try {
@@ -138,10 +139,31 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
   });
   req.source = "website";
   req.createdAt = jobs.map((j) => j.createdAt).sort()[0];
-  req.results = jobs.map((j) => ({ model: j.model, jobId: j.id, status: j.status, answer: j.answer, aiCostUsd: 0 }));
+  req.results = jobs.map((j) => ({
+    model: j.model,
+    jobId: j.id,
+    status: j.status,
+    answer: j.answer,
+    aiCostUsd: costUsd(j.tokens, j.model),
+  }));
   await saveRequest(req);
   watchListingRequest(req);
   return req;
+}
+
+// Delete rows from the admin table: the requests themselves, every run listed
+// in them, and any other request that held one of those runs.
+export async function deleteRows(requestIds: string[], jobIds: string[]): Promise<number> {
+  const jobSet = new Set(jobIds);
+  for (const id of requestIds) for (const m of requests.get(id)?.results ?? []) jobSet.add(m.jobId);
+  const reqSet = new Set(requestIds.filter((id) => requests.has(id)));
+  for (const r of Array.from(requests.values())) if ((r.results ?? []).some((m) => jobSet.has(m.jobId))) reqSet.add(r.id);
+  for (const id of Array.from(reqSet)) {
+    requests.delete(id);
+    await rm(path.join(dir(), `${id}.json`), { force: true }).catch(() => {});
+  }
+  for (const id of Array.from(jobSet)) await deleteJob(id);
+  return reqSet.size + jobSet.size;
 }
 
 const GROUP_WINDOW_MS = 10 * 60_000;
@@ -200,9 +222,15 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
     };
   });
 
-  const shown = all.map((r) =>
-    r.kind === "listing" && r.status === "running" ? { ...r, status: overallStatus(r.results ?? []) } : r,
-  );
+  // Listing rows read each run's live status, answer and cost from its job.
+  const shown = all.map((r) => {
+    if (r.kind !== "listing") return r;
+    const results = (r.results ?? []).map((m) => {
+      const j = getJob(m.jobId);
+      return j ? { ...m, status: j.status, answer: j.answer ?? m.answer, aiCostUsd: costUsd(j.tokens, j.model) } : m;
+    });
+    return { ...r, results, status: r.status === "running" ? overallStatus(results) : r.status };
+  });
   return mergeByListingId([...shown, ...looseRequests]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 

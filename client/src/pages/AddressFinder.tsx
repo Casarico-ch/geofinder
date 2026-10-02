@@ -767,6 +767,11 @@ export default function AddressFinder() {
               Requests
             </Button>
           </Link>
+          <Link href="/usage">
+            <Button variant="ghost" size="sm">
+              Usage
+            </Button>
+          </Link>
           {isNew ? null : (
             <Link href="/new">
               <Button size="sm">

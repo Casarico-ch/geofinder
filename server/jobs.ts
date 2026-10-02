@@ -8,7 +8,7 @@
 // so a process restart or a reopened window recovers the full trace.
 // =============================================================================
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT, ensureRunDir } from "./sandbox";
 import type { BuildPotential } from "./potential";
@@ -132,6 +132,7 @@ export interface Job {
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
   cancelRequested?: boolean;
+  deleted?: boolean; // removed by the admin; never written to disk again
   pauseRequested?: boolean;
   runDir: string;
 }
@@ -274,6 +275,7 @@ function serialize(job: Job): string {
 }
 
 async function persist(job: Job): Promise<void> {
+  if (job.deleted) return;
   try {
     await mkdir(job.runDir, { recursive: true });
     await writeFile(path.join(job.runDir, "job.json"), serialize(job), "utf8");
@@ -324,6 +326,21 @@ export async function loadPersistedJobs(): Promise<Job[]> {
     }
   }
   return resumable;
+}
+
+// Delete an investigation and its files. A running one is told to stop first;
+// its folder is removed again a minute later in case the run wrote into it
+// while stopping.
+export async function deleteJob(id: string): Promise<boolean> {
+  const job = jobs.get(id);
+  if (!job) return false;
+  if (job.status === "running") requestCancel(job);
+  job.deleted = true;
+  jobs.delete(id);
+  const remove = () => rm(job.runDir, { recursive: true, force: true }).catch(() => {});
+  await remove();
+  setTimeout(() => void remove(), 60_000);
+  return true;
 }
 
 function cryptoRandomId(): string {

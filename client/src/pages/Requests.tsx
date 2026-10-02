@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { toast } from "sonner";
+import AdminHeader from "@/components/AdminHeader";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, MapPin, Pause, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, Trash2 } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -410,15 +412,26 @@ function summaryOf(r: PlatformRequest): string {
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
-function RequestRow({ r }: { r: PlatformRequest }) {
+function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: boolean; onToggle: () => void }) {
   const [open, setOpen] = useState(false);
   const aiCost = (r.results ?? []).reduce((s, m) => s + m.aiCostUsd, 0);
   return (
-    <li className="rounded-lg border border-border bg-card">
+    <li className={`rounded-lg border bg-card ${selected ? "border-primary/60" : "border-border"}`}>
+      <div className="flex items-center">
+      <label className="pl-3.5 py-2.5 flex items-center cursor-pointer shrink-0">
+        <input
+          type="checkbox"
+          id={`select-${r.id}`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-4 w-4 accent-primary cursor-pointer"
+          aria-label={`Select ${summaryOf(r)}`}
+        />
+      </label>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full px-3.5 py-2.5 flex items-center gap-3 text-left hover:bg-muted/40 transition-colors rounded-lg"
+        className="flex-1 min-w-0 px-3 py-2.5 flex items-center gap-3 text-left hover:bg-muted/40 transition-colors rounded-r-lg"
         aria-expanded={open}
       >
         <StatusIcon status={r.status} />
@@ -449,6 +462,7 @@ function RequestRow({ r }: { r: PlatformRequest }) {
         <span className="text-xs text-muted-foreground w-14 text-right shrink-0 hidden sm:inline">{timeAgo(r.createdAt)}</span>
         <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
+      </div>
       {open && (
         <div className="border-t border-border p-3.5 space-y-3">
           {r.error && <p className="text-sm text-destructive">{r.error}</p>}
@@ -497,6 +511,45 @@ function RequestRow({ r }: { r: PlatformRequest }) {
 export default function Requests() {
   const [requests, setRequests] = useState<PlatformRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [reload, setReload] = useState(0);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const visibleIds = (requests ?? []).map((r) => r.id);
+  const chosen = visibleIds.filter((id) => selected.has(id));
+  const allChosen = visibleIds.length > 0 && chosen.length === visibleIds.length;
+
+  const deleteChosen = async () => {
+    const rows = (requests ?? []).filter((r) => selected.has(r.id));
+    const requestIds = rows.filter((r) => !r.id.startsWith("job-")).map((r) => r.id);
+    const jobIds = rows.flatMap((r) => (r.results ?? []).map((m) => m.jobId));
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/requests/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestIds, jobIds }),
+      });
+      if (!res.ok) throw new Error();
+      setRequests((prev) => (prev ?? []).filter((r) => !selected.has(r.id)));
+      toast.success(`Deleted ${rows.length} ${rows.length === 1 ? "request" : "requests"}`);
+      setSelected(new Set());
+      setConfirming(false);
+      setReload((n) => n + 1);
+    } catch {
+      toast.error("Could not delete the requests. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -519,38 +572,59 @@ export default function Requests() {
       alive = false;
       clearTimeout(timer);
     };
-  }, []);
+  }, [reload]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b border-border sticky top-0 bg-background/90 backdrop-blur z-10">
-        <div className="container py-3.5 flex items-center gap-2.5">
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <MapPin className="h-5 w-5 text-primary" />
-            <div>
-              <h1 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors">GeoFinder</h1>
-              <p className="text-xs text-muted-foreground">One row per property request, each model's search inside</p>
-            </div>
-          </Link>
-          <div className="flex-1" />
-          <Link href="/investigations">
-            <Button variant="ghost" size="sm">
-              All investigations
-            </Button>
-          </Link>
-          <Link href="/new">
-            <Button size="sm">
-              <Search className="mr-1.5 h-3.5 w-3.5" />
-              New search
-            </Button>
-          </Link>
-        </div>
-      </header>
+      <AdminHeader subtitle="One row per property request, each model's search inside" />
       <main className="flex-1 container py-8">
         <div className="max-w-5xl mx-auto space-y-3">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-medium text-foreground">Requests</h2>
-            {requests && requests.length > 0 && <span className="text-xs text-muted-foreground">{requests.length}</span>}
+          <div className="flex items-center justify-between gap-3 min-h-9">
+            <div className="flex items-center gap-3">
+              {requests && requests.length > 0 && (
+                <input
+                  type="checkbox"
+                  id="select-all"
+                  checked={allChosen}
+                  ref={(el) => {
+                    if (el) el.indeterminate = chosen.length > 0 && !allChosen;
+                  }}
+                  onChange={() => setSelected(allChosen ? new Set() : new Set(visibleIds))}
+                  className="h-4 w-4 accent-primary cursor-pointer ml-3.5"
+                  aria-label="Select all requests"
+                />
+              )}
+              <h2 className="text-sm font-medium text-foreground">
+                {chosen.length > 0 ? `${chosen.length} selected` : "Requests"}
+              </h2>
+            </div>
+            {chosen.length > 0 ? (
+              confirming ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground hidden sm:inline">
+                    Delete {chosen.length} {chosen.length === 1 ? "request" : "requests"} and their runs? This can't be undone.
+                  </span>
+                  <Button size="sm" variant="destructive" disabled={deleting} onClick={() => void deleteChosen()}>
+                    {deleting ? "Deleting…" : "Delete"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                    Clear
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-destructive" onClick={() => setConfirming(true)}>
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Delete
+                  </Button>
+                </div>
+              )
+            ) : (
+              requests && requests.length > 0 && <span className="text-xs text-muted-foreground">{requests.length}</span>
+            )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           {requests === null && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -564,7 +638,7 @@ export default function Requests() {
           )}
           <ul className="space-y-1.5">
             {requests?.map((r) => (
-              <RequestRow key={r.id} r={r} />
+              <RequestRow key={r.id} r={r} selected={selected.has(r.id)} onToggle={() => toggle(r.id)} />
             ))}
           </ul>
         </div>
