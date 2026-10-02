@@ -81,7 +81,7 @@ the admin table shows all searches with the same `listingId` as one row, with th
 `POST /api/geo/investigate` accepts the same two fields.
 
 The models a listing runs on are set by `GEOFINDER_MODELS` (comma-separated,
-default `claude-opus-4-8,claude-opus-5-5`).
+default `claude-sonnet-5-5,claude-opus-5-5`).
 
 The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the

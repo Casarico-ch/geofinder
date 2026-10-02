@@ -35,7 +35,7 @@ import {
 } from "./requests";
 
 // The models every listing request runs on, side by side.
-const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-opus-4-8,claude-opus-5-5")
+const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
