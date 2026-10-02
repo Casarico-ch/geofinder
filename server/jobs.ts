@@ -116,7 +116,15 @@ export interface Job {
   model: ModelId; // which Claude model runs this investigation
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
-  input: { municipality?: string; listingText?: string; imageCount: number };
+  input: {
+    municipality?: string;
+    listingText?: string;
+    imageCount: number;
+    // The caller's own reference for the listing: runs with the same listingId
+    // are shown together as one request on the main table.
+    listingId?: string;
+    listingUrl?: string;
+  };
   steps: Step[];
   answer: Answer | null;
   error?: string;

@@ -59,7 +59,7 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 
 | Call | What it does |
 |---|---|
-| `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality? }` | Finds the address from a listing. Runs two models side by side and returns `202` with a `requestId`. |
+| `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl? }` | Finds the address from a listing. Runs two models side by side and returns `202` with a `requestId`. |
 | `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer` (address, coordinates, confidence). |
 | `POST /v1/property` `{ address }`, `{ latitude, longitude }` or `{ commune, plot }` | Returns the property data for one plot right away (CHF 3.80 on Popety). Coordinates and plot numbers (e.g. `{ "commune": "Horgen", "plot": "HN12522" }`) also work for plots with no building; `/v1/address` returns coordinates for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
 
@@ -75,6 +75,10 @@ the built-vs-allowed ratios, the parcel outline and a swisstopo map window
 (`map.aerialUrl`, `map.cadastreUrl`, with the outline already in image pixels in
 `map.parcelPixels`). It costs CHF 3.80 on Popety per call, and only
 `/v1/property` fetches it.
+
+Send your own `listingId` (and `listingUrl` if you have one) with every address search:
+the admin table shows all searches with the same `listingId` as one row, with the link.
+`POST /api/geo/investigate` accepts the same two fields.
 
 The models a listing runs on are set by `GEOFINDER_MODELS` (comma-separated,
 default `claude-opus-4-8,claude-opus-5-5`).

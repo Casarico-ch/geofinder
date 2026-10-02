@@ -77,6 +77,8 @@ const listingSchema = z.object({
     .min(1)
     .max(15),
   listingText: z.string().max(20000).optional(),
+  listingId: z.string().trim().min(1).max(200).optional(),
+  listingUrl: z.string().trim().url().max(2000).optional(),
   municipality: z.string().max(200).optional(),
 });
 
@@ -197,10 +199,10 @@ export function registerPlatformRoutes(app: Express) {
     }
     const parsed = listingSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Expected { images: [{ imageBase64, mediaType }], listingText?, municipality? }" });
+      res.status(400).json({ error: "Expected { images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl? }" });
       return;
     }
-    const { municipality } = parsed.data;
+    const { municipality, listingId, listingUrl } = parsed.data;
     const listingText = [municipality?.trim() && `Municipality / commune: ${municipality.trim()}`, parsed.data.listingText?.trim()]
       .filter(Boolean)
       .join("\n\n") || undefined;
@@ -211,10 +213,12 @@ export function registerPlatformRoutes(app: Express) {
         listingText: parsed.data.listingText,
         municipality,
         imageCount: images.length,
+        listingId,
+        listingUrl,
       });
       record.results = [];
       for (const model of LISTING_MODELS) {
-        const job = await createJob({ municipality, listingText, imageCount: images.length }, model);
+        const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl }, model);
         record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
         void (async () => {
           await saveListingPhotos(job.runDir, images);
