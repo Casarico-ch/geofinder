@@ -17,6 +17,7 @@ export type PotentialStatus = "running" | "done" | "error";
 
 export type Confidence =
   | "street"
+  | "parcel" // the exact plot(s) are pinned, but there is no street address (e.g. building land)
   | "building"
   | "block"
   | "neighborhood"
@@ -31,10 +32,19 @@ export interface AnswerCandidate {
   note: string;
 }
 
+export interface ParcelRef {
+  commune: string;
+  plot: string; // cadastral plot number as the land register writes it, e.g. "HN12522"
+  egrid?: string | null;
+}
+
 export interface Answer {
   found: boolean;
   address: string | null;
   parcel: string | null;
+  // The exact plot(s) the property covers. A valid result on its own: building
+  // land has plots but no address. Pass straight to /v1/property { plots }.
+  parcels: ParcelRef[];
   commune: string | null;
   confidence: Confidence;
   latitude: number | null;
@@ -139,6 +149,23 @@ export interface Job {
 
 // Wall-clock time the investigation has taken, in ms: start → finish, or
 // start → now while it is still running (frozen at updatedAt while paused).
+// Answers saved before parcels[] existed: read the plots back out of the
+// free-text parcel ("Horgen HN12522 + HN12523", "Plan-les-Ouates 10917").
+export function withParcels(answer: Answer | null): Answer | null {
+  if (!answer || (Array.isArray(answer.parcels) && answer.parcels.length)) return answer;
+  const m = answer.parcel?.trim().match(/^(.+?)\s+([A-Z]{0,4}\d[\w./-]*(?:\s*[+,&]\s*[A-Z]{0,4}\d[\w./-]*)*)$/);
+  const parcels = m
+    ? m[2].split(/\s*[+,&]\s*/).map((plot) => ({ commune: answer.commune ?? m[1], plot }))
+    : [];
+  // A found answer that named exact plots but no address pinned the plots
+  // themselves, which is what "parcel" confidence now records.
+  const confidence =
+    parcels.length && answer.found && !answer.address && ["block", "neighborhood"].includes(answer.confidence)
+      ? "parcel"
+      : answer.confidence;
+  return { ...answer, parcels, confidence };
+}
+
 export function elapsedMs(job: Job): number {
   const start = job.startedAt ?? job.createdAt;
   const end = job.finishedAt ?? (job.status === "running" ? nowIso() : job.updatedAt);
@@ -302,6 +329,7 @@ export async function loadPersistedJobs(): Promise<Job[]> {
       const parsed = JSON.parse(raw) as Omit<Job, "runDir">;
       const job: Job = {
         ...parsed,
+        answer: withParcels(parsed.answer),
         model: (MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
         tokens: {
           input: parsed.tokens?.input ?? 0,

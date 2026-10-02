@@ -86,7 +86,13 @@ interface ModelResult {
   model: string;
   jobId: string;
   status: JobStatus;
-  answer: { found: boolean; address: string | null; confidence: string; reasoning: string } | null;
+  answer: {
+    found: boolean;
+    address: string | null;
+    parcels?: { commune: string; plot: string }[];
+    confidence: string;
+    reasoning: string;
+  } | null;
   aiCostUsd: number;
 }
 
@@ -102,7 +108,8 @@ interface PlatformRequest {
     longitude?: number;
     commune?: string;
     plot?: string;
-    plots?: { address?: string; commune?: string; plot?: string; latitude?: number; longitude?: number }[];
+    egrid?: string | null;
+    plots?: { address?: string; commune?: string; plot?: string; egrid?: string | null; latitude?: number; longitude?: number }[];
     listingText?: string;
     municipality?: string;
     imageCount?: number;
@@ -387,7 +394,7 @@ function ModelColumn({ r }: { r: ModelResult }) {
       {r.status === "running" && <p className="text-sm text-muted-foreground">Investigating…</p>}
       {r.answer && (
         <div className="text-sm">
-          <p className="font-medium">{r.answer.found ? r.answer.address ?? "Area only" : "Not found"}</p>
+          <p className="font-medium">{foundLabel(r.answer, "Area only").replace(/^not found$/, "Not found")}</p>
           <p className="text-xs text-muted-foreground capitalize">Confidence: {r.answer.confidence}</p>
         </div>
       )}
@@ -395,13 +402,24 @@ function ModelColumn({ r }: { r: ModelResult }) {
   );
 }
 
+// What a model found: the address, else its exact plots, else just an area.
+function foundLabel(a: NonNullable<ModelResult["answer"]>, area = "area"): string {
+  if (!a.found) return "not found";
+  if (a.address) return a.address;
+  if (a.parcels?.length) return `${a.parcels[0].commune} ${a.parcels.map((p) => p.plot).join(" + ")}`;
+  return area;
+}
+
 function summaryOf(r: PlatformRequest): string {
   if (r.kind === "address") {
     if (r.input.address) return r.input.address;
     if (r.input.plot) return `${r.input.commune} ${r.input.plot}`;
+    if (r.input.egrid) return `EGRID ${r.input.egrid}`;
     if (r.input.plots)
       return r.input.plots
-        .map((p) => p.address ?? (p.plot ? `${p.commune} ${p.plot}` : `${p.latitude}, ${p.longitude}`))
+        .map((p) =>
+          p.address ?? (p.plot ? `${p.commune} ${p.plot}` : p.egrid ? `EGRID ${p.egrid}` : `${p.latitude}, ${p.longitude}`),
+        )
         .join(" + ");
     if (r.input.latitude != null) return r.profile?.address ?? `${r.input.latitude}, ${r.input.longitude}`;
     return "Property";
@@ -452,7 +470,7 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
             <span key={m.jobId} className="hidden md:inline-flex items-center gap-1.5 text-xs text-muted-foreground max-w-48 min-w-0">
               <StatusIcon status={m.status} />
               <span className="truncate">
-                {MODEL_LABEL[m.model] ?? m.model}: {m.answer ? (m.answer.found ? m.answer.address ?? "area" : "not found") : "…"}
+                {MODEL_LABEL[m.model] ?? m.model}: {m.answer ? foundLabel(m.answer) : "…"}
               </span>
             </span>
           ))}

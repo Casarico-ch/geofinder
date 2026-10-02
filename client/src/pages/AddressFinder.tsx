@@ -30,6 +30,7 @@ import { toast } from "sonner";
 
 type Confidence =
   | "street"
+  | "parcel"
   | "building"
   | "block"
   | "neighborhood"
@@ -166,6 +167,7 @@ interface Picture {
 const CONFIDENCE_META: Record<Confidence, { label: string; tone: string }> = {
   street: { label: "Street-level", tone: "text-primary bg-primary/10" },
   building: { label: "Building-level", tone: "text-primary bg-primary/10" },
+  parcel: { label: "Exact plots", tone: "text-primary bg-primary/10" },
   block: { label: "Block-level", tone: "text-primary bg-primary/10" },
   neighborhood: { label: "Neighborhood", tone: "text-amber-700 bg-amber-500/10" },
   city: { label: "City-level", tone: "text-amber-700 bg-amber-500/10" },
@@ -742,7 +744,7 @@ export default function AddressFinder() {
       ? { lat: answer.latitude, lon: answer.longitude }
       : null;
   const primaryLine = answer?.address ?? answer?.parcel ?? "";
-  const wideMap = answer ? !["street", "building", "block"].includes(answer.confidence) : true;
+  const wideMap = answer ? !["street", "building", "parcel", "block"].includes(answer.confidence) : true;
   const running = job?.status === "running";
 
   const inputClass =

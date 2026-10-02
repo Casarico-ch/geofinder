@@ -60,7 +60,7 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 | Call | What it does |
 |---|---|
 | `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl? }` | Finds the address from a listing. Runs two models side by side and returns `202` with a `requestId`. |
-| `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer` (address, coordinates, confidence). |
+| `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer`: address, exact `parcels` (`[{ commune, plot, egrid }]`, the result for building land with no address), coordinates, confidence. |
 | `POST /v1/property` `{ address }`, `{ latitude, longitude }` or `{ commune, plot }` | Returns the property data for one plot right away (CHF 3.80 on Popety). Coordinates and plot numbers (e.g. `{ "commune": "Horgen", "plot": "HN12522" }`) also work for plots with no building; `/v1/address` returns coordinates for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
 
 To look at several plots as one site, send `{ "plots": [ ...2 to 10 of the inputs above ] }`,

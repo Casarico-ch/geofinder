@@ -39,6 +39,7 @@ export interface PlatformRequest {
     longitude?: number;
     commune?: string;
     plot?: string;
+    egrid?: string | null;
     plots?: Record<string, unknown>[];
     listingText?: string;
     municipality?: string;
