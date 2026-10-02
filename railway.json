@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "pnpm start",
-    "healthcheckPath": "/",
+    "healthcheckPath": "/healthz",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE"
   }

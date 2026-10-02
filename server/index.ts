@@ -28,6 +28,11 @@ async function startServer() {
 
   await loadPersistedRequests();
 
+  // Railway's health check — always open, even behind ADMIN_PASSWORD.
+  app.get("/healthz", (_req, res) => {
+    res.json({ ok: true });
+  });
+
   // The admin website (everything except the platform's /v1 API) sits behind
   // a browser password prompt when ADMIN_PASSWORD is set.
   const adminPassword = process.env.ADMIN_PASSWORD;
