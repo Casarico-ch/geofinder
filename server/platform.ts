@@ -5,6 +5,7 @@
 //   POST /v1/address   { images, listingText?, municipality? } → 202 + requestId (finds the address)
 //   GET  /v1/requests/:id                                     → status + each model's address
 //   POST /v1/property  { address } | { latitude, longitude } | { commune, plot } → Popety property data (CHF 3.80)
+//                      or { plots: [ ...2-10 of those ] } → each plot + the plots combined (CHF 3.80 per plot)
 // The admin website reads the same records through /api/requests.
 // =============================================================================
 import { timingSafeEqual } from "node:crypto";
@@ -12,7 +13,15 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { MODELS, createJob, type ModelId } from "./jobs";
-import { PROFILE_COST_CHF, PopetyError, findLandByAddress, findLandByCoordinates, findLandByPlot, getProfileByLandId } from "./popety";
+import {
+  PROFILE_COST_CHF,
+  PopetyError,
+  combineProfiles,
+  findLandByAddress,
+  findLandByCoordinates,
+  findLandByPlot,
+  getProfileByLandId,
+} from "./popety";
 import {
   type PlatformRequest,
   createRequest,
@@ -30,11 +39,31 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-opus-
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
-const propertySchema = z.union([
+const plotSchema = z.union([
   z.object({ address: z.string().trim().min(3).max(300) }).strict(),
   z.object({ latitude: z.number().min(45.7).max(47.9), longitude: z.number().min(5.9).max(10.6) }).strict(),
   z.object({ commune: z.string().trim().min(2).max(100), plot: z.string().trim().min(1).max(40) }).strict(),
 ]);
+type PlotInput = z.infer<typeof plotSchema>;
+// One plot, or { plots: [...] } to look at several together as one site.
+const propertySchema = z.union([plotSchema, z.object({ plots: z.array(plotSchema).min(2).max(10) }).strict()]);
+
+const resolvePlot = (p: PlotInput) =>
+  "address" in p
+    ? findLandByAddress(p.address)
+    : "plot" in p
+      ? findLandByPlot(p.commune, p.plot)
+      : findLandByCoordinates(p.latitude, p.longitude);
+
+const describePlot = (p: PlotInput) =>
+  "address" in p ? p.address : "plot" in p ? `${p.commune} ${p.plot}` : `${p.latitude}, ${p.longitude}`;
+
+const notFoundMessage = (p: PlotInput) =>
+  "address" in p
+    ? "No parcel matches this address."
+    : "plot" in p
+      ? "No parcel with this plot number in this commune (accents count, e.g. Genève)."
+      : "No parcel at these coordinates.";
 
 const listingSchema = z.object({
   images: z
@@ -75,7 +104,9 @@ function publicView(r: PlatformRequest) {
     finishedAt: r.finishedAt ?? null,
     input: r.input,
     ...(r.kind === "address"
-      ? { profile: r.profile ?? null, candidates: r.candidates }
+      ? r.combined
+        ? { profiles: r.profiles ?? [], combined: r.combined, plotErrors: r.plotErrors }
+        : { profile: r.profile ?? null, candidates: r.candidates, plotErrors: r.plotErrors }
       : {
           results: (r.results ?? []).map((m) => ({
             model: m.model,
@@ -95,41 +126,57 @@ export function registerPlatformRoutes(app: Express) {
     const parsed = propertySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
-        error: "Expected one of { address }, { latitude, longitude } (a point in Switzerland) or { commune, plot }",
+        error:
+          "Expected one of { address }, { latitude, longitude } (a point in Switzerland) or { commune, plot }, " +
+          "or { plots: [...] } with 2 to 10 of those",
       });
       return;
     }
     const input = parsed.data;
+    const plots = "plots" in input ? input.plots : [input];
     const record = await createRequest("address", input);
+    const fail = async (status: number, error: string) => {
+      record.status = status === 300 ? "done" : "error";
+      record.error = error;
+      await saveRequest(record);
+      res.status(status).json(publicView(record));
+    };
     try {
-      const match =
-        "address" in input
-          ? await findLandByAddress(input.address)
-          : "plot" in input
-            ? await findLandByPlot(input.commune, input.plot)
-            : await findLandByCoordinates(input.latitude, input.longitude);
-      if (match.kind === "ambiguous") {
-        record.status = "done";
-        record.candidates = match.candidates;
-        record.error = "Several parcels match this address; send one of the candidate addresses.";
-        await saveRequest(record);
-        res.status(300).json(publicView(record));
+      // Finding the parcels is free; only fetch (and pay for) data once every plot is pinned.
+      const matches = await Promise.all(plots.map(resolvePlot));
+      const problems = matches.flatMap((m, i) =>
+        m.kind === "match" ? [] : [{ input: plots[i], kind: m.kind, match: m }],
+      );
+      if (problems.length) {
+        if (plots.length === 1) {
+          const m = matches[0];
+          if (m.kind === "ambiguous") {
+            record.candidates = m.candidates;
+            await fail(300, "Several parcels match this address; send one of the candidate addresses.");
+          } else await fail(404, notFoundMessage(plots[0]));
+          return;
+        }
+        record.plotErrors = problems.map((p) => ({
+          plot: describePlot(p.input),
+          error: p.kind === "ambiguous" ? "Several parcels match; be more precise." : notFoundMessage(p.input),
+          candidates: p.match.kind === "ambiguous" ? p.match.candidates : undefined,
+        }));
+        await fail(problems.some((p) => p.kind === "ambiguous") ? 300 : 404, "Not every plot could be found; nothing was charged.");
         return;
       }
-      if (match.kind === "none") {
-        record.status = "error";
-        record.error =
-          "address" in input
-            ? "No parcel matches this address."
-            : "plot" in input
-              ? "No parcel with this plot number in this commune (accents count, e.g. Genève)."
-              : "No parcel at these coordinates.";
-        await saveRequest(record);
-        res.status(404).json(publicView(record));
-        return;
+
+      const pinned = matches.map((m, i) => ({ ...(m as Extract<typeof m, { kind: "match" }>), plot: plots[i] }));
+      const unique = pinned.filter((m, i) => pinned.findIndex((o) => o.landId === m.landId) === i);
+      const profiles = await Promise.all(
+        unique.map((m) => getProfileByLandId(m.landId, m.matchedAddress ?? ("address" in m.plot ? m.plot.address : null))),
+      );
+      record.popetyCostChf = Math.round(profiles.length * PROFILE_COST_CHF * 100) / 100;
+      if ("plots" in input) {
+        record.profiles = profiles;
+        record.combined = combineProfiles(profiles);
+      } else {
+        record.profile = profiles[0];
       }
-      record.profile = await getProfileByLandId(match.landId, match.matchedAddress ?? ("address" in input ? input.address : null));
-      record.popetyCostChf = PROFILE_COST_CHF;
       record.status = "done";
       await saveRequest(record);
       res.json(publicView(record));

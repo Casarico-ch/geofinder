@@ -122,18 +122,19 @@ export async function getProfileByLandId(id: string, matchedAddress: string | nu
   return toPropertyProfile(matchedAddress, land, buildings, zoning);
 }
 
-// A swisstopo map window around the parcel. Both images are public WMS URLs
-// (no key), drawn in plain lat/lon so the outline maps linearly onto them:
+// A swisstopo map window around one or more parcels. Both images are public
+// WMS URLs (no key), drawn in plain lat/lon so outlines map linearly onto them:
 // x = (lon - west) / (east - west) * width, y = (north - lat) / (north - south) * height.
-// `parcelPixels` is that outline already converted, ready for an SVG overlay.
-export function parcelMap(polygon: [number, number][], width = 960, height = 1200) {
-  const lons = polygon.map((p) => p[0]);
-  const lats = polygon.map((p) => p[1]);
+// `parcelsPixels` holds each outline already converted, ready for an SVG overlay.
+export function mapWindow(polygons: [number, number][][], width = 960, height = 1200) {
+  const all = polygons.flat();
+  const lons = all.map((p) => p[0]);
+  const lats = all.map((p) => p[1]);
   const lat0 = (Math.min(...lats) + Math.max(...lats)) / 2;
   const lon0 = (Math.min(...lons) + Math.max(...lons)) / 2;
   const mPerDegLon = 111_320 * Math.cos((lat0 * Math.PI) / 180);
   const mPerDegLat = 110_540;
-  // Fit the parcel with ~2.5x margin, never tighter than 120 m across.
+  // Fit the parcels with ~2.5x margin, never tighter than 120 m across.
   const spanM = Math.max(120, 2.5 * Math.max(
     (Math.max(...lons) - Math.min(...lons)) * mPerDegLon,
     ((Math.max(...lats) - Math.min(...lats)) * mPerDegLat * width) / height,
@@ -153,11 +154,19 @@ export function parcelMap(polygon: [number, number][], width = 960, height = 120
     metresPerPixel: spanM / width,
     aerialUrl: wms("ch.swisstopo.swissimage", "image/jpeg"),
     cadastreUrl: wms("ch.kantone.cadastralwebmap-farbe", "image/png"),
-    parcelPixels: polygon.map(([lon, lat]) => [
-      r1(((lon - bbox.west) / (bbox.east - bbox.west)) * width),
-      r1(((bbox.north - lat) / (bbox.north - bbox.south)) * height),
-    ]),
+    parcelsPixels: polygons.map((polygon) =>
+      polygon.map(([lon, lat]) => [
+        r1(((lon - bbox.west) / (bbox.east - bbox.west)) * width),
+        r1(((bbox.north - lat) / (bbox.north - bbox.south)) * height),
+      ]),
+    ),
   };
+}
+
+// The single-parcel map on a profile keeps one outline under `parcelPixels`.
+export function parcelMap(polygon: [number, number][]) {
+  const { parcelsPixels, ...rest } = mapWindow([polygon]);
+  return { ...rest, parcelPixels: parcelsPixels[0] };
 }
 
 export function toPropertyProfile(matchedAddress: string | null, land: any, buildings: any, zoning: any) {
@@ -225,3 +234,50 @@ export function toPropertyProfile(matchedAddress: string | null, land: any, buil
     },
   };
 }
+
+type RatioKey = keyof PropertyProfile["builtVsAllowed"];
+
+/**
+ * Several plots looked at as one site: total area, built vs. allowed for the
+ * whole site (each plot's ratio weighted by its area), floor area left to
+ * build, and every outline on one map. Nothing extra is fetched.
+ */
+export function combineProfiles(profiles: PropertyProfile[]) {
+  const total = profiles.reduce((s, p) => s + (p.parcelAreaM2 ?? 0), 0);
+  const weighted = (pick: (p: PropertyProfile) => number | null) => {
+    if (!total || profiles.some((p) => pick(p) == null || !p.parcelAreaM2)) return null;
+    return Math.round((profiles.reduce((s, p) => s + pick(p)! * p.parcelAreaM2, 0) / total) * 100) / 100;
+  };
+  const keys: RatioKey[] = ["siteCoverage", "floorAreaRatio", "grossFloorRatio", "volumeRatio"];
+  const builtVsAllowed = Object.fromEntries(
+    keys.map((k) => {
+      const current = weighted((p) => p.builtVsAllowed[k].current);
+      const max = weighted((p) => p.builtVsAllowed[k].max);
+      return [k, { current, max, usedPct: current != null && max ? Math.round((current / max) * 100) : null }];
+    }),
+  ) as Record<RatioKey, { current: number | null; max: number | null; usedPct: number | null }>;
+  // Floor area in m² = floor area ratio × plot area.
+  const fa = builtVsAllowed.floorAreaRatio;
+  const currentM2 = fa.current != null ? Math.round(fa.current * total) : null;
+  const allowedM2 = fa.max != null ? Math.round(fa.max * total) : null;
+  const polygons = profiles.map((p) => p.parcelPolygon).filter((poly) => poly.length);
+
+  return {
+    plotCount: profiles.length,
+    totalAreaM2: total,
+    plots: profiles.map((p) => ({ landId: p.landId, parcelNumber: p.parcelNumber, egrid: p.egrid, areaM2: p.parcelAreaM2 })),
+    municipalities: Array.from(new Set(profiles.map((p) => p.municipality).filter(Boolean))) as string[],
+    zones: Array.from(new Set(profiles.map((p) => p.zoning.cantonalZone).filter(Boolean))) as string[],
+    sameZone: new Set(profiles.map((p) => p.zoning.cantonalZone)).size === 1,
+    buildingCount: profiles.reduce((s, p) => s + p.buildings.length, 0),
+    builtVsAllowed,
+    floorArea: {
+      currentM2,
+      allowedM2,
+      remainingM2: currentM2 != null && allowedM2 != null ? Math.max(0, allowedM2 - currentM2) : null,
+    },
+    map: polygons.length ? mapWindow(polygons) : null,
+  };
+}
+
+export type CombinedSite = ReturnType<typeof combineProfiles>;

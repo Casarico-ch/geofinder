@@ -13,7 +13,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
 import { getJob, costUsd, type Answer, type JobStatus, type ModelId } from "./jobs";
-import type { LandCandidate, PropertyProfile } from "./popety";
+import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 
 export type RequestStatus = "running" | "done" | "error";
 
@@ -38,6 +38,7 @@ export interface PlatformRequest {
     longitude?: number;
     commune?: string;
     plot?: string;
+    plots?: Record<string, unknown>[];
     listingText?: string;
     municipality?: string;
     imageCount?: number;
@@ -45,6 +46,10 @@ export interface PlatformRequest {
   // address requests
   profile?: PropertyProfile | null;
   candidates?: LandCandidate[];
+  // multi-plot property requests
+  profiles?: PropertyProfile[];
+  combined?: CombinedSite;
+  plotErrors?: { plot: string; error: string; candidates?: LandCandidate[] }[];
   // listing requests
   results?: ModelResult[];
   popetyCostChf: number;
