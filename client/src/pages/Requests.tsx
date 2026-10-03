@@ -98,6 +98,7 @@ interface ModelResult {
     reasoning: string;
   } | null;
   aiCostUsd: number;
+  check?: boolean; // a cross-check of another model's answer
   tokens?: number;
   startedAt?: string;
 }
@@ -382,6 +383,11 @@ function ModelColumn({ r }: { r: ModelResult }) {
       <div className="flex items-center gap-2">
         <StatusIcon status={r.status} />
         <span className="text-sm font-semibold">{MODEL_LABEL[r.model] ?? r.model}</span>
+        {r.check && (
+          <Badge variant="outline" className="font-normal" title="Checks another model's answer against the listing">
+            Cross-check
+          </Badge>
+        )}
         <span className="text-xs text-muted-foreground tabular-nums">${r.aiCostUsd.toFixed(2)}</span>
         {r.startedAt && <span className="text-xs text-muted-foreground tabular-nums">{fmtDate(r.startedAt)}</span>}
         <div className="flex-1" />
@@ -437,11 +443,17 @@ function titleOf(r: PlatformRequest): string {
   return (titled ?? first ?? r.input.municipality ?? "Listing").trim();
 }
 
-// "Sonnet 5.5 + Opus 5.5", plus the run count when a model ran more than once.
+// "Sonnet 5.5 + Opus 5.5", the run count when a model searched more than once,
+// and whether an answer was cross-checked by another model.
 function modelsOf(r: PlatformRequest): string {
-  const results = r.results ?? [];
-  const names = Array.from(new Set(results.map((m) => MODEL_LABEL[m.model] ?? m.model)));
-  return names.join(" + ") + (results.length > names.length ? ` · ${results.length} runs` : "");
+  const all = r.results ?? [];
+  const searches = all.filter((m) => !m.check);
+  const names = Array.from(new Set((searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  return (
+    names.join(" + ") +
+    (searches.length > names.length ? ` · ${searches.length} runs` : "") +
+    (all.some((m) => m.check) ? " · cross-checked" : "")
+  );
 }
 
 function shortId(r: PlatformRequest): string {

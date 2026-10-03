@@ -26,6 +26,7 @@ export interface ModelResult {
   aiCostUsd: number;
   tokens?: number; // total tokens of the run, filled in when listing
   startedAt?: string; // when the run was created, filled in when listing
+  check?: boolean; // a cross-check of another model's answer, not a search of its own
 }
 
 export interface PlatformRequest {
@@ -173,6 +174,17 @@ export async function deleteRows(requestIds: string[], jobIds: string[]): Promis
 
 const GROUP_WINDOW_MS = 10 * 60_000;
 
+// A cross-check run is the same listing with a verification task appended
+// ("--- VERIFICATION TASK --- Another investigator concluded …"). It belongs on
+// the listing's row, so grouping compares the listing text without that task.
+const CHECK_MARK = "--- VERIFICATION TASK ---";
+export const isCheckText = (t?: string): boolean => (t ?? "").includes(CHECK_MARK);
+const withoutCheck = (t?: string): string => {
+  const text = t ?? "";
+  const at = text.indexOf(CHECK_MARK);
+  return (at >= 0 ? text.slice(0, at) : text).trim();
+};
+
 // Requests plus every investigation that belongs to none (older website
 // searches, relaunches, other apps), one row per listing: everything sent with
 // the same listingId is one row. Loose runs without one are grouped when they
@@ -188,7 +200,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const keyOf = (j: Job) =>
     j.input.listingId
       ? `id:${j.input.listingId}`
-      : JSON.stringify([j.input.listingText ?? "", j.input.municipality ?? "", j.input.imageCount]);
+      : JSON.stringify([withoutCheck(j.input.listingText), j.input.municipality ?? "", j.input.imageCount]);
   for (const j of loose) {
     const g = groups.find(
       (g) =>
@@ -208,17 +220,19 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       aiCostUsd: costUsd(j.tokens, j.model),
       tokens: j.tokens.total,
       startedAt: j.createdAt,
+      check: isCheckText(j.input.listingText),
     }));
-    const first = g[0];
+    // The row shows the listing as searched, not a cross-check's extra task.
+    const first = g.find((j) => !isCheckText(j.input.listingText)) ?? g[0];
     return {
       id: `job-${first.id}`,
       kind: "listing",
       source: "website",
       status: overallStatus(results),
-      createdAt: first.createdAt,
+      createdAt: g[0].createdAt,
       updatedAt: g.map((j) => j.updatedAt).sort().at(-1)!,
       input: {
-        listingText: first.input.listingText,
+        listingText: withoutCheck(first.input.listingText) || undefined,
         municipality: first.input.municipality,
         imageCount: first.input.imageCount,
         listingId: first.input.listingId,
@@ -243,6 +257,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
             aiCostUsd: costUsd(j.tokens, j.model),
             tokens: j.tokens.total,
             startedAt: j.createdAt,
+            check: isCheckText(j.input.listingText),
           }
         : m;
     });
@@ -257,7 +272,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
 function listingKey(r: PlatformRequest): string | undefined {
   if (r.kind !== "listing") return undefined;
   if (r.input.listingId) return `id:${r.input.listingId}`;
-  const text = (r.input.listingText ?? "")
+  const text = withoutCheck(r.input.listingText)
     .replace(/^Municipality \/ commune: [^\n]*\n*/, "")
     .replace(/\s+/g, " ")
     .trim()

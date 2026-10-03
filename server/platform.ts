@@ -29,6 +29,7 @@ import {
   createRequestFromJobs,
   deleteRows,
   getRequest,
+  isCheckText,
   listRequests,
   listRequestsWithLooseJobs,
   saveRequest,
@@ -307,8 +308,7 @@ export function registerPlatformRoutes(app: Express) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
       return;
     }
-    const isCheck = (t?: string) => (t ?? "").includes("--- VERIFICATION TASK ---");
-    const searches = jobs.filter((j) => !isCheck(j.input.listingText));
+    const searches = jobs.filter((j) => !isCheckText(j.input.listingText));
     const src = (searches.length ? searches : jobs).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     const images = await loadListingPhotos(src.runDir);
     if (images.length === 0) {
