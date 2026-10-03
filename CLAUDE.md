@@ -13,6 +13,15 @@ pnpm dev         # client dev server
 pnpm dev:api     # API dev server on :3001
 ```
 
+## UI rules
+
+- Build every UI element from shadcn/ui (`client/src/components/ui`, style `new-york`, see
+  `components.json`): Button, Card, Table, Badge, Checkbox, Select, Input, Label, Dialog, Tooltip…
+  When a component is missing, add it with `npx shadcn@latest add <name>`; never hand-roll a
+  native `<select>`, `<input type="checkbox">`, `<table>` or a custom pill instead.
+- Colour comes from the theme tokens in `client/src/index.css` (`bg-card`, `text-muted-foreground`,
+  `border`, `primary`…). Semantic status colours (found / warning / error) are the only extra hues.
+
 ## How agents are dispatched into this repository
 
 <!-- rico-agent-contract v2 begin -->

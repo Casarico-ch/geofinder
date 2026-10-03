@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, Trash2 } from "lucide-react";
 
@@ -301,35 +305,33 @@ function ProfileView({ p }: { p: Profile }) {
 
 function RatioTable({ ratios, title = "Built today vs. allowed" }: { ratios: Profile["builtVsAllowed"]; title?: string }) {
   return (
-      <div>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{title}</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground text-left">
-                <th className="py-1.5 font-medium">Index</th>
-                <th className="py-1.5 font-medium text-right pr-3">Current</th>
-                <th className="py-1.5 font-medium text-right pr-3">Max</th>
-                <th className="py-1.5 font-medium w-24">Used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(ratios).map(([k, r]) => (
-                <tr key={k} className="border-t border-border">
-                  <td className="py-1.5">{RATIO_LABEL[k] ?? k}</td>
-                  <td className="py-1.5 text-right pr-3 tabular-nums">{num(r.current)}</td>
-                  <td className="py-1.5 text-right pr-3 tabular-nums">{num(r.max)}</td>
-                  <td className="py-1.5">
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden" title={r.usedPct != null ? `${r.usedPct}%` : ""}>
-                      <div className="h-full bg-primary" style={{ width: `${Math.min(100, r.usedPct ?? 0)}%` }} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{title}</h4>
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Index</TableHead>
+            <TableHead className="text-right">Current</TableHead>
+            <TableHead className="text-right">Max</TableHead>
+            <TableHead className="w-28">Used</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Object.entries(ratios).map(([k, r]) => (
+            <TableRow key={k} className="hover:bg-transparent">
+              <TableCell>{RATIO_LABEL[k] ?? k}</TableCell>
+              <TableCell className="text-right tabular-nums">{num(r.current)}</TableCell>
+              <TableCell className="text-right tabular-nums">{num(r.max)}</TableCell>
+              <TableCell>
+                <div className="h-1.5 rounded-full bg-muted overflow-hidden" title={r.usedPct != null ? `${r.usedPct}%` : ""}>
+                  <div className="h-full bg-primary" style={{ width: `${Math.min(100, r.usedPct ?? 0)}%` }} />
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -376,7 +378,7 @@ function CombinedView({ c, profiles }: { c: Combined; profiles: Profile[] }) {
 
 function ModelColumn({ r }: { r: ModelResult }) {
   return (
-    <div className="rounded-lg border border-border bg-background p-3.5 space-y-3 min-w-0">
+    <Card className="gap-3 py-3.5 px-3.5 min-w-0 shadow-none">
       <div className="flex items-center gap-2">
         <StatusIcon status={r.status} />
         <span className="text-sm font-semibold">{MODEL_LABEL[r.model] ?? r.model}</span>
@@ -394,7 +396,7 @@ function ModelColumn({ r }: { r: ModelResult }) {
           <p className="text-xs text-muted-foreground capitalize">Confidence: {r.answer.confidence}</p>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -469,9 +471,63 @@ const fmtTokens = (n: number) =>
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-// Shared column layout for the header and every row.
-const COLS =
-  "grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[6.5rem_minmax(0,1fr)_10rem_5.5rem_4.5rem_7.5rem_1rem] items-center gap-x-4";
+function RequestDetails({ r }: { r: PlatformRequest }) {
+  return (
+    <div className="space-y-3">
+      {r.error && <p className="text-sm text-destructive">{r.error}</p>}
+      {r.candidates && r.candidates.length > 0 && (
+        <ul className="text-sm list-disc pl-5">
+          {r.candidates.map((c) => (
+            <li key={c.landId}>{c.address ?? `Parcel ${c.landId}`}</li>
+          ))}
+        </ul>
+      )}
+      {r.plotErrors?.map((e) => (
+        <p key={e.plot} className="text-sm text-destructive">
+          {e.plot}: {e.error}
+        </p>
+      ))}
+      {r.kind === "address" && r.combined && <CombinedView c={r.combined} profiles={r.profiles ?? []} />}
+      {r.kind === "address" && r.profile && <ProfileView p={r.profile} />}
+      {r.kind === "listing" && (
+        <>
+          {(r.input.listingUrl || r.input.radarUrl) && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              {r.input.listingUrl && (
+                <a
+                  href={r.input.listingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary inline-flex items-center gap-1 hover:underline break-all"
+                >
+                  {r.input.listingUrl} <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+              )}
+              {r.input.radarUrl && (
+                <a
+                  href={r.input.radarUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary font-medium inline-flex items-center gap-1 hover:underline shrink-0"
+                >
+                  Open in Radar <ExternalLink className="h-3 w-3 shrink-0" />
+                </a>
+              )}
+            </div>
+          )}
+          {r.input.listingText && (
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>
+          )}
+          <div className="grid gap-3 lg:grid-cols-2">
+            {(r.results ?? []).map((m) => (
+              <ModelColumn key={m.jobId} r={m} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: boolean; onToggle: () => void }) {
   const [open, setOpen] = useState(false);
@@ -480,32 +536,24 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
   const outcome = outcomeOf(r);
   const title = titleOf(r);
   return (
-    <li className={`rounded-lg border bg-card ${selected ? "border-primary/60" : "border-border"}`}>
-      <div className="flex items-center">
-      <label className="pl-3.5 py-3 flex items-center cursor-pointer shrink-0">
-        <input
-          type="checkbox"
-          id={`select-${r.id}`}
-          checked={selected}
-          onChange={onToggle}
-          className="h-4 w-4 accent-primary cursor-pointer"
-          aria-label={`Select ${summaryOf(r)}`}
-        />
-      </label>
-      <button
-        type="button"
+    <>
+      <TableRow
+        data-state={selected ? "selected" : undefined}
+        className="cursor-pointer"
         onClick={() => setOpen((o) => !o)}
-        className={`flex-1 min-w-0 px-3 py-3 text-left hover:bg-muted/40 transition-colors rounded-r-lg ${COLS}`}
         aria-expanded={open}
       >
-        <span className="hidden md:block text-xs font-mono text-muted-foreground truncate" title={r.input.listingId ?? r.id}>
+        <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+          <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select ${title}`} />
+        </TableCell>
+        <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground max-w-28 truncate" title={r.input.listingId ?? r.id}>
           {shortId(r)}
-        </span>
-        <span className="min-w-0">
-          <span className="block text-sm text-foreground truncate" title={title}>
+        </TableCell>
+        <TableCell className="max-w-0 w-full">
+          <div className="truncate font-medium" title={title}>
             {title}
-          </span>
-          <span className="block text-xs text-muted-foreground truncate">
+          </div>
+          <div className="truncate text-xs text-muted-foreground">
             {[
               r.kind === "address" ? "Property lookup" : r.input.municipality,
               r.source === "website" ? "Website" : "Platform",
@@ -514,85 +562,40 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
               .filter(Boolean)
               .join(" · ")}
             <span className="md:hidden"> · {fmtDate(r.createdAt)}</span>
-          </span>
-        </span>
-        <span className="min-w-0 flex flex-col items-end md:items-start gap-0.5">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${outcome.tone}`}>
+          </div>
+        </TableCell>
+        <TableCell className="max-w-44">
+          <Badge variant="outline" className={`gap-1 whitespace-nowrap border-transparent ${outcome.tone}`}>
             {outcome.label === "Searching" && <Loader2 className="h-3 w-3 animate-spin" />}
             {outcome.label}
-          </span>
+          </Badge>
           {outcome.detail && (
-            <span className="hidden md:block text-xs text-muted-foreground truncate max-w-full" title={outcome.detail}>
+            <div className="hidden md:block mt-0.5 truncate text-xs text-muted-foreground" title={outcome.detail}>
               {outcome.detail}
-            </span>
+            </div>
           )}
-        </span>
-        <span className="hidden md:block text-sm tabular-nums text-right">
+        </TableCell>
+        <TableCell className="hidden md:table-cell text-right tabular-nums">
           {r.kind === "listing" ? `$${aiCost.toFixed(2)}` : `CHF ${r.popetyCostChf.toFixed(2)}`}
-        </span>
-        <span className="hidden md:block text-sm tabular-nums text-right text-muted-foreground">
+        </TableCell>
+        <TableCell className="hidden md:table-cell text-right tabular-nums text-muted-foreground">
           {r.kind === "listing" ? fmtTokens(tokens) : "—"}
-        </span>
-        <span className="hidden md:block text-xs tabular-nums text-muted-foreground text-right">{fmtDate(r.createdAt)}</span>
-        <ChevronDown className={`hidden md:block h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      </div>
+        </TableCell>
+        <TableCell className="hidden md:table-cell text-right text-xs tabular-nums text-muted-foreground whitespace-nowrap">
+          {fmtDate(r.createdAt)}
+        </TableCell>
+        <TableCell className="hidden md:table-cell w-8">
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        </TableCell>
+      </TableRow>
       {open && (
-        <div className="border-t border-border p-3.5 space-y-3">
-          {r.error && <p className="text-sm text-destructive">{r.error}</p>}
-          {r.candidates && r.candidates.length > 0 && (
-            <ul className="text-sm list-disc pl-5">
-              {r.candidates.map((c) => (
-                <li key={c.landId}>{c.address ?? `Parcel ${c.landId}`}</li>
-              ))}
-            </ul>
-          )}
-          {r.plotErrors?.map((e) => (
-            <p key={e.plot} className="text-sm text-destructive">
-              {e.plot}: {e.error}
-            </p>
-          ))}
-          {r.kind === "address" && r.combined && <CombinedView c={r.combined} profiles={r.profiles ?? []} />}
-          {r.kind === "address" && r.profile && <ProfileView p={r.profile} />}
-          {r.kind === "listing" && (
-            <>
-              {(r.input.listingUrl || r.input.radarUrl) && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                  {r.input.listingUrl && (
-                    <a
-                      href={r.input.listingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary inline-flex items-center gap-1 hover:underline break-all"
-                    >
-                      {r.input.listingUrl} <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                  )}
-                  {r.input.radarUrl && (
-                    <a
-                      href={r.input.radarUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary font-medium inline-flex items-center gap-1 hover:underline shrink-0"
-                    >
-                      Open in Radar <ExternalLink className="h-3 w-3 shrink-0" />
-                    </a>
-                  )}
-                </div>
-              )}
-              {r.input.listingText && (
-                <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>
-              )}
-              <div className="grid gap-3 lg:grid-cols-2">
-                {(r.results ?? []).map((m) => (
-                  <ModelColumn key={m.jobId} r={m} />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={8} className="bg-muted/30 p-4 whitespace-normal">
+            <RequestDetails r={r} />
+          </TableCell>
+        </TableRow>
       )}
-    </li>
+    </>
   );
 }
 
@@ -669,19 +672,6 @@ export default function Requests() {
         <div className="max-w-5xl mx-auto space-y-3">
           <div className="flex items-center justify-between gap-3 min-h-9">
             <div className="flex items-center gap-3">
-              {requests && requests.length > 0 && (
-                <input
-                  type="checkbox"
-                  id="select-all"
-                  checked={allChosen}
-                  ref={(el) => {
-                    if (el) el.indeterminate = chosen.length > 0 && !allChosen;
-                  }}
-                  onChange={() => setSelected(allChosen ? new Set() : new Set(visibleIds))}
-                  className="h-4 w-4 accent-primary cursor-pointer ml-3.5"
-                  aria-label="Select all requests"
-                />
-              )}
               <h2 className="text-sm font-medium text-foreground">
                 {chosen.length > 0 ? `${chosen.length} selected` : "Requests"}
               </h2>
@@ -725,24 +715,34 @@ export default function Requests() {
             </div>
           )}
           {requests && requests.length > 0 && (
-            <div className="hidden md:flex items-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              <span className="w-[31px] shrink-0" />
-              <div className={`flex-1 px-3 ${COLS}`}>
-                <span>ID</span>
-                <span>Listing</span>
-                <span>Result</span>
-                <span className="text-right">Cost</span>
-                <span className="text-right">Tokens</span>
-                <span className="text-right">Date</span>
-                <span />
-              </div>
+            <div className="rounded-lg border bg-card">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allChosen ? true : chosen.length > 0 ? "indeterminate" : false}
+                        onCheckedChange={() => setSelected(allChosen ? new Set() : new Set(visibleIds))}
+                        aria-label="Select all requests"
+                      />
+                    </TableHead>
+                    <TableHead className="hidden md:table-cell">ID</TableHead>
+                    <TableHead>Listing</TableHead>
+                    <TableHead>Result</TableHead>
+                    <TableHead className="hidden md:table-cell text-right">Cost</TableHead>
+                    <TableHead className="hidden md:table-cell text-right">Tokens</TableHead>
+                    <TableHead className="hidden md:table-cell text-right">Date</TableHead>
+                    <TableHead className="hidden md:table-cell w-8" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {requests.map((r) => (
+                    <RequestRow key={r.id} r={r} selected={selected.has(r.id)} onToggle={() => toggle(r.id)} />
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
-          <ul className="space-y-1.5">
-            {requests?.map((r) => (
-              <RequestRow key={r.id} r={r} selected={selected.has(r.id)} onToggle={() => toggle(r.id)} />
-            ))}
-          </ul>
         </div>
       </main>
     </div>
