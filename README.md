@@ -87,8 +87,17 @@ The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the
 website (everything except `/v1`) behind a password prompt.
 
+Magic feedback: anyone on the website can press Space then M to record a spoken note
+about the screen; the review screen pins it to the page and "Send to Rico" files a card on
+the Rico cockpit board. The server forwards both calls (`/api/magic-feedback`,
+`/api/magic-feedback/confirm`) with `MAGIC_FEEDBACK_KEY` (the cockpit's
+`MAGIC_FEEDBACK_KEY_GEOFINDER`); unset, the shortcut answers "not configured". Typed values
+are blanked in the screenshot; mark anything else private with `data-mf-mask`.
+`pnpm test` runs its checks.
+
 Environment: `ANTHROPIC_API_KEY`, `POPETY_API_KEY`, `GEOFINDER_API_KEY`,
-`ADMIN_PASSWORD`, and optionally `GEOFINDER_MODELS`.
+`ADMIN_PASSWORD`, `MAGIC_FEEDBACK_KEY`, and optionally `GEOFINDER_MODELS` and
+`RICO_COCKPIT_URL`.
 
 ## Stack
 

@@ -26,6 +26,9 @@ services:
       # Password for the admin website (any username).
       - key: ADMIN_PASSWORD
         sync: false
+      # Magic feedback → Rico cockpit (the cockpit's MAGIC_FEEDBACK_KEY_GEOFINDER).
+      - key: MAGIC_FEEDBACK_KEY
+        sync: false
     disk:
       name: geofinder-data
       mountPath: /var/data
