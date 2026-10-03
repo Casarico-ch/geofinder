@@ -63,7 +63,7 @@ async function startServer() {
   // referenced by the documented trace. The internal resume state (the full
   // conversation, with embedded images) is not an artifact and is never served.
   app.use("/runs", (req, res, next) => {
-    if (req.path.endsWith("/state.json") || req.path.endsWith(".tmp")) {
+    if (req.path.endsWith("/state.json") || req.path.endsWith("/conversation.json") || req.path.endsWith(".tmp")) {
       res.status(404).end();
       return;
     }

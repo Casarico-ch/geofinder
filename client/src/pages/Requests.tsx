@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Trash2 } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -471,9 +471,48 @@ const fmtTokens = (n: number) =>
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
+// Run the whole request again: same photos, text and models, as a new row.
+function RunAgain({ r }: { r: PlatformRequest }) {
+  const [busy, setBusy] = useState(false);
+  const jobIds = (r.results ?? []).map((m) => m.jobId);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/requests/rerun", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobIds }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? "Could not run it again");
+      toast.success("Started again — the new run is at the top");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not run it again");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={busy || r.status === "running" || jobIds.length === 0}
+      onClick={() => void run()}
+    >
+      {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+      Run again
+    </Button>
+  );
+}
+
 function RequestDetails({ r }: { r: PlatformRequest }) {
   return (
     <div className="space-y-3">
+      {r.kind === "listing" && (
+        <div className="flex justify-end">
+          <RunAgain r={r} />
+        </div>
+      )}
       {r.error && <p className="text-sm text-destructive">{r.error}</p>}
       {r.candidates && r.candidates.length > 0 && (
         <ul className="text-sm list-disc pl-5">

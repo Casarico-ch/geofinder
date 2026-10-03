@@ -11,7 +11,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import {
   PROFILE_COST_CHF,
@@ -149,6 +149,42 @@ function publicView(r: PlatformRequest) {
   };
 }
 
+/**
+ * Start a listing request: one investigation per model, side by side, grouped
+ * as one request. Shared by /v1/address and the admin's "Run again".
+ */
+export async function startListingRequest(
+  input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string },
+  images: AgentImage[],
+  models: ModelId[],
+) {
+  const { municipality, listingId, listingUrl, radarUrl } = input;
+  const listingText =
+    [municipality?.trim() && `Municipality / commune: ${municipality.trim()}`, input.listingText?.trim()]
+      .filter(Boolean)
+      .join("\n\n") || undefined;
+  const record = await createRequest("listing", {
+    listingText: input.listingText,
+    municipality,
+    imageCount: images.length,
+    listingId,
+    listingUrl,
+    radarUrl,
+  });
+  record.results = [];
+  for (const model of models) {
+    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model);
+    record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
+    void (async () => {
+      await saveListingPhotos(job.runDir, images);
+      await runInvestigation(job, images, listingText);
+    })().catch((err) => console.error(`[platform] investigation ${job.id} crashed:`, err));
+  }
+  await saveRequest(record);
+  watchListingRequest(record);
+  return record;
+}
+
 export function registerPlatformRoutes(app: Express) {
   app.use("/v1", requireApiKey);
 
@@ -231,34 +267,14 @@ export function registerPlatformRoutes(app: Express) {
     }
     const { municipality, listingId, listingUrl, radarUrl } = parsed.data;
     const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : LISTING_MODELS;
-    const listingText = [municipality?.trim() && `Municipality / commune: ${municipality.trim()}`, parsed.data.listingText?.trim()]
-      .filter(Boolean)
-      .join("\n\n") || undefined;
     const images: AgentImage[] = parsed.data.images.map((i) => ({ base64: i.imageBase64, mediaType: i.mediaType }));
 
     try {
-      const record = await createRequest("listing", {
-        listingText: parsed.data.listingText,
-        municipality,
-        imageCount: images.length,
-        listingId,
-        listingUrl,
-        radarUrl,
-      });
-      record.results = [];
-      for (const model of models) {
-        const job = await createJob(
-          { municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl },
-          model,
-        );
-        record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
-        void (async () => {
-          await saveListingPhotos(job.runDir, images);
-          await runInvestigation(job, images, listingText);
-        })().catch((err) => console.error(`[platform] investigation ${job.id} crashed:`, err));
-      }
-      await saveRequest(record);
-      watchListingRequest(record);
+      const record = await startListingRequest(
+        { listingText: parsed.data.listingText, municipality, listingId, listingUrl, radarUrl },
+        images,
+        models,
+      );
       res.status(202).json(publicView(record));
     } catch (err) {
       console.error("[platform] failed to start listing request:", err);
@@ -278,6 +294,49 @@ export function registerPlatformRoutes(app: Express) {
   // ---- admin website (same records, including the job ids for the traces) ----
   app.get("/api/requests", (_req: Request, res: Response) => {
     res.json({ requests: listRequestsWithLooseJobs().slice(0, 200) });
+  });
+
+  // Run a whole request again from the overview: same photos, same listing
+  // text, same listing id/links, on the same models it ran on — as one new
+  // request. A cross-check run (its text carries a verification task) is not
+  // a source and does not add a model of its own.
+  app.post("/api/requests/rerun", async (req: Request, res: Response) => {
+    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(20) }).safeParse(req.body);
+    const jobs = parsed.success ? parsed.data.jobIds.map((id) => getJob(id)).filter((j): j is NonNullable<typeof j> => !!j) : [];
+    if (jobs.length === 0) {
+      res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
+      return;
+    }
+    const isCheck = (t?: string) => (t ?? "").includes("--- VERIFICATION TASK ---");
+    const searches = jobs.filter((j) => !isCheck(j.input.listingText));
+    const src = (searches.length ? searches : jobs).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    const images = await loadListingPhotos(src.runDir);
+    if (images.length === 0) {
+      res.status(400).json({ error: "The original photos are no longer available." });
+      return;
+    }
+    // A job keeps the commune folded into its text; unfold it so it is not added twice.
+    const prefix = src.input.municipality?.trim() ? `Municipality / commune: ${src.input.municipality.trim()}\n\n` : "";
+    const text = src.input.listingText ?? "";
+    const listingText = prefix && text.startsWith(prefix) ? text.slice(prefix.length) : text;
+    const models = Array.from(new Set((searches.length ? searches : jobs).map((j) => j.model)));
+    try {
+      const record = await startListingRequest(
+        {
+          listingText: listingText || undefined,
+          municipality: src.input.municipality,
+          listingId: src.input.listingId,
+          listingUrl: src.input.listingUrl,
+          radarUrl: src.input.radarUrl,
+        },
+        images,
+        models,
+      );
+      res.status(202).json({ requestId: record.id });
+    } catch (err) {
+      console.error("[platform] rerun failed:", err);
+      res.status(500).json({ error: "Could not run the request again." });
+    }
   });
 
   // Delete rows from the admin table (bulk). Row ids are request ids; runs
