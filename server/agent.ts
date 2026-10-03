@@ -544,6 +544,9 @@ async function runLoop(
     // Drop the saved conversation only on a TERMINAL status. A "paused" job keeps
     // its state so it can be resumed; "running" would be a live loop.
     if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
+      // Keep the whole thread — photos, text, every tool call and result, the
+      // model's reasoning — exactly as the model saw it, for the export.
+      await saveConversation(job, messages);
       await clearState(job);
     }
   }
@@ -585,6 +588,30 @@ async function loadState(runDir: string): Promise<ResumeState | null> {
   } catch {
     return null;
   }
+}
+
+// The finished run's full conversation, kept for the export (never served raw).
+export const CONVERSATION_FILE = "conversation.json";
+
+async function saveConversation(job: Job, messages: Anthropic.Messages.MessageParam[]): Promise<void> {
+  try {
+    await writeFile(path.join(job.runDir, CONVERSATION_FILE), JSON.stringify({ messages }));
+  } catch (err) {
+    console.error(`[agent] could not save the conversation for ${job.id}:`, err);
+  }
+}
+
+/** The run's conversation: the kept one when finished, the live one while running/paused. */
+export async function loadConversation(runDir: string): Promise<Anthropic.Messages.MessageParam[] | null> {
+  for (const file of [CONVERSATION_FILE, STATE_FILE]) {
+    try {
+      const parsed = JSON.parse(await readFile(path.join(runDir, file), "utf8")) as { messages?: unknown };
+      if (Array.isArray(parsed.messages)) return parsed.messages as Anthropic.Messages.MessageParam[];
+    } catch {
+      /* try the next */
+    }
+  }
+  return null;
 }
 
 async function clearState(job: Job): Promise<void> {

@@ -18,6 +18,7 @@ import {
   saveListingPhotos,
   type AgentImage,
 } from "./agent";
+import { exportJobHtml } from "./export";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -347,6 +348,25 @@ export function registerApiRoutes(app: Express) {
         error: "No prompt was recorded for this investigation (it predates prompt tracking).",
         promptVersion: job.promptVersion ?? null,
       });
+    }
+  });
+
+  // The whole thread as one self-contained HTML file (photos, text, prompt,
+  // every step and the full model conversation), downloaded as a file.
+  app.get("/api/geo/investigate/:id/export", async (req: Request, res: Response) => {
+    const job = getJob(req.params.id);
+    if (!job) {
+      res.status(404).json({ error: "No such investigation" });
+      return;
+    }
+    try {
+      const html = await exportJobHtml(job);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="geofinder-${job.id}.html"`);
+      res.send(html);
+    } catch (err) {
+      console.error(`[api] export ${job.id} failed:`, err);
+      res.status(500).json({ error: "Could not export this investigation." });
     }
   });
 

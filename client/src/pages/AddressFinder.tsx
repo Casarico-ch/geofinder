@@ -11,6 +11,7 @@ import {
   Clock,
   Coins,
   Copy,
+  Download,
   ExternalLink,
   Eye,
   FileText,
@@ -20,8 +21,6 @@ import {
   Pause,
   Play,
   Plus,
-  Layers,
-  RefreshCw,
   Search,
   Terminal,
   X,
@@ -741,42 +740,6 @@ export default function AddressFinder() {
     }
   }, [jobId]);
 
-  // Relaunch a past investigation: one click starts a FRESH run from the same
-  // photos + municipality + listing text + model — no findings carried over.
-  const relaunch = useCallback(
-    async (id: string) => {
-      try {
-        const res = await fetch(`/api/geo/investigate/${id}/relaunch`, { method: "POST" });
-        const body = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(body?.error ?? "Could not relaunch");
-        navigate(`/i/${body.jobId as string}`);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Could not relaunch");
-      }
-    },
-    [navigate],
-  );
-
-  // Compare models: run the same photos + listing text + municipality on every
-  // OTHER model, as fresh runs. The results show up side by side in History.
-  const compareModels = useCallback(async (id: string, current?: ModelId) => {
-    const others = MODEL_IDS.filter((m) => m !== current);
-    const results = await Promise.allSettled(
-      others.map(async (m) => {
-        const res = await fetch(`/api/geo/investigate/${id}/relaunch`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: m }),
-        });
-        const body = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(body?.error ?? `Could not start ${MODEL_LABEL[m]}`);
-      }),
-    );
-    const failed = results.filter((r) => r.status === "rejected").length;
-    if (failed === 0) toast.success(`Started ${others.length} runs — compare them in History`);
-    else toast.error(`${failed} of ${others.length} comparison runs could not start`);
-  }, []);
-
   // Resume a paused investigation from where it left off.
   const resume = useCallback(async () => {
     if (!jobId) return;
@@ -810,6 +773,9 @@ export default function AddressFinder() {
   }, [jobId]);
 
   const answer = job?.answer ?? null;
+  // The plot data check only makes sense once we know the place.
+  const canCheckPotential =
+    !!job?.answer && !!(job.answer.address || job.answer.parcel) && job.answer.latitude != null && job.answer.longitude != null;
   const coords =
     answer && answer.latitude !== null && answer.longitude !== null
       ? { lat: answer.latitude, lon: answer.longitude }
@@ -913,15 +879,6 @@ export default function AddressFinder() {
                             {timeAgo(j.updatedAt)}
                           </span>
                         </Link>
-                        <button
-                          type="button"
-                          onClick={() => void relaunch(j.id)}
-                          title="Run again — a fresh investigation from the same photos & instructions"
-                          className="shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                          aria-label="Run again"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        </button>
                       </div>
                     </li>
                   ))}
@@ -1125,12 +1082,14 @@ export default function AddressFinder() {
                     <Play className="mr-1.5 h-3.5 w-3.5" /> Resume
                   </Button>
                 )}
-                {job.status === "done" && coords && !job.potential && (
+                {/* Potential check needs a located place: an address or a plot number. */}
+                {job.status === "done" && !job.potential && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => void analysePotential()}
-                    disabled={job.potentialStatus === "running"}
+                    disabled={!canCheckPotential || job.potentialStatus === "running"}
+                    title={canCheckPotential ? undefined : "Needs an address or a plot number"}
                     className="shrink-0"
                   >
                     {job.potentialStatus === "running" ? (
@@ -1144,20 +1103,11 @@ export default function AddressFinder() {
                     )}
                   </Button>
                 )}
-                {!running && jobId && (
-                  <Button variant="ghost" size="sm" onClick={() => void relaunch(jobId)} className="shrink-0">
-                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Run again
-                  </Button>
-                )}
                 {jobId && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void compareModels(jobId, job.model)}
-                    className="shrink-0"
-                    title="Run the same listing on every other model"
-                  >
-                    <Layers className="mr-1.5 h-3.5 w-3.5" /> Compare models
+                  <Button variant="ghost" size="sm" className="shrink-0" asChild>
+                    <a href={`/api/geo/investigate/${jobId}/export`} download title="Download the whole thread: photos, text, every step">
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> Export
+                    </a>
                   </Button>
                 )}
                   </div>
