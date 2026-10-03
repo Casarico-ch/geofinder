@@ -131,7 +131,15 @@ interface Job {
   createdAt: string;
   updatedAt: string;
   model?: ModelId;
-  input: { municipality?: string; listingText?: string; imageCount: number };
+  input: {
+    municipality?: string;
+    listingText?: string;
+    imageCount: number;
+    listingId?: string;
+    listingUrl?: string;
+    radarUrl?: string;
+  };
+  photos?: string[];
   stepCount: number; // total steps; the trace itself is fetched in pages
   answer: Answer | null;
   error?: string;
@@ -334,6 +342,69 @@ function PotentialView({ p }: { p: BuildPotential }) {
               </Button>
             </a>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// What this run is researching: the listing as the caller sent it.
+function ListingCard({ job }: { job: Job }) {
+  const { input } = job;
+  const body = (input.listingText ?? "").replace(/^Municipality \/ commune: [^\n]*\n*/, "").trim();
+  const title = body.match(/^\s*Title:\s*(.+)$/im)?.[1] ?? body.split("\n").find((l) => l.trim())?.trim() ?? null;
+  const [expanded, setExpanded] = useState(false);
+  // The title is the heading already; show the rest of the listing text below.
+  const rest = body.replace(/^\s*Title:.*$\n?/im, "").trim();
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Listing</span>
+        <span className="text-xs font-mono text-muted-foreground">{input.listingId ?? job.id}</span>
+        {input.municipality && <span className="text-xs text-muted-foreground">{input.municipality}</span>}
+      </div>
+      <p className="text-base font-medium text-foreground">{title ?? "Untitled listing"}</p>
+      {(input.listingUrl || input.radarUrl) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          {input.listingUrl && (
+            <a
+              href={input.listingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary inline-flex items-center gap-1 hover:underline break-all"
+            >
+              {input.listingUrl} <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+            </a>
+          )}
+          {input.radarUrl && (
+            <a
+              href={input.radarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary font-medium inline-flex items-center gap-1 hover:underline shrink-0"
+            >
+              Open in Radar <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+            </a>
+          )}
+        </div>
+      )}
+      {job.photos && job.photos.length > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {job.photos.map((src, i) => (
+            <a key={src} href={src} target="_blank" rel="noopener noreferrer" className="shrink-0">
+              <img src={src} alt={`Listing photo ${i + 1}`} loading="lazy" className="h-16 w-24 rounded-md object-cover border border-border" />
+            </a>
+          ))}
+        </div>
+      )}
+      {rest && (
+        <div>
+          <p className={`text-sm text-muted-foreground whitespace-pre-wrap ${expanded ? "" : "line-clamp-3"}`}>{rest}</p>
+          {rest.length > 240 && (
+            <button type="button" onClick={() => setExpanded((e) => !e)} className="text-xs text-primary hover:underline mt-1">
+              {expanded ? "Show less" : "Show full listing text"}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1092,6 +1163,8 @@ export default function AddressFinder() {
                   </div>
                 </div>
               </div>
+
+              <ListingCard job={job} />
 
               {job.error && (
                 <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
