@@ -25,6 +25,7 @@ export interface ModelResult {
   answer: Answer | null;
   aiCostUsd: number;
   tokens?: number; // total tokens of the run, filled in when listing
+  startedAt?: string; // when the run was created, filled in when listing
 }
 
 export interface PlatformRequest {
@@ -47,6 +48,7 @@ export interface PlatformRequest {
     imageCount?: number;
     listingId?: string;
     listingUrl?: string;
+    radarUrl?: string;
   };
   // address requests
   profile?: PropertyProfile | null;
@@ -138,6 +140,7 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
     imageCount: first.input.imageCount,
     listingId: first.input.listingId,
     listingUrl: first.input.listingUrl,
+    radarUrl: first.input.radarUrl,
   });
   req.source = "website";
   req.createdAt = jobs.map((j) => j.createdAt).sort()[0];
@@ -204,6 +207,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       answer: j.answer,
       aiCostUsd: costUsd(j.tokens, j.model),
       tokens: j.tokens.total,
+      startedAt: j.createdAt,
     }));
     const first = g[0];
     return {
@@ -219,6 +223,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
         imageCount: first.input.imageCount,
         listingId: first.input.listingId,
         listingUrl: g.find((j) => j.input.listingUrl)?.input.listingUrl,
+        radarUrl: g.find((j) => j.input.radarUrl)?.input.radarUrl,
       },
       results,
       popetyCostChf: 0,
@@ -231,7 +236,14 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
     const results = (r.results ?? []).map((m) => {
       const j = getJob(m.jobId);
       return j
-        ? { ...m, status: j.status, answer: j.answer ?? m.answer, aiCostUsd: costUsd(j.tokens, j.model), tokens: j.tokens.total }
+        ? {
+            ...m,
+            status: j.status,
+            answer: j.answer ?? m.answer,
+            aiCostUsd: costUsd(j.tokens, j.model),
+            tokens: j.tokens.total,
+            startedAt: j.createdAt,
+          }
         : m;
     });
     return { ...r, results, status: r.status === "running" ? overallStatus(results) : r.status };
@@ -266,8 +278,11 @@ function mergeByListing(rows: PlatformRequest[]): PlatformRequest[] {
       byId.set(id, copy);
       out.push(copy);
     } else {
-      into.results = [...(into.results ?? []), ...(r.results ?? [])];
+      into.results = [...(into.results ?? []), ...(r.results ?? [])].sort((a, b) =>
+        (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
+      );
       into.input.listingUrl ??= r.input.listingUrl;
+      into.input.radarUrl ??= r.input.radarUrl;
       if (r.updatedAt > into.updatedAt) into.updatedAt = r.updatedAt;
       if (r.source === "platform") into.source = "platform";
       into.status = overallStatus(into.results);

@@ -95,6 +95,7 @@ interface ModelResult {
   } | null;
   aiCostUsd: number;
   tokens?: number;
+  startedAt?: string;
 }
 
 interface PlatformRequest {
@@ -116,6 +117,7 @@ interface PlatformRequest {
     imageCount?: number;
     listingId?: string;
     listingUrl?: string;
+    radarUrl?: string;
   };
   profile?: Profile | null;
   candidates?: { landId: string; address: string | null }[];
@@ -379,6 +381,7 @@ function ModelColumn({ r }: { r: ModelResult }) {
         <StatusIcon status={r.status} />
         <span className="text-sm font-semibold">{MODEL_LABEL[r.model] ?? r.model}</span>
         <span className="text-xs text-muted-foreground tabular-nums">${r.aiCostUsd.toFixed(2)}</span>
+        {r.startedAt && <span className="text-xs text-muted-foreground tabular-nums">{fmtDate(r.startedAt)}</span>}
         <div className="flex-1" />
         <Link href={`/i/${r.jobId}`} className="text-xs text-primary inline-flex items-center gap-1 hover:underline">
           Trace <ExternalLink className="h-3 w-3" />
@@ -553,15 +556,29 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
           {r.kind === "address" && r.profile && <ProfileView p={r.profile} />}
           {r.kind === "listing" && (
             <>
-              {r.input.listingUrl && (
-                <a
-                  href={r.input.listingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary inline-flex items-center gap-1 hover:underline break-all"
-                >
-                  {r.input.listingUrl} <ExternalLink className="h-3 w-3 shrink-0" />
-                </a>
+              {(r.input.listingUrl || r.input.radarUrl) && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                  {r.input.listingUrl && (
+                    <a
+                      href={r.input.listingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary inline-flex items-center gap-1 hover:underline break-all"
+                    >
+                      {r.input.listingUrl} <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  )}
+                  {r.input.radarUrl && (
+                    <a
+                      href={r.input.radarUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary font-medium inline-flex items-center gap-1 hover:underline shrink-0"
+                    >
+                      Open in Radar <ExternalLink className="h-3 w-3 shrink-0" />
+                    </a>
+                  )}
+                </div>
               )}
               {r.input.listingText && (
                 <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>

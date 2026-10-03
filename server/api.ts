@@ -47,6 +47,7 @@ const createSchema = z.object({
   listingText: z.string().max(20000).optional(),
   listingId: z.string().trim().min(1).max(200).optional(),
   listingUrl: z.string().trim().url().max(2000).optional(),
+  radarUrl: z.string().trim().url().max(2000).optional(),
   municipality: z.string().max(200).optional(),
   model: z.enum(MODELS).optional(),
 });
@@ -107,7 +108,7 @@ export function registerApiRoutes(app: Express) {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
-        error: "Expected { imageCount?, images?, listingText?, municipality?, listingId?, listingUrl? }",
+        error: "Expected { imageCount?, images?, listingText?, municipality?, listingId?, listingUrl?, radarUrl? }",
       });
       return;
     }
@@ -126,6 +127,7 @@ export function registerApiRoutes(app: Express) {
           imageCount: images?.length ?? parsed.data.imageCount ?? 0,
           listingId: parsed.data.listingId,
           listingUrl: parsed.data.listingUrl,
+          radarUrl: parsed.data.radarUrl,
         },
         parsed.data.model,
       );
@@ -255,6 +257,7 @@ export function registerApiRoutes(app: Express) {
           imageCount: images.length,
           listingId: src.input.listingId,
           listingUrl: src.input.listingUrl,
+          radarUrl: src.input.radarUrl,
         },
         override.data.model ?? src.model,
       );
