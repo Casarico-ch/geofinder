@@ -98,6 +98,7 @@ interface ModelResult {
     reasoning: string;
   } | null;
   aiCostUsd: number;
+  check?: boolean; // a cross-check of another model's answer
   tokens?: number;
   startedAt?: string;
 }
@@ -382,6 +383,11 @@ function ModelColumn({ r }: { r: ModelResult }) {
       <div className="flex items-center gap-2">
         <StatusIcon status={r.status} />
         <span className="text-sm font-semibold">{MODEL_LABEL[r.model] ?? r.model}</span>
+        {r.check && (
+          <Badge variant="outline" className="font-normal" title="Checks another model's answer against the listing">
+            Cross-check
+          </Badge>
+        )}
         <span className="text-xs text-muted-foreground tabular-nums">${r.aiCostUsd.toFixed(2)}</span>
         {r.startedAt && <span className="text-xs text-muted-foreground tabular-nums">{fmtDate(r.startedAt)}</span>}
         <div className="flex-1" />
@@ -437,11 +443,17 @@ function titleOf(r: PlatformRequest): string {
   return (titled ?? first ?? r.input.municipality ?? "Listing").trim();
 }
 
-// "Sonnet 5.5 + Opus 5.5", plus the run count when a model ran more than once.
+// "Sonnet 5.5 + Opus 5.5", the run count when a model searched more than once,
+// and whether an answer was cross-checked by another model.
 function modelsOf(r: PlatformRequest): string {
-  const results = r.results ?? [];
-  const names = Array.from(new Set(results.map((m) => MODEL_LABEL[m.model] ?? m.model)));
-  return names.join(" + ") + (results.length > names.length ? ` · ${results.length} runs` : "");
+  const all = r.results ?? [];
+  const searches = all.filter((m) => !m.check);
+  const names = Array.from(new Set((searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  return (
+    names.join(" + ") +
+    (searches.length > names.length ? ` · ${searches.length} runs` : "") +
+    (all.some((m) => m.check) ? " · cross-checked" : "")
+  );
 }
 
 function shortId(r: PlatformRequest): string {
@@ -471,23 +483,32 @@ const fmtTokens = (n: number) =>
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-// Run the whole request again: same photos, text and models, as a new row.
-function RunAgain({ r }: { r: PlatformRequest }) {
+// Run the selected requests again: same photos, text and models, each as a new row.
+function RunAgain({ rows, onDone }: { rows: PlatformRequest[]; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
-  const jobIds = (r.results ?? []).map((m) => m.jobId);
+  const runnable = rows.filter(
+    (r) => r.kind === "listing" && r.status !== "running" && (r.results ?? []).length > 0,
+  );
   const run = async () => {
     setBusy(true);
+    let started = 0;
     try {
-      const res = await fetch("/api/requests/rerun", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobIds }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? "Could not run it again");
-      toast.success("Started again — the new run is at the top");
+      for (const r of runnable) {
+        const res = await fetch("/api/requests/rerun", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobIds: (r.results ?? []).map((m) => m.jobId) }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error ?? "Could not run it again");
+        started++;
+      }
+      toast.success(started === 1 ? "Started again — the new run is at the top" : `Started ${started} again — the new runs are at the top`);
+      onDone();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not run it again");
+      toast.error(
+        (started ? `Started ${started}, then: ` : "") + (err instanceof Error ? err.message : "Could not run it again"),
+      );
     } finally {
       setBusy(false);
     }
@@ -496,7 +517,8 @@ function RunAgain({ r }: { r: PlatformRequest }) {
     <Button
       variant="outline"
       size="sm"
-      disabled={busy || r.status === "running" || jobIds.length === 0}
+      disabled={busy || runnable.length === 0}
+      title={runnable.length === 0 ? "Only finished listing searches can run again" : undefined}
       onClick={() => void run()}
     >
       {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
@@ -508,11 +530,6 @@ function RunAgain({ r }: { r: PlatformRequest }) {
 function RequestDetails({ r }: { r: PlatformRequest }) {
   return (
     <div className="space-y-3">
-      {r.kind === "listing" && (
-        <div className="flex justify-end">
-          <RunAgain r={r} />
-        </div>
-      )}
       {r.error && <p className="text-sm text-destructive">{r.error}</p>}
       {r.candidates && r.candidates.length > 0 && (
         <ul className="text-sm list-disc pl-5">
@@ -733,6 +750,13 @@ export default function Requests() {
                   <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                     Clear
                   </Button>
+                  <RunAgain
+                    rows={(requests ?? []).filter((r) => selected.has(r.id))}
+                    onDone={() => {
+                      setSelected(new Set());
+                      setReload((n) => n + 1);
+                    }}
+                  />
                   <Button size="sm" variant="outline" className="text-destructive" onClick={() => setConfirming(true)}>
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                     Delete
