@@ -16,6 +16,14 @@ interface Run {
   steps: number;
   title: string | null;
 }
+// One address search as the Requests table shows it (all its model runs together).
+interface Search {
+  id: string;
+  createdAt: string;
+  runs: number;
+  found: boolean;
+  settled: boolean;
+}
 interface PopetyCharge {
   id: string;
   createdAt: string;
@@ -209,7 +217,7 @@ function CostChart({ buckets, unit }: { buckets: Bucket[]; unit: "day" | "week" 
 }
 
 export default function Usage() {
-  const [data, setData] = useState<{ runs: Run[]; popety: PopetyCharge[] } | null>(null);
+  const [data, setData] = useState<{ runs: Run[]; popety: PopetyCharge[]; searches?: Search[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>(() => readStored("usage-range", "last7" as RangeKey));
   const [customFrom, setCustomFrom] = useState(() => readStored("usage-from", isoDay(new Date(Date.now() - 30 * DAY))));
@@ -251,6 +259,11 @@ export default function Usage() {
     };
     const runs = data.runs.filter((r) => inRange(r.createdAt));
     const popety = data.popety.filter((p) => inRange(p.createdAt));
+    // Success is counted per request: found by any of its runs. Requests still
+    // in progress only count once one of their runs has found it.
+    const searches = (data.searches ?? []).filter((s) => inRange(s.createdAt));
+    const counted = searches.filter((s) => s.found || s.settled);
+    const solved = counted.filter((s) => s.found);
 
     const sum = (f: (r: Run) => number) => runs.reduce((s, r) => s + f(r), 0);
     const cost = sum((r) => r.costUsd);
@@ -344,7 +357,7 @@ export default function Usage() {
 
     const expensive = [...runs].sort((a, b) => b.costUsd - a.costUsd).slice(0, 5);
     const popetyChf = popety.reduce((s, p) => s + p.costChf, 0);
-    return { runs, popety, cost, input, output, cached, finished, found, byModel, buckets, unit, insights, expensive, popetyChf };
+    return { runs, popety, counted, solved, cost, input, output, cached, finished, found, byModel, buckets, unit, insights, expensive, popetyChf };
   }, [data, range, customFrom, customTo]);
 
   return (
@@ -416,8 +429,8 @@ export default function Usage() {
                 />
                 <Tile
                   label="Addresses found"
-                  value={view.finished.length ? pct(view.found.length / view.finished.length) : "—"}
-                  sub={`${view.found.length} of ${view.finished.length} finished runs`}
+                  value={view.counted.length ? `${((view.solved.length / view.counted.length) * 100).toFixed(1)}%` : "—"}
+                  sub={`${view.solved.length} of ${view.counted.length} requests · ${view.runs.length} runs`}
                 />
                 <Tile label="Popety" value={chf(view.popetyChf)} sub={`${view.popety.length} property lookups`} />
               </div>

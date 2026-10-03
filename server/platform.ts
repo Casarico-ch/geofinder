@@ -305,7 +305,22 @@ export function registerPlatformRoutes(app: Express) {
     const popety = listRequests()
       .filter((r) => r.popetyCostChf > 0)
       .map((r) => ({ id: r.id, createdAt: r.createdAt, costChf: r.popetyCostChf, plots: r.profiles?.length ?? 1 }));
-    res.json({ runs, popety });
+    // Address searches as the main table groups them (one row per listing):
+    // a request succeeds when any of its runs found the address or the plots.
+    const TERMINAL = ["done", "error", "cancelled"];
+    const searches = listRequestsWithLooseJobs()
+      .filter((r) => r.kind === "listing")
+      .map((r) => {
+        const results = r.results ?? [];
+        return {
+          id: r.id,
+          createdAt: r.createdAt,
+          runs: results.length,
+          found: results.some((m) => m.status === "done" && m.answer?.found),
+          settled: results.every((m) => TERMINAL.includes(m.status)),
+        };
+      });
+    res.json({ runs, popety, searches });
   });
 
   // The website's New search form starts one job per chosen model, then calls
