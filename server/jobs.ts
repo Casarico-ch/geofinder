@@ -12,6 +12,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT, ensureRunDir } from "./sandbox";
 import type { BuildPotential } from "./potential";
+import type { SearchState } from "./search";
 
 export type PotentialStatus = "running" | "done" | "error";
 
@@ -121,11 +122,15 @@ export interface Job {
   status: JobStatus;
   createdAt: string;
   startedAt?: string; // when the investigation actually began running
+  activeMs?: number; // time the agent loop has actually been running (pauses excluded)
   finishedAt?: string; // when it reached a terminal state (done/error/cancelled)
   updatedAt: string;
   model: ModelId; // which Claude model runs this investigation
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
+  // Where to look (commune confidence + neighbour ring) and the candidate ledger:
+  // what was shortlisted, viewed, and the verdict on each. See search.ts.
+  search?: SearchState;
   input: {
     municipality?: string;
     listingText?: string;
@@ -263,6 +268,13 @@ export async function markStarted(job: Job): Promise<void> {
 // Store the target's aerial signature (the ordered clue list) — see agent.ts.
 export async function setSignature(job: Job, signature: Signature): Promise<void> {
   job.signature = signature;
+  job.updatedAt = nowIso();
+  await persist(job);
+}
+
+// Persist the search plan / candidate ledger after the agent changed it.
+export async function saveSearch(job: Job, search: SearchState): Promise<void> {
+  job.search = search;
   job.updatedAt = nowIso();
   await persist(job);
 }

@@ -236,7 +236,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
   crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
   return Buffer.concat([len, t, data, crc]);
 }
-function encodePNG(w: number, h: number, rgb: Buffer): Buffer {
+export function encodePNG(w: number, h: number, rgb: Buffer): Buffer {
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);

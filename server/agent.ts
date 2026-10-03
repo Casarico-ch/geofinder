@@ -20,6 +20,18 @@ import {
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
 import { shortlistBuildings } from "./shortlist";
+import { renderContactSheet } from "./sheet";
+import {
+  type SearchState,
+  addCandidates,
+  assessCommune,
+  coverageText,
+  leavePrimaryBlocked,
+  nextToView,
+  pendingCommunes,
+  searchPlanText,
+  unchecked,
+} from "./search";
 import {
   type Answer,
   type Confidence,
@@ -29,12 +41,16 @@ import {
   addUsage,
   finishJob,
   markStarted,
+  saveSearch,
   setPromptVersion,
   setSignature,
 } from "./jobs";
 
 export const MODEL = "claude-opus-4-8";
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
+// Wall-clock budget for one investigation. Checking every candidate takes longer
+// than giving up early, so the cap is what keeps a hopeless search bounded.
+const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
 export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
 
 export interface AgentImage {
@@ -105,17 +121,66 @@ const TOOLS = [
   {
     name: "shortlist_buildings",
     description:
-      "Enumerate EVERY building in a Geneva commune from the cadastre and get back a RECALL-FIRST shortlist that still contains the target. You pass your best estimates and this filters SAFELY so the right house can't be dropped: floors as a ±1 range (never exact — the register counts a habitable attic as a level), footprint a wide band, single-dwelling residential, and attached-vs-detached decided by shared-wall geometry. It deliberately has NO era filter — the register's construction date routinely disagrees with how old a house looks, and filtering on age drops the truth. Returns candidates with EGID + lat/lon (feed straight into render_roofs), footprint, floors, attached. Use this instead of hand-writing the cadastre filter. Do NOT then re-filter the result by era or exact floors. Geneva communes only; elsewhere enumerate yourself with the same rules.",
+      "Enumerate EVERY building in a Swiss commune and get back a RECALL-FIRST shortlist that still contains the target — any canton (Geneva from the SITG cadastre, everywhere else from the federal building register GWR). You pass your best estimates and this filters SAFELY so the right house can't be dropped: floors and dwellings as ±1 ranges (never exact — the register counts a semi-basement and a habitable attic as levels), footprint a wide band, existing residential buildings only. It deliberately has NO era filter — the register's construction date routinely disagrees with how old a house looks. Every candidate returned goes into your checklist; look at them with view_candidates and record a verdict with mark_candidates. Do NOT then re-filter the result by era or exact floors — that is exactly how the right house gets discarded.",
     input_schema: {
       type: "object",
       properties: {
-        commune: { type: "string" },
-        floors: { type: "number", description: "your estimate of above-ground floors (matched ±1)" },
+        commune: { type: "string", description: "the commune, e.g. 'Denges' or 'Saint-Sulpice (VD)'" },
+        floors: { type: "number", description: "your estimate of the levels the register counts (matched ±1): a semi-basement + 2 storeys + attic is 4" },
         footprintM2: { type: "number", description: "your estimate of the MAIN building's ground footprint in m² (NOT the listing's living area). Matched as a wide band." },
-        attached: { type: "boolean", description: "true if it's an attached/row house, false if free-standing; omit if unsure" },
+        dwellings: { type: "number", description: "number of dwellings in the building if the listing says (\"PPE de deux logements\" = 2); matched ±1" },
+        attached: { type: "boolean", description: "Geneva only: true for an attached/row house, false if free-standing; omit if unsure" },
         maxResults: { type: "number" },
       },
       required: ["commune"],
+    },
+  },
+  {
+    name: "view_candidates",
+    description:
+      "LOOK at shortlisted candidates fast: returns ONE contact-sheet image of up to 16 north-up aerial tiles (SWISSIMAGE, ~90 m across), each centred on a candidate building (red cross) and numbered, plus the legend number → EGID/address. Omit egids to get the next 16 unviewed candidates of your checklist (optionally of one commune). Compare each tile against the listing's photos and signature, then pass your verdicts as `marks` on the next view_candidates call (one turn per sheet), or with mark_candidates. Zoom on a tile with a tighter WMS aerial only when it is a real contender.",
+    input_schema: {
+      type: "object",
+      properties: {
+        egids: { type: "array", items: { type: "string" }, description: "specific candidates to show (max 16); omit for the next unviewed ones" },
+        commune: { type: "string", description: "with no egids: take the next unviewed candidates of this commune" },
+        marks: {
+          type: "array",
+          description: "your verdicts on the PREVIOUS sheet, recorded before the next one is drawn (same shape as mark_candidates)",
+          items: {
+            type: "object",
+            properties: {
+              egid: { type: "string" },
+              verdict: { type: "string", enum: ["rejected", "possible", "match"] },
+              reason: { type: "string" },
+            },
+            required: ["egid", "verdict", "reason"],
+          },
+        },
+      },
+    },
+  },
+  {
+    name: "mark_candidates",
+    description:
+      "Record your verdict on candidates you have LOOKED at (view_candidates): rejected (with the visible reason — 'hip roof, no separate garage'), possible, or match. This is the checklist that proves a commune was exhausted; candidates you never viewed can't be rejected.",
+    input_schema: {
+      type: "object",
+      properties: {
+        marks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              egid: { type: "string" },
+              verdict: { type: "string", enum: ["rejected", "possible", "match"] },
+              reason: { type: "string" },
+            },
+            required: ["egid", "verdict", "reason"],
+          },
+        },
+      },
+      required: ["marks"],
     },
   },
   {
@@ -215,11 +280,13 @@ GROUNDING ONLY
 Never web-search, and never look up the listing, the agency, or the property online. Deduce everything from the given photos + text, grounded only against neutral geodata (cadastre, aerials, building register, OSM). Nominatim is fine solely to turn a place NAME into coordinates.
 
 METHOD — enumerate, don't scan
-Treat the commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
-1. Read the building's HARD structural attributes off the photos: number of above-ground floors (a two-storey block + single-storey wing reads as ~3 levels in the register), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
-2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, attached). It enumerates every building in the commune and filters SAFELY so the target cannot be dropped (floors matched ±1, footprint wide, single-dwelling, and NO era filter). Two things to get right when you pass estimates: (a) footprintM2 is the MAIN building's GROUND footprint, NOT the listing's living area — a "262 m² house" over ~3 levels is only ~90–130 m² on the ground; (b) estimate floors generously — a two-storey block with a habitable attic is registered as 3. Then treat the returned list as your candidate set and do NOT re-filter it by era or exact floors — that is exactly how the right house gets discarded. (Outside Geneva, enumerate the cadastre yourself — geodienste ms:LCSF — with the same rules: floors ±1, footprint wide, never era.)
+Your first message carries a SEARCH PLAN: the commune confidence and the ring of neighbouring communes, nearest first. Follow it. HIGH confidence: the property is in the stated commune — exhaust that commune before looking anywhere else (the tools enforce this). LOW confidence: the listing only places the property NEAR the stated commune ("à 5 minutes de …") — search outward commune by commune, nearest first, finishing each before the next.
+Treat each commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
+1. Read the building's HARD structural attributes off the photos: the levels the register counts (a two-storey block + single-storey wing reads as ~3; a semi-basement "rez inférieur" + two storeys + attic is 4), the number of dwellings when the listing says it ("PPE de deux logements" = 2), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
+2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It enumerates every building in the commune and filters SAFELY so the target cannot be dropped (floors and dwellings matched ±1, footprint wide, and NO era filter). Never hand-write this filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. Two things to get right when you pass estimates: (a) footprintM2 is the MAIN building's GROUND footprint, NOT the listing's living area — a "262 m² house" over ~3 levels is only ~90–130 m² on the ground; (b) estimate floors generously — a two-storey block with a habitable attic is registered as 3. Then treat the returned list as your candidate set and do NOT re-filter it by era or exact floors — that is exactly how the right house gets discarded.
 3. Match the BUILDING FOOTPRINT, never the plot/parcel land-area. A property is usually several parcels summed (house parcel + garden parcels), so the listing's land area (e.g. 1481 m²) matches NO single parcel — but the house is ONE building footprint (~130 m²). Land-area matching is a trap; ignore it.
-4. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
+4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict.
+5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
 
 ANSWER HONESTLY — a shortlist beats a wrong pin
 Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
@@ -238,7 +305,7 @@ const TASK = `The images above and the text below are a property listing. Find t
 
 FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
 
-Then follow METHOD: enumerate every building in the commune, filter by floors + footprint (never plot land-area) + attached-or-not down to a short candidate list that contains the answer, and confirm the survivors on the aerial by their built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when the aerial confirms it and it clearly beats the runner-up — otherwise submit your ranked shortlist honestly.`;
+Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors + footprint + dwellings, never plot land-area), look at every candidate with view_candidates and record a verdict with mark_candidates, then confirm the survivors on the aerial by their built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when the aerial confirms it and it clearly beats the runner-up — otherwise submit your ranked shortlist honestly.`;
 
 // A content fingerprint of the exact prompt (SYSTEM + TASK) a run is governed
 // by. Stamped onto every job at start and saved to prompt.txt, so a past run's
@@ -254,6 +321,7 @@ export const PROMPT_VERSION = createHash("sha256")
 function initialContent(
   images: AgentImage[],
   listingText: string | undefined,
+  searchPlan: string,
 ): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
   images.forEach((img, i) => {
@@ -264,7 +332,8 @@ function initialContent(
     type: "text",
     text:
       `${TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
-      `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}`,
+      `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}` +
+      `\n\n${searchPlan}`,
   });
   return blocks;
 }
@@ -273,13 +342,27 @@ export function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
 }
 
-// Periodic anti-over-search nudge. Escalates as the step budget runs down so the
-// model reviews its best candidate and commits instead of scanning forever.
-function convergeReminder(step: number, max: number): string | null {
-  if (step >= max - 15)
-    return `[system-reminder] You are near the ${max}-step limit. Reach a conclusion now — an HONEST one. If the evidence has converged on one property, submit_answer with it. If it has not, submit your tightest defensible area with found=false and your ranked candidates. Do NOT fabricate a precise address just to finish, and do not open new searches.`;
-  if (step >= 24 && (step - 24) % 12 === 0)
+// Periodic anti-over-search nudge. Escalates as the step (or time) budget runs
+// down so the model reviews its best candidate and commits instead of scanning
+// forever. While the search plan still has candidates without a verdict (or
+// planned communes not yet shortlisted), the periodic nudge points at THAT work
+// instead of inviting an early "conclude honestly": in run c5bc3cfd the
+// turn-24 nudge was followed, word for word, by giving up with ~170 neighbour
+// candidates never looked at.
+function convergeReminder(step: number, max: number, search?: SearchState, nearTimeLimit = false): string | null {
+  if (step >= max - 15 || nearTimeLimit)
+    return `[system-reminder] You are near the ${nearTimeLimit ? "time" : `${max}-step`} limit. Reach a conclusion now — an HONEST one. If the evidence has converged on one property, submit_answer with it. If it has not, submit your tightest defensible area with found=false and your ranked candidates. Do NOT fabricate a precise address just to finish, and do not open new searches.`;
+  if (step >= 24 && (step - 24) % 12 === 0) {
+    const open = search ? unchecked(search).length : 0;
+    const todo = search ? pendingCommunes(search, 3) : [];
+    if (search && (open > 0 || todo.length > 0)) {
+      return `[system-reminder] ${step} steps in. Coverage: ${coverageText(search)}.` +
+        (open > 0 ? ` ${open} shortlisted candidates still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.` : "") +
+        (todo.length > 0 ? ` Not yet shortlisted, in plan order: ${todo.join(", ")}.` : "") +
+        ` If a candidate already matches EVERY hard signal, confirm it and submit_answer.`;
+    }
     return `[system-reminder] ${step} steps in. Stop and assess your strongest candidate: does it match EVERY hard signal in the listing (area/footprint, era, floors, orientation, background landmarks, amenity distances)? If the signals CONVERGE, that is confirmation — submit_answer now and do not reopen the search (re-searching after convergence is how the right property gets discarded). If they do NOT converge, name the single check that would resolve it and do only that — or conclude honestly (found=false + candidates). Do not keep scanning the same way, and do not commit just because a candidate is the "best" of a weak field.`;
+  }
   return null;
 }
 
@@ -352,8 +435,14 @@ export async function runInvestigation(
   await stampPrompt(job);
   await seedGeoHelper(job.runDir); // drop the tested geo.mjs into the working dir
   await markStarted(job); // start the elapsed-time clock
+  // Where to look: commune confidence + neighbour ring, decided in code from the
+  // listing before the model starts, and handed to it as the SEARCH PLAN.
+  const search = await assessCommune(job.input.municipality, listingText);
+  await saveSearch(job, search);
+  const plan = searchPlanText(search);
+  await addStep(job, { kind: "note", title: `Search plan: commune confidence ${search.confidence}`, detail: plan });
   const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: initialContent(images, listingText) },
+    { role: "user", content: initialContent(images, listingText, plan) },
   ];
   await saveState(job, 0, messages);
   await runLoop(job, messages, 0);
@@ -372,6 +461,21 @@ async function stampPrompt(job: Job): Promise<void> {
     console.error(`[agent] failed to save prompt for ${job.id}:`, err);
   }
   await setPromptVersion(job, PROMPT_VERSION);
+}
+
+
+// Why a found=false is premature, or null when the plan's work is done.
+function prematureGiveUp(search: SearchState | undefined): string | null {
+  if (!search || search.submitGated) return null;
+  const open = unchecked(search).length;
+  const todo = pendingCommunes(search, 3);
+  if (open === 0 && todo.length === 0) return null;
+  return (
+    `Not recorded — the search plan is not finished. Coverage: ${coverageText(search)}.` +
+    (open > 0 ? ` ${open} shortlisted candidates have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).` : "") +
+    (todo.length > 0 ? ` Planned communes not yet shortlisted: ${todo.join(", ")}.` : "") +
+    ` Continue the plan; submit found=false only once it is done (or if you can name a concrete reason the rest cannot hold the property).`
+  );
 }
 
 // Continue an investigation from its saved conversation — used both to recover a
@@ -419,7 +523,29 @@ async function runLoop(
   const client = new Anthropic();
 
   try {
+    // Active running time only: a run paused for a day, or resumed after a
+    // redeploy, must not trip the time limit on its first turn.
+    const activeBefore = job.activeMs ?? 0;
+    const loopStart = Date.now();
+    const elapsedMinutes = () => {
+      job.activeMs = activeBefore + (Date.now() - loopStart);
+      return job.activeMs / 60_000;
+    };
+    const nearTimeLimit = () => elapsedMinutes() >= MAX_MINUTES * 0.85;
+    const nearLimit = (step: number) => step >= MAX_STEPS - 15 || nearTimeLimit();
     for (let i = startTurn; i < MAX_STEPS; i++) {
+      if (elapsedMinutes() >= MAX_MINUTES) {
+        await finishJob(job, {
+          status: "done",
+          answer: coerceAnswer({
+            found: false,
+            confidence: "unknown",
+            reasoning: `Did not converge within the ${MAX_MINUTES}-minute limit.` +
+              (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
+          }),
+        });
+        return;
+      }
       if (job.cancelRequested) {
         await addStep(job, { kind: "note", title: "Stopped by the user" });
         await finishJob(job, {
@@ -496,6 +622,18 @@ async function runLoop(
       for (const tu of toolUses) {
         if (tu.name === "submit_answer") {
           const answer = coerceAnswer(tu.input as Record<string, unknown>);
+          // A "not found" while the plan still has unchecked candidates (or
+          // planned communes never shortlisted) is turned back ONCE — giving up
+          // with the answer still unviewed is how run c5bc3cfd was lost. Near
+          // the step/time limit it always goes through.
+          const gate = !answer.found && !nearLimit(i + 1) ? prematureGiveUp(job.search) : null;
+          if (gate && job.search) {
+            job.search.submitGated = true;
+            await saveSearch(job, job.search);
+            await addStep(job, { kind: "note", title: "Not finished yet — search plan incomplete", detail: gate });
+            results.push({ type: "tool_result", tool_use_id: tu.id, content: gate, is_error: true });
+            continue;
+          }
           await addStep(job, {
             kind: "answer",
             title: answer.address ?? answer.parcel ?? (answer.found ? "Answer" : "No confident match"),
@@ -520,7 +658,7 @@ async function runLoop(
         results.push({ type: "tool_result", tool_use_id: tu.id, content: out });
       }
       const content: Anthropic.Messages.ContentBlockParam[] = [...results];
-      const nudge = convergeReminder(i + 1, MAX_STEPS);
+      const nudge = convergeReminder(i + 1, MAX_STEPS, job.search, nearTimeLimit());
       if (nudge) content.push({ type: "text", text: nudge });
       messages.push({ role: "user", content });
       // Checkpoint: the conversation now ends on a user turn — a clean point to
@@ -685,26 +823,118 @@ export async function dispatchTool(
 
   if (name === "shortlist_buildings") {
     const commune = String(input.commune ?? "").trim();
-    if (!commune) return "error: pass { commune, floors?, footprintM2?, attached? }";
+    if (!commune) return "error: pass { commune, floors?, footprintM2?, dwellings?, attached? }";
+    const search = searchOf(job);
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
     try {
       const r = await shortlistBuildings({
         commune,
-        floors: typeof input.floors === "number" ? input.floors : undefined,
-        footprintM2: typeof input.footprintM2 === "number" ? input.footprintM2 : undefined,
+        floors: num(input.floors),
+        footprintM2: num(input.footprintM2),
+        dwellings: num(input.dwellings),
         attached: typeof input.attached === "boolean" ? input.attached : undefined,
-        maxResults: typeof input.maxResults === "number" ? input.maxResults : undefined,
+        maxResults: num(input.maxResults),
       });
+      // HIGH commune confidence: the stated commune is exhausted before any other.
+      const blocked = r.supported ? leavePrimaryBlocked(search, r.commune) : null;
+      if (blocked) {
+        await addStep(job, { kind: "note", title: `shortlist_buildings(${r.commune}) refused`, detail: blocked });
+        return `refused: ${blocked}`;
+      }
+      const added = r.supported ? addCandidates(search, r.commune, r.candidates) : 0;
+      await saveSearch(job, search);
       await addStep(job, {
         kind: "bash",
-        title: `shortlist_buildings(${commune})`,
-        detail: `${r.enumerated} enumerated → ${r.residential} residential → ${r.survivors} survivors; returned ${r.candidates.length}`,
+        title: `shortlist_buildings(${r.commune})`,
+        detail: `${r.enumerated} enumerated → ${r.residential} residential → ${r.survivors} survivors; returned ${r.candidates.length} (${added} new on the checklist)`,
       });
-      return clip(`${r.note}\n\n${JSON.stringify(r.candidates)}`, MAX_TOOL_TEXT);
+      const lines = r.candidates.map(
+        (c) =>
+          `${c.egid} | ${c.address ?? "?"} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
+          `${c.attached == null ? "" : c.attached ? " | attached" : " | detached"} | ${c.lat.toFixed(6)},${c.lon.toFixed(6)}`,
+      );
+      return clip(
+        `${r.note}\n\nChecklist coverage: ${coverageText(search)}.\n\negid | address | floors | dwellings | footprint | lat,lon\n${lines.join("\n")}`,
+        MAX_TOOL_TEXT,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await addStep(job, { kind: "error", title: `shortlist_buildings failed`, detail: message });
       return `error: ${message}`;
     }
+  }
+
+  if (name === "view_candidates") {
+    const search = searchOf(job);
+    // Verdicts on the previous sheet can ride along: one turn per sheet.
+    const marked = Array.isArray(input.marks) && input.marks.length ? await recordMarks(job, search, input.marks) : null;
+    const asked = Array.isArray(input.egids) ? input.egids.map((e) => String(e).trim()).filter(Boolean).slice(0, 16) : [];
+    const commune = typeof input.commune === "string" && input.commune.trim() ? input.commune.trim() : undefined;
+    const unknown = asked.filter((e) => !search.candidates[e]);
+    let list = asked.length
+      ? asked.map((e) => search.candidates[e]).filter(Boolean)
+      : nextToView(search, 16, commune);
+    if (!list.length && commune && !asked.length) {
+      // Accept "Denges" for "Denges" / "Saint-Sulpice" for "Saint-Sulpice (VD)".
+      const key = commune.toLowerCase();
+      const match = search.shortlisted.find((c) => c.toLowerCase().startsWith(key));
+      if (match) list = nextToView(search, 16, match);
+    }
+    if (!list.length) {
+      if (marked) return `Recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""}. Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
+      return unknown.length
+        ? `error: ${unknown.join(", ")} not on your checklist — shortlist their commune first (shortlist_buildings).`
+        : `Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
+    }
+    try {
+      const sheetNo = String(job.steps.filter((st) => st.title.startsWith("contact sheet")).length + 1).padStart(2, "0");
+      const sheet = await renderContactSheet(
+        job.runDir,
+        `sheet_${sheetNo}.png`,
+        list.map((c, k) => ({ label: String(k + 1), lat: c.lat, lon: c.lon })),
+      );
+      for (const c of list) c.viewed = true;
+      await saveSearch(job, search);
+      const legend = list
+        .map(
+          (c, k) =>
+            `${k + 1}: ${c.egid} | ${c.address ?? "?"}, ${c.commune} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²`,
+        )
+        .join("\n");
+      await addStep(job, {
+        kind: "read",
+        title: `contact sheet ${sheetNo}: ${list.length} candidates`,
+        detail: legend,
+        image: `/runs/${job.id}/${sheet.relPath}`,
+      });
+      const left = unchecked(search).filter((c) => !c.viewed).length;
+      return [
+        {
+          type: "text",
+          text:
+            `North-up aerials (SWISSIMAGE), ~90 m across, the red cross on each tile is the candidate building. Legend:\n${legend}` +
+            (sheet.failed.length ? `\n(tiles ${sheet.failed.join(", ")} failed to load — view them again or zoom yourself)` : "") +
+            (unknown.length ? `\n(not on your checklist, skipped: ${unknown.join(", ")})` : "") +
+            (marked ? `\n(recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""})` : "") +
+            `\nRecord a verdict for each — pass them as marks on your next view_candidates call (or mark_candidates). ${left} candidates not yet viewed.`,
+        },
+        { type: "image", source: { type: "base64", media_type: "image/png", data: sheet.png.toString("base64") } },
+      ];
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await addStep(job, { kind: "error", title: `view_candidates failed`, detail: message });
+      return `error: ${message}`;
+    }
+  }
+
+  if (name === "mark_candidates") {
+    const search = searchOf(job);
+    const { done, refused } = await recordMarks(job, search, input.marks);
+    return (
+      `Recorded ${done.length}.` +
+      (refused.length ? ` Refused: ${refused.join("; ")}.` : "") +
+      ` Coverage: ${coverageText(search)}.`
+    );
   }
 
   if (name === "render_roofs") {
@@ -745,6 +975,57 @@ export async function dispatchTool(
   }
 
   return `Unknown tool: ${name}`;
+}
+
+// Apply verdicts to the checklist. A rejection needs the candidate to have been
+// on a contact sheet — the checklist must mean "looked at", not "dismissed".
+async function recordMarks(
+  job: Job,
+  search: SearchState,
+  marks: unknown,
+): Promise<{ done: string[]; refused: string[] }> {
+  const done: string[] = [], refused: string[] = [];
+  for (const m of Array.isArray(marks) ? marks : []) {
+    const o = (m ?? {}) as Record<string, unknown>;
+    const egid = String(o.egid ?? "").trim();
+    const verdict = String(o.verdict ?? "");
+    const c = search.candidates[egid];
+    if (!c || !["rejected", "possible", "match"].includes(verdict)) {
+      refused.push(`${egid || "?"} (not on the checklist or bad verdict)`);
+      continue;
+    }
+    if (verdict === "rejected" && !c.viewed) {
+      refused.push(`${egid} (never viewed — view_candidates first)`);
+      continue;
+    }
+    c.verdict = verdict as "rejected" | "possible" | "match";
+    c.reason = String(o.reason ?? "").slice(0, 300);
+    done.push(`${egid} ${verdict}`);
+  }
+  await saveSearch(job, search);
+  await addStep(job, {
+    kind: "note",
+    title: `marked ${done.length} candidate(s)`,
+    detail: [...done, ...refused.map((r) => `refused: ${r}`)].join("\n"),
+  });
+  return { done, refused };
+}
+
+// The job's search plan + checklist; runs started before it existed get an
+// empty one (no plan, nothing gated) so the tools still work on resume.
+function searchOf(job: Job): SearchState {
+  if (!job.search) {
+    job.search = {
+      stated: job.input.municipality ?? null,
+      primary: null,
+      confidence: "unknown",
+      evidence: [],
+      ring: [],
+      shortlisted: [],
+      candidates: {},
+    };
+  }
+  return job.search;
 }
 
 // Persist the listing photos into the run dir so the model can crop/inspect

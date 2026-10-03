@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -148,7 +149,57 @@ interface Job {
   potentialStatus?: PotentialStatus;
   promptVersion?: string | null;
   signature?: { clues: string[]; schematicSvg?: string } | null;
+  search?: SearchPlan | null;
   elapsedMs?: number;
+}
+
+// Where the finder was told to look, and what it has checked (server/search.ts).
+interface SearchPlan {
+  stated: string | null;
+  primary: string | null;
+  confidence: "high" | "low" | "unknown";
+  evidence: string[];
+  ring: { commune: string; distanceM: number }[];
+  shortlisted: string[];
+  candidates: Record<string, { commune: string; viewed: boolean; verdict: "unchecked" | "rejected" | "possible" | "match" }>;
+}
+
+function SearchPlanCard({ search }: { search: SearchPlan }) {
+  const all = Object.values(search.candidates);
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search plan</p>
+        <Badge variant={search.confidence === "high" ? "default" : search.confidence === "low" ? "secondary" : "outline"}>
+          commune confidence {search.confidence}
+        </Badge>
+        {(search.primary ?? search.stated) && (
+          <span className="text-sm text-foreground">{search.primary ?? search.stated}</span>
+        )}
+      </div>
+      {search.evidence.length > 0 && <p className="text-sm text-muted-foreground">{search.evidence.join(" ")}</p>}
+      {search.ring.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          <span className="text-foreground font-medium">Then, nearest first: </span>
+          {search.ring.map((r) => `${r.commune} (${(r.distanceM / 1000).toFixed(1)} km)`).join(" · ")}
+        </p>
+      )}
+      {search.shortlisted.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {search.shortlisted.map((c) => {
+            const mine = all.filter((x) => x.commune === c);
+            const done = mine.filter((x) => x.verdict !== "unchecked").length;
+            const hit = mine.some((x) => x.verdict === "match");
+            return (
+              <Badge key={c} variant={hit ? "default" : "outline"} className="font-normal">
+                {c}: {done}/{mine.length} checked
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface JobSummary {
@@ -1121,6 +1172,8 @@ export default function AddressFinder() {
                   <p className="text-sm text-destructive">{job.error}</p>
                 </div>
               )}
+
+              {job.search && <SearchPlanCard search={job.search} />}
 
               {job.signature && job.signature.clues.length > 0 && (
                 <div className="rounded-xl border border-border bg-card p-5">
