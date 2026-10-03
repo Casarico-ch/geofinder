@@ -24,6 +24,7 @@ export interface ModelResult {
   status: JobStatus;
   answer: Answer | null;
   aiCostUsd: number;
+  tokens?: number; // total tokens of the run, filled in when listing
 }
 
 export interface PlatformRequest {
@@ -202,6 +203,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       status: j.status,
       answer: j.answer,
       aiCostUsd: costUsd(j.tokens, j.model),
+      tokens: j.tokens.total,
     }));
     const first = g[0];
     return {
@@ -228,20 +230,34 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
     if (r.kind !== "listing") return r;
     const results = (r.results ?? []).map((m) => {
       const j = getJob(m.jobId);
-      return j ? { ...m, status: j.status, answer: j.answer ?? m.answer, aiCostUsd: costUsd(j.tokens, j.model) } : m;
+      return j
+        ? { ...m, status: j.status, answer: j.answer ?? m.answer, aiCostUsd: costUsd(j.tokens, j.model), tokens: j.tokens.total }
+        : m;
     });
     return { ...r, results, status: r.status === "running" ? overallStatus(results) : r.status };
   });
-  return mergeByListingId([...shown, ...looseRequests]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return mergeByListing([...shown, ...looseRequests]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-// Address searches (platform calls or loose runs) that share a listingId
-// become one row holding every model's search.
-function mergeByListingId(rows: PlatformRequest[]): PlatformRequest[] {
+// Address searches (platform calls or loose runs) of the same listing become
+// one row holding every model's search: same listingId, or, without one, the
+// same listing text and commune (a re-run of the same listing).
+function listingKey(r: PlatformRequest): string | undefined {
+  if (r.kind !== "listing") return undefined;
+  if (r.input.listingId) return `id:${r.input.listingId}`;
+  const text = (r.input.listingText ?? "")
+    .replace(/^Municipality \/ commune: [^\n]*\n*/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return text ? `text:${(r.input.municipality ?? "").trim().toLowerCase()}|${text}` : undefined;
+}
+
+function mergeByListing(rows: PlatformRequest[]): PlatformRequest[] {
   const byId = new Map<string, PlatformRequest>();
   const out: PlatformRequest[] = [];
   for (const r of rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    const id = r.kind === "listing" ? r.input.listingId : undefined;
+    const id = listingKey(r);
     const into = id ? byId.get(id) : undefined;
     if (!id) {
       out.push(r);

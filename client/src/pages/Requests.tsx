@@ -94,6 +94,7 @@ interface ModelResult {
     reasoning: string;
   } | null;
   aiCostUsd: number;
+  tokens?: number;
 }
 
 interface PlatformRequest {
@@ -149,14 +150,6 @@ const RATIO_LABEL: Record<string, string> = {
   grossFloorRatio: "Gross floor ratio (IBUS)",
   volumeRatio: "Volume ratio (IM)",
 };
-
-function timeAgo(iso: string): string {
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return `${Math.round(s)}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86400)}d ago`;
-}
 
 const num = (n: number | null | undefined, unit = "") =>
   n == null ? "—" : `${n.toLocaleString("de-CH")}${unit}`;
@@ -430,13 +423,63 @@ function summaryOf(r: PlatformRequest): string {
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
+// The listing's own title ("Title: …" line, else its first line), else the commune.
+function titleOf(r: PlatformRequest): string {
+  if (r.kind === "address") return summaryOf(r);
+  const body = (r.input.listingText ?? "").replace(/^Municipality \/ commune: [^\n]*\n*/, "");
+  const titled = body.match(/^\s*Title:\s*(.+)$/im)?.[1];
+  const first = body.split("\n").map((l) => l.trim()).find(Boolean);
+  return (titled ?? first ?? r.input.municipality ?? "Listing").trim();
+}
+
+// "Sonnet 5.5 + Opus 5.5", plus the run count when a model ran more than once.
+function modelsOf(r: PlatformRequest): string {
+  const results = r.results ?? [];
+  const names = Array.from(new Set(results.map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  return names.join(" + ") + (results.length > names.length ? ` · ${results.length} runs` : "");
+}
+
+function shortId(r: PlatformRequest): string {
+  return r.input.listingId ?? r.id.replace(/^job-/, "").slice(0, 8);
+}
+
+type Outcome = { label: string; tone: string; detail?: string };
+
+function outcomeOf(r: PlatformRequest): Outcome {
+  if (r.kind === "address") {
+    if (r.status === "error") return { label: "Failed", tone: "bg-red-500/10 text-red-700" };
+    return r.profile || r.combined
+      ? { label: "Property data", tone: "bg-emerald-500/10 text-emerald-700" }
+      : { label: "Not found", tone: "bg-muted text-muted-foreground" };
+  }
+  const results = r.results ?? [];
+  const hit = results.find((m) => m.status === "done" && m.answer?.found);
+  if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
+  if (results.some((m) => m.status === "running")) return { label: "Searching", tone: "bg-primary/10 text-primary" };
+  if (results.some((m) => m.status === "paused")) return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
+  return { label: "Not found", tone: "bg-muted text-muted-foreground" };
+}
+
+const fmtTokens = (n: number) =>
+  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : n ? String(n) : "—";
+
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+// Shared column layout for the header and every row.
+const COLS =
+  "grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[6.5rem_minmax(0,1fr)_10rem_5.5rem_4.5rem_7.5rem_1rem] items-center gap-x-4";
+
 function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: boolean; onToggle: () => void }) {
   const [open, setOpen] = useState(false);
   const aiCost = (r.results ?? []).reduce((s, m) => s + m.aiCostUsd, 0);
+  const tokens = (r.results ?? []).reduce((s, m) => s + (m.tokens ?? 0), 0);
+  const outcome = outcomeOf(r);
+  const title = titleOf(r);
   return (
     <li className={`rounded-lg border bg-card ${selected ? "border-primary/60" : "border-border"}`}>
       <div className="flex items-center">
-      <label className="pl-3.5 py-2.5 flex items-center cursor-pointer shrink-0">
+      <label className="pl-3.5 py-3 flex items-center cursor-pointer shrink-0">
         <input
           type="checkbox"
           id={`select-${r.id}`}
@@ -449,36 +492,46 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex-1 min-w-0 px-3 py-2.5 flex items-center gap-3 text-left hover:bg-muted/40 transition-colors rounded-r-lg"
+        className={`flex-1 min-w-0 px-3 py-3 text-left hover:bg-muted/40 transition-colors rounded-r-lg ${COLS}`}
         aria-expanded={open}
       >
-        <StatusIcon status={r.status} />
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground w-16 shrink-0">
-          {r.kind === "address" ? "Property" : "Address"}
+        <span className="hidden md:block text-xs font-mono text-muted-foreground truncate" title={r.input.listingId ?? r.id}>
+          {shortId(r)}
         </span>
-        <span className="text-[11px] text-muted-foreground w-14 shrink-0 hidden sm:inline">
-          {r.source === "website" ? "Website" : "Platform"}
-        </span>
-        {r.input.listingId && (
-          <span className="text-xs font-mono text-muted-foreground shrink-0 max-w-32 truncate" title={r.input.listingId}>
-            {r.input.listingId}
+        <span className="min-w-0">
+          <span className="block text-sm text-foreground truncate" title={title}>
+            {title}
           </span>
-        )}
-        <span className="text-sm text-foreground truncate flex-1 min-w-0">{summaryOf(r)}</span>
-        {r.kind === "listing" &&
-          (r.results ?? []).map((m) => (
-            <span key={m.jobId} className="hidden md:inline-flex items-center gap-1.5 text-xs text-muted-foreground max-w-48 min-w-0">
-              <StatusIcon status={m.status} />
-              <span className="truncate">
-                {MODEL_LABEL[m.model] ?? m.model}: {m.answer ? foundLabel(m.answer) : "…"}
-              </span>
+          <span className="block text-xs text-muted-foreground truncate">
+            {[
+              r.kind === "address" ? "Property lookup" : r.input.municipality,
+              r.source === "website" ? "Website" : "Platform",
+              r.kind === "listing" && modelsOf(r),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            <span className="md:hidden"> · {fmtDate(r.createdAt)}</span>
+          </span>
+        </span>
+        <span className="min-w-0 flex flex-col items-end md:items-start gap-0.5">
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${outcome.tone}`}>
+            {outcome.label === "Searching" && <Loader2 className="h-3 w-3 animate-spin" />}
+            {outcome.label}
+          </span>
+          {outcome.detail && (
+            <span className="hidden md:block text-xs text-muted-foreground truncate max-w-full" title={outcome.detail}>
+              {outcome.detail}
             </span>
-          ))}
-        <span className="text-xs tabular-nums text-foreground shrink-0">
+          )}
+        </span>
+        <span className="hidden md:block text-sm tabular-nums text-right">
           {r.kind === "listing" ? `$${aiCost.toFixed(2)}` : `CHF ${r.popetyCostChf.toFixed(2)}`}
         </span>
-        <span className="text-xs text-muted-foreground w-14 text-right shrink-0 hidden sm:inline">{timeAgo(r.createdAt)}</span>
-        <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <span className="hidden md:block text-sm tabular-nums text-right text-muted-foreground">
+          {r.kind === "listing" ? fmtTokens(tokens) : "—"}
+        </span>
+        <span className="hidden md:block text-xs tabular-nums text-muted-foreground text-right">{fmtDate(r.createdAt)}</span>
+        <ChevronDown className={`hidden md:block h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       </div>
       {open && (
@@ -652,6 +705,20 @@ export default function Requests() {
               <p className="text-xs text-muted-foreground mt-1">
                 Each property request, from the platform or a New search here, shows up as one row.
               </p>
+            </div>
+          )}
+          {requests && requests.length > 0 && (
+            <div className="hidden md:flex items-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="w-[31px] shrink-0" />
+              <div className={`flex-1 px-3 ${COLS}`}>
+                <span>ID</span>
+                <span>Listing</span>
+                <span>Result</span>
+                <span className="text-right">Cost</span>
+                <span className="text-right">Tokens</span>
+                <span className="text-right">Date</span>
+                <span />
+              </div>
             </div>
           )}
           <ul className="space-y-1.5">
