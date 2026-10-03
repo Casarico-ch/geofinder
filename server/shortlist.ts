@@ -10,10 +10,14 @@
 //   - footprint is a WIDE band,
 //   - era is NOT a parameter at all,
 //   - attached/detached is decided by shared-wall geometry, not eyeballing.
-// The result is a shortlist that still contains the target; render_roofs + the
-// eyeball then narrow it. Geneva (SITG) for now; elsewhere the model enumerates
-// the cadastre itself.
+// The result is a shortlist that still contains the target; view_candidates,
+// render_roofs + the eyeball then narrow it. Geneva comes from SITG (footprint
+// polygons, so attached/detached is measured); every other canton from the
+// federal building register (gwr.ts) — no footprint geometry there, so
+// `attached` is unknown, but floors/dwellings/footprint follow the same rules.
 // =============================================================================
+import { fetchCommuneBuildings, resolveCommune, type Commune } from "./gwr";
+
 interface RawBuilding {
   egid: number;
   niv: number | null;
@@ -29,10 +33,13 @@ export interface Candidate {
   lon: number;
   footprintM2: number | null;
   floors: number | null;
-  attached: boolean;
+  attached: boolean | null; // null: unknown (the register has no footprint geometry)
+  dwellings?: number | null;
+  address?: string | null;
 }
 export interface ShortlistResult {
   commune: string;
+  bfs?: number;
   supported: boolean;
   enumerated: number;
   residential: number;
@@ -115,13 +122,80 @@ async function fetchGenevaBuildings(commune: string): Promise<RawBuilding[]> {
   return out;
 }
 
-export async function shortlistBuildings(opts: {
+export interface ShortlistOptions {
   commune: string;
   floors?: number;
   footprintM2?: number;
   attached?: boolean;
+  dwellings?: number;
   maxResults?: number;
-}): Promise<ShortlistResult> {
+}
+
+// Floors and dwellings are matched as a ±1 RANGE (unknown passes); the
+// footprint as a wide band. Era is never a parameter.
+function inRange(v: number | null, est: number | undefined, lo: number, hi: number): boolean {
+  if (v == null || typeof est !== "number") return true;
+  return v >= est - lo && v <= est + hi;
+}
+function inBand(v: number | null, est: number | undefined): boolean {
+  if (v == null || typeof est !== "number" || est <= 0) return true;
+  return v >= est * 0.55 && v <= est * 1.7;
+}
+
+export async function shortlistBuildings(opts: ShortlistOptions): Promise<ShortlistResult> {
+  const commune = opts.commune.trim();
+  const resolved = await resolveCommune(commune);
+  if (resolved && resolved.canton !== "GE") return shortlistFromRegister(resolved, opts);
+  const geneva = await shortlistGeneva({ ...opts, commune: resolved?.name ?? commune });
+  if (resolved) geneva.bfs = resolved.bfs;
+  return geneva;
+}
+
+// Every canton but Geneva: the federal building register.
+async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promise<ShortlistResult> {
+  const max = Math.min(150, Math.max(5, opts.maxResults ?? 120));
+  const all = await fetchCommuneBuildings(c);
+  const residential = all.filter(
+    (b) => (b.status == null || b.status === 1004) && (b.category == null || (b.category >= 1020 && b.category < 1060)),
+  );
+  const survivors = residential
+    .filter((b) => inRange(b.floors, opts.floors, 1, 1))
+    .filter((b) => inRange(b.dwellings, opts.dwellings, 1, 1))
+    .filter((b) => inBand(b.footprintM2, opts.footprintM2))
+    .sort((x, y) => {
+      if (opts.footprintM2 == null || x.footprintM2 == null || y.footprintM2 == null) return 0;
+      return Math.abs(x.footprintM2 - opts.footprintM2) - Math.abs(y.footprintM2 - opts.footprintM2);
+    });
+  const top = survivors.slice(0, max);
+  return {
+    commune: c.name,
+    bfs: c.bfs,
+    supported: true,
+    enumerated: all.length,
+    residential: residential.length,
+    survivors: survivors.length,
+    truncatedTo: survivors.length > max ? max : undefined,
+    candidates: top.map((b) => ({
+      egid: Number(b.egid),
+      lat: b.lat,
+      lon: b.lon,
+      footprintM2: b.footprintM2,
+      floors: b.floors,
+      attached: null,
+      dwellings: b.dwellings,
+      address: b.address,
+    })),
+    note:
+      `${c.name}: enumerated ${all.length} buildings from the federal register, ${residential.length} residential, ${survivors.length} passed the recall-first filters` +
+      (survivors.length > max ? ` (showing the ${max} closest by footprint)` : "") +
+      `. Floors${typeof opts.dwellings === "number" ? " and dwellings" : ""} matched as a ±1 range, footprint as a wide band, era NOT filtered.` +
+      (typeof opts.attached === "boolean" ? " attached/detached is not in the register here — ignored; judge it on the aerial." : "") +
+      ` Now look at them with view_candidates and record each verdict with mark_candidates — do NOT re-filter them by era or exact floors.`,
+  };
+}
+
+// Geneva: SITG footprints (with attached/detached from shared walls).
+async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult> {
   const commune = opts.commune.trim();
   const max = Math.min(60, Math.max(5, opts.maxResults ?? 40));
   const all = await fetchGenevaBuildings(commune);
@@ -133,7 +207,7 @@ export async function shortlistBuildings(opts: {
       residential: 0,
       survivors: 0,
       candidates: [],
-      note: `No buildings found for commune "${commune}" in the Geneva (SITG) cadastre — this is probably outside canton GE. Enumerate the cadastre yourself (geodienste ms:LCSF) with the SAME rules: floors as a ±1 range, footprint wide, NEVER filter on era.`,
+      note: `No commune "${commune}" was found — not in the Swiss commune register, and no buildings in the Geneva (SITG) cadastre. Check the spelling (the official name, e.g. "Saint-Sulpice (VD)") and call again.`,
     };
   }
   const residential = all.filter((b) => b.dest.startsWith("Habitation"));
@@ -187,6 +261,6 @@ export async function shortlistBuildings(opts: {
     note:
       `Enumerated ${all.length} buildings, ${residential.length} residential, ${survivorsCount} passed the recall-first filters` +
       (survivorsCount > max ? ` (showing the ${max} closest by footprint)` : "") +
-      `. Floors matched as a ±1 range; era was NOT filtered. Now call render_roofs on these and confirm by roof shape + arrangement — do NOT re-filter these by era or exact floors.`,
+      `. Floors matched as a ±1 range; era was NOT filtered. Now look at them with view_candidates (and render_roofs for roof shape), record each verdict with mark_candidates — do NOT re-filter these by era or exact floors.`,
   };
 }
