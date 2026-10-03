@@ -396,6 +396,7 @@ function ModelColumn({ r }: { r: ModelResult }) {
         </Link>
       </div>
       {r.status === "running" && <p className="text-sm text-muted-foreground">Investigating…</p>}
+      {r.status === "error" && !r.answer && <p className="text-sm text-destructive">Failed — open the trace for the error</p>}
       {r.answer && (
         <div className="text-sm">
           <p className="font-medium">{foundLabel(r.answer, "Area only").replace(/^not found$/, "Not found")}</p>
@@ -443,15 +444,38 @@ function titleOf(r: PlatformRequest): string {
   return (titled ?? first ?? r.input.municipality ?? "Listing").trim();
 }
 
-// "Sonnet 5.5 + Opus 5.5", the run count when a model searched more than once,
-// and whether an answer was cross-checked by another model.
+// One attempt at a listing: the models started together, plus the cross-checks
+// that followed them. A run started more than ATTEMPT_GAP_MS after the attempt
+// began is a new attempt (a re-run).
+interface Attempt {
+  n: number; // 1 = the first search
+  startedAt: string | undefined;
+  results: ModelResult[];
+}
+const ATTEMPT_GAP_MS = 10 * 60_000;
+
+function attemptsOf(r: PlatformRequest): Attempt[] {
+  const sorted = [...(r.results ?? [])].sort((a, b) => (a.startedAt ?? "").localeCompare(b.startedAt ?? ""));
+  const out: Attempt[] = [];
+  for (const m of sorted) {
+    const cur = out[out.length - 1];
+    const gap = cur?.startedAt && m.startedAt ? Date.parse(m.startedAt) - Date.parse(cur.startedAt) : 0;
+    if (cur && (m.check || gap <= ATTEMPT_GAP_MS)) cur.results.push(m);
+    else out.push({ n: out.length + 1, startedAt: m.startedAt, results: [m] });
+  }
+  return out;
+}
+
+// "Sonnet 5.5 + Opus 5.5", which run this is when the listing was re-run, and
+// whether an answer was cross-checked by another model.
 function modelsOf(r: PlatformRequest): string {
   const all = r.results ?? [];
   const searches = all.filter((m) => !m.check);
   const names = Array.from(new Set((searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  const runs = attemptsOf(r).length;
   return (
     names.join(" + ") +
-    (searches.length > names.length ? ` · ${searches.length} runs` : "") +
+    (runs > 1 ? ` · Run ${runs} of ${runs}` : "") +
     (all.some((m) => m.check) ? " · cross-checked" : "")
   );
 }
@@ -472,7 +496,8 @@ function outcomeOf(r: PlatformRequest): Outcome {
   const results = r.results ?? [];
   const hit = results.find((m) => m.status === "done" && m.answer?.found);
   if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
-  if (results.some((m) => m.status === "running")) return { label: "Searching", tone: "bg-primary/10 text-primary" };
+  if (results.some((m) => m.status === "running"))
+    return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
   if (results.some((m) => m.status === "paused")) return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
   return { label: "Not found", tone: "bg-muted text-muted-foreground" };
 }
@@ -527,6 +552,66 @@ function RunAgain({ rows, onDone }: { rows: PlatformRequest[]; onDone: () => voi
   );
 }
 
+// The model cards, one block per attempt, newest first. With a single attempt
+// it is just the cards; after a re-run each block gets a "Run n" header and the
+// older ones are faded and can be folded away.
+function Attempts({ r }: { r: PlatformRequest }) {
+  const attempts = attemptsOf(r).reverse();
+  const [hidden, setHidden] = useState<Set<number>>(new Set());
+  const cards = (a: Attempt) => (
+    <div className="grid gap-3 lg:grid-cols-2">
+      {a.results.map((m) => (
+        <ModelColumn key={m.jobId} r={m} />
+      ))}
+    </div>
+  );
+  if (attempts.length <= 1) return attempts[0] ? cards(attempts[0]) : null;
+  return (
+    <div className="space-y-4">
+      {attempts.map((a, i) => {
+        const latest = i === 0;
+        const cost = a.results.reduce((s, m) => s + m.aiCostUsd, 0);
+        const running = a.results.some((m) => m.status === "running");
+        const hit = a.results.find((m) => m.status === "done" && m.answer?.found);
+        const folded = hidden.has(a.n);
+        return (
+          <div key={a.n} className="space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="text-sm font-semibold text-foreground">Run {a.n}</span>
+              {a.n > 1 && <Badge variant="outline" className="font-normal">Re-run</Badge>}
+              <span className="tabular-nums">
+                {[a.startedAt && fmtDate(a.startedAt), `$${cost.toFixed(2)}${running ? " so far" : ""}`]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {!running && <span>· {hit?.answer ? foundLabel(hit.answer) : "not found"}</span>}
+              <div className="flex-1 h-px bg-border" />
+              {!latest && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() =>
+                    setHidden((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(a.n)) next.delete(a.n);
+                      else next.add(a.n);
+                      return next;
+                    })
+                  }
+                >
+                  {folded ? "Show" : "Hide"}
+                </Button>
+              )}
+            </div>
+            {!folded && <div className={latest ? "" : "opacity-60"}>{cards(a)}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function RequestDetails({ r }: { r: PlatformRequest }) {
   return (
     <div className="space-y-3">
@@ -574,11 +659,7 @@ function RequestDetails({ r }: { r: PlatformRequest }) {
           {r.input.listingText && (
             <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>
           )}
-          <div className="grid gap-3 lg:grid-cols-2">
-            {(r.results ?? []).map((m) => (
-              <ModelColumn key={m.jobId} r={m} />
-            ))}
-          </div>
+          <Attempts r={r} />
         </>
       )}
     </div>
@@ -622,7 +703,7 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
         </TableCell>
         <TableCell className="max-w-44">
           <Badge variant="outline" className={`gap-1 whitespace-nowrap border-transparent ${outcome.tone}`}>
-            {outcome.label === "Searching" && <Loader2 className="h-3 w-3 animate-spin" />}
+            {(outcome.label === "Searching" || outcome.label === "Re-running") && <Loader2 className="h-3 w-3 animate-spin" />}
             {outcome.label}
           </Badge>
           {outcome.detail && (
