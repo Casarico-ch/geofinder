@@ -338,6 +338,36 @@ function initialContent(
   return blocks;
 }
 
+// Contact sheets are big images (~1 MB each) and the whole conversation is
+// re-sent every turn, so a long search hit the API's request-size limit (an
+// Opus re-run of c5bc3cfd died with 413 after ~25 sheets). Once more than
+// SHEETS_MAX sheets are in the conversation, all but the last SHEETS_KEEP are
+// replaced by a note: their verdicts already live in the checklist. Pruning in
+// one go, rarely, keeps the prompt cache intact between prunes.
+const SHEETS_MAX = 8;
+const SHEETS_KEEP = 2;
+const SHEET_NOTE = "North-up aerials (SWISSIMAGE)";
+
+export function pruneOldSheets(messages: Anthropic.Messages.MessageParam[]): void {
+  const sheets: { blocks: Anthropic.Messages.ToolResultBlockParam["content"] & unknown[]; at: number }[] = [];
+  for (const m of messages) {
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (b.type !== "tool_result" || !Array.isArray(b.content)) continue;
+      const isSheet = b.content.some((c) => c.type === "text" && c.text.startsWith(SHEET_NOTE));
+      const at = b.content.findIndex((c) => c.type === "image");
+      if (isSheet && at >= 0) sheets.push({ blocks: b.content as never, at });
+    }
+  }
+  if (sheets.length <= SHEETS_MAX) return;
+  for (const sh of sheets.slice(0, sheets.length - SHEETS_KEEP)) {
+    (sh.blocks as unknown[])[sh.at] = {
+      type: "text",
+      text: "[contact sheet image removed to keep the request small — your verdicts on it are in the checklist]",
+    };
+  }
+}
+
 export function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
 }
@@ -564,6 +594,7 @@ async function runLoop(
         return;
       }
 
+      pruneOldSheets(messages);
       const resp = await client.messages.create({
         model: job.model ?? MODEL,
         max_tokens: 16_000,
