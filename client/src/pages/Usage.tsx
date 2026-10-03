@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import AdminHeader from "@/components/AdminHeader";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CalendarDays } from "lucide-react";
 
 // Mirrors GET /api/usage.
@@ -131,11 +137,11 @@ function store(key: string, value: unknown) {
 
 function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3 min-w-0">
+    <Card className="gap-0.5 px-4 py-3 min-w-0 shadow-none">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-xl font-semibold tabular-nums text-foreground mt-0.5">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5 truncate">{sub}</p>}
-    </div>
+      <p className="text-xl font-semibold tabular-nums text-foreground">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
+    </Card>
   );
 }
 
@@ -217,6 +223,7 @@ function CostChart({ buckets, unit }: { buckets: Bucket[]; unit: "day" | "week" 
 }
 
 export default function Usage() {
+  const [, navigate] = useLocation();
   const [data, setData] = useState<{ runs: Run[]; popety: PopetyCharge[]; searches?: Search[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>(() => readStored("usage-range", "last7" as RangeKey));
@@ -368,48 +375,46 @@ export default function Usage() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 className="text-sm font-medium text-foreground">Usage</h2>
             <div className="flex flex-wrap items-end gap-2">
-              <label className="grid gap-1 text-xs text-muted-foreground" htmlFor="usage-range">
-                Created
-                <span className="relative">
-                  <CalendarDays className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-foreground" />
-                  <select
-                    id="usage-range"
-                    value={range}
-                    onChange={(e) => setRange(e.target.value as RangeKey)}
-                    className="h-9 rounded-md border border-input bg-card pl-8 pr-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
+              <div className="grid gap-1">
+                <Label htmlFor="usage-range">Created</Label>
+                <Select value={range} onValueChange={(v) => setRange(v as RangeKey)}>
+                  <SelectTrigger id="usage-range" className="w-48 bg-card">
+                    <CalendarDays className="h-4 w-4 text-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
                     {RANGES.map((r) => (
-                      <option key={r.key} value={r.key}>
+                      <SelectItem key={r.key} value={r.key}>
                         {r.label}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
-                </span>
-              </label>
+                  </SelectContent>
+                </Select>
+              </div>
               {range === "custom" && (
                 <>
-                  <label className="grid gap-1 text-xs text-muted-foreground" htmlFor="usage-from">
-                    From
-                    <input
+                  <div className="grid gap-1">
+                    <Label htmlFor="usage-from">From</Label>
+                    <Input
                       id="usage-from"
                       type="date"
                       value={customFrom}
                       max={customTo || undefined}
                       onChange={(e) => setCustomFrom(e.target.value)}
-                      className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                      className="w-40 bg-card"
                     />
-                  </label>
-                  <label className="grid gap-1 text-xs text-muted-foreground" htmlFor="usage-to">
-                    To
-                    <input
+                  </div>
+                  <div className="grid gap-1">
+                    <Label htmlFor="usage-to">To</Label>
+                    <Input
                       id="usage-to"
                       type="date"
                       value={customTo}
                       min={customFrom || undefined}
                       onChange={(e) => setCustomTo(e.target.value)}
-                      className="h-9 rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                      className="w-40 bg-card"
                     />
-                  </label>
+                  </div>
                 </>
               )}
             </div>
@@ -435,7 +440,7 @@ export default function Usage() {
                 <Tile label="Popety" value={chf(view.popetyChf)} sub={`${view.popety.length} property lookups`} />
               </div>
 
-              <section className="rounded-lg border border-border bg-card p-4 space-y-2">
+              <Card className="gap-2 p-4 shadow-none">
                 <div className="flex items-baseline justify-between">
                   <h3 className="text-sm font-medium">AI cost per {view.unit}</h3>
                   <span className="text-xs text-muted-foreground">Hover a bar for details</span>
@@ -445,57 +450,59 @@ export default function Usage() {
                 ) : (
                   <p className="text-sm text-muted-foreground py-10 text-center">No runs in this period.</p>
                 )}
-              </section>
+              </Card>
 
               {view.insights.length > 0 && (
                 <section className="space-y-2">
                   <h3 className="text-sm font-medium">Insights</h3>
-                  <ul className="rounded-lg border border-border bg-card divide-y divide-border">
-                    {view.insights.map((t) => (
-                      <li key={t} className="px-4 py-2.5 text-sm text-foreground">
-                        {t}
-                      </li>
-                    ))}
-                  </ul>
+                  <Card className="gap-0 py-0 shadow-none">
+                    <ul className="divide-y divide-border">
+                      {view.insights.map((t) => (
+                        <li key={t} className="px-4 py-2.5 text-sm text-foreground">
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
                 </section>
               )}
 
               {view.byModel.length > 0 && (
                 <section className="space-y-2">
                   <h3 className="text-sm font-medium">By model</h3>
-                  <div className="rounded-lg border border-border bg-card overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-xs text-muted-foreground text-left">
-                          <th className="px-4 py-2 font-medium">Model</th>
-                          <th className="px-3 py-2 font-medium text-right">Runs</th>
-                          <th className="px-3 py-2 font-medium text-right">Found</th>
-                          <th className="px-3 py-2 font-medium text-right">Tokens</th>
-                          <th className="px-3 py-2 font-medium text-right">Cache</th>
-                          <th className="px-3 py-2 font-medium text-right">Avg / run</th>
-                          <th className="px-3 py-2 font-medium text-right">Per found</th>
-                          <th className="px-3 py-2 font-medium text-right">Avg time</th>
-                          <th className="px-4 py-2 font-medium text-right">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="tabular-nums">
+                  <div className="rounded-lg border bg-card">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Model</TableHead>
+                          <TableHead className="text-right">Runs</TableHead>
+                          <TableHead className="text-right">Found</TableHead>
+                          <TableHead className="text-right">Tokens</TableHead>
+                          <TableHead className="text-right">Cache</TableHead>
+                          <TableHead className="text-right">Avg / run</TableHead>
+                          <TableHead className="text-right">Per found</TableHead>
+                          <TableHead className="text-right">Avg time</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody className="tabular-nums">
                         {view.byModel.map((m) => (
-                          <tr key={m.model} className="border-t border-border">
-                            <td className="px-4 py-2 font-medium whitespace-nowrap">{MODEL_LABEL[m.model] ?? m.model}</td>
-                            <td className="px-3 py-2 text-right">{m.runs}</td>
-                            <td className="px-3 py-2 text-right">
+                          <TableRow key={m.model}>
+                            <TableCell className="font-medium">{MODEL_LABEL[m.model] ?? m.model}</TableCell>
+                            <TableCell className="text-right">{m.runs}</TableCell>
+                            <TableCell className="text-right">
                               {m.foundRate != null ? `${pct(m.foundRate)} (${m.found}/${m.done})` : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-right">{tok(m.tokens)}</td>
-                            <td className="px-3 py-2 text-right">{m.cacheRate != null ? pct(m.cacheRate) : "—"}</td>
-                            <td className="px-3 py-2 text-right">{usd(m.avgCost)}</td>
-                            <td className="px-3 py-2 text-right">{m.costPerFound != null ? usd(m.costPerFound) : "—"}</td>
-                            <td className="px-3 py-2 text-right">{m.avgTime != null ? mins(m.avgTime) : "—"}</td>
-                            <td className="px-4 py-2 text-right font-medium">{usd(m.cost)}</td>
-                          </tr>
+                            </TableCell>
+                            <TableCell className="text-right">{tok(m.tokens)}</TableCell>
+                            <TableCell className="text-right">{m.cacheRate != null ? pct(m.cacheRate) : "—"}</TableCell>
+                            <TableCell className="text-right">{usd(m.avgCost)}</TableCell>
+                            <TableCell className="text-right">{m.costPerFound != null ? usd(m.costPerFound) : "—"}</TableCell>
+                            <TableCell className="text-right">{m.avgTime != null ? mins(m.avgTime) : "—"}</TableCell>
+                            <TableCell className="text-right font-medium">{usd(m.cost)}</TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Found counts finished runs only. Cache is the share of input tokens read from the prompt cache.
@@ -506,20 +513,22 @@ export default function Usage() {
               {view.expensive.length > 0 && (
                 <section className="space-y-2">
                   <h3 className="text-sm font-medium">Most expensive runs</h3>
-                  <ul className="rounded-lg border border-border bg-card divide-y divide-border">
-                    {view.expensive.map((r) => (
-                      <li key={r.id}>
-                        <a href={`/i/${r.id}`} className="px-4 py-2.5 flex items-center gap-3 text-sm hover:bg-muted/40">
-                          <span className="w-20 shrink-0 text-muted-foreground">{MODEL_LABEL[r.model] ?? r.model}</span>
-                          <span className="flex-1 min-w-0 truncate">{r.title ?? "Listing"}</span>
-                          <span className="text-xs text-muted-foreground tabular-nums hidden sm:inline">
-                            {tok(r.tokens.total)} tokens · {r.steps} steps
-                          </span>
-                          <span className="tabular-nums font-medium w-16 text-right">{usd(r.costUsd)}</span>
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="rounded-lg border bg-card">
+                    <Table>
+                      <TableBody>
+                        {view.expensive.map((r) => (
+                          <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`/i/${r.id}`)}>
+                            <TableCell className="w-24 text-muted-foreground">{MODEL_LABEL[r.model] ?? r.model}</TableCell>
+                            <TableCell className="max-w-0 w-full truncate">{r.title ?? "Listing"}</TableCell>
+                            <TableCell className="hidden sm:table-cell text-right text-xs text-muted-foreground tabular-nums">
+                              {tok(r.tokens.total)} tokens · {r.steps} steps
+                            </TableCell>
+                            <TableCell className="text-right font-medium tabular-nums">{usd(r.costUsd)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </section>
               )}
             </>
