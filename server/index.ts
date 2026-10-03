@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { resumeInvestigation } from "./agent";
 import { registerApiRoutes } from "./api";
 import { loadPersistedJobs } from "./jobs";
+import { registerMagicFeedbackRoutes } from "./magic-feedback";
 import { registerPlatformRoutes } from "./platform";
 import { loadPersistedRequests } from "./requests";
 import { RUNS_ROOT, initRunsRoot } from "./sandbox";
@@ -46,6 +47,9 @@ async function startServer() {
     });
   }
 
+  // Magic feedback (Space then M) — behind the same gate as the rest of the
+  // website, and before registerApiRoutes so its own 15mb body limit applies.
+  registerMagicFeedbackRoutes(app);
   registerApiRoutes(app);
   registerPlatformRoutes(app);
 

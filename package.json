@@ -15,7 +15,8 @@
     "try:listing": "tsx scripts/try-listing.ts",
     "try:popety": "tsx --env-file-if-exists=.env scripts/try-popety.ts",
     "check": "tsc --noEmit",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "tsx scripts/check-magic-feedback.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
@@ -28,6 +29,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "express": "^4.21.2",
+    "html2canvas-pro": "^2.5.0",
     "lucide-react": "^0.453.0",
     "next-themes": "^0.4.6",
     "react": "^19.2.1",
