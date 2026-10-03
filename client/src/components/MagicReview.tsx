@@ -45,6 +45,13 @@ export default function MagicReview({
     setHover(-1);
   };
 
+  // A note emptied and then closed is gone, so the pins on screen always
+  // number exactly what will be filed.
+  useEffect(() => {
+    if (open !== -1) return;
+    setNotes(ns => (ns.every(x => x.text.trim()) ? ns : ns.filter(x => x.text.trim())));
+  }, [open]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
