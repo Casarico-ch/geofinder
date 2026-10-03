@@ -134,6 +134,7 @@ export interface Job {
     // are shown together as one request on the main table.
     listingId?: string;
     listingUrl?: string;
+    radarUrl?: string; // the listing's page in Radar, the platform that sent it
   };
   steps: Step[];
   answer: Answer | null;

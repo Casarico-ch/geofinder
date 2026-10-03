@@ -103,6 +103,9 @@ const listingSchema = z.object({
   listingText: z.string().max(20000).optional(),
   listingId: z.string().trim().min(1).max(200).optional(),
   listingUrl: z.string().trim().url().max(2000).optional(),
+  radarUrl: z.string().trim().url().max(2000).optional(),
+  // Run on these models instead of the default (GEOFINDER_MODELS) for this request only.
+  models: z.array(z.enum(MODELS)).min(1).max(MODELS.length).optional(),
   municipality: z.string().max(200).optional(),
 });
 
@@ -223,10 +226,11 @@ export function registerPlatformRoutes(app: Express) {
     }
     const parsed = listingSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Expected { images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl? }" });
+      res.status(400).json({ error: `Expected { images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl?, radarUrl?, models? } (models: ${MODELS.join(", ")})` });
       return;
     }
-    const { municipality, listingId, listingUrl } = parsed.data;
+    const { municipality, listingId, listingUrl, radarUrl } = parsed.data;
+    const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : LISTING_MODELS;
     const listingText = [municipality?.trim() && `Municipality / commune: ${municipality.trim()}`, parsed.data.listingText?.trim()]
       .filter(Boolean)
       .join("\n\n") || undefined;
@@ -239,10 +243,14 @@ export function registerPlatformRoutes(app: Express) {
         imageCount: images.length,
         listingId,
         listingUrl,
+        radarUrl,
       });
       record.results = [];
-      for (const model of LISTING_MODELS) {
-        const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl }, model);
+      for (const model of models) {
+        const job = await createJob(
+          { municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl },
+          model,
+        );
         record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
         void (async () => {
           await saveListingPhotos(job.runDir, images);
@@ -305,7 +313,22 @@ export function registerPlatformRoutes(app: Express) {
     const popety = listRequests()
       .filter((r) => r.popetyCostChf > 0)
       .map((r) => ({ id: r.id, createdAt: r.createdAt, costChf: r.popetyCostChf, plots: r.profiles?.length ?? 1 }));
-    res.json({ runs, popety });
+    // Address searches as the main table groups them (one row per listing):
+    // a request succeeds when any of its runs found the address or the plots.
+    const TERMINAL = ["done", "error", "cancelled"];
+    const searches = listRequestsWithLooseJobs()
+      .filter((r) => r.kind === "listing")
+      .map((r) => {
+        const results = r.results ?? [];
+        return {
+          id: r.id,
+          createdAt: r.createdAt,
+          runs: results.length,
+          found: results.some((m) => m.status === "done" && m.answer?.found),
+          settled: results.every((m) => TERMINAL.includes(m.status)),
+        };
+      });
+    res.json({ runs, popety, searches });
   });
 
   // The website's New search form starts one job per chosen model, then calls

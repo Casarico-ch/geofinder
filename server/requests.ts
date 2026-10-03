@@ -24,6 +24,8 @@ export interface ModelResult {
   status: JobStatus;
   answer: Answer | null;
   aiCostUsd: number;
+  tokens?: number; // total tokens of the run, filled in when listing
+  startedAt?: string; // when the run was created, filled in when listing
 }
 
 export interface PlatformRequest {
@@ -46,6 +48,7 @@ export interface PlatformRequest {
     imageCount?: number;
     listingId?: string;
     listingUrl?: string;
+    radarUrl?: string;
   };
   // address requests
   profile?: PropertyProfile | null;
@@ -137,6 +140,7 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
     imageCount: first.input.imageCount,
     listingId: first.input.listingId,
     listingUrl: first.input.listingUrl,
+    radarUrl: first.input.radarUrl,
   });
   req.source = "website";
   req.createdAt = jobs.map((j) => j.createdAt).sort()[0];
@@ -202,6 +206,8 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       status: j.status,
       answer: j.answer,
       aiCostUsd: costUsd(j.tokens, j.model),
+      tokens: j.tokens.total,
+      startedAt: j.createdAt,
     }));
     const first = g[0];
     return {
@@ -217,6 +223,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
         imageCount: first.input.imageCount,
         listingId: first.input.listingId,
         listingUrl: g.find((j) => j.input.listingUrl)?.input.listingUrl,
+        radarUrl: g.find((j) => j.input.radarUrl)?.input.radarUrl,
       },
       results,
       popetyCostChf: 0,
@@ -228,20 +235,41 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
     if (r.kind !== "listing") return r;
     const results = (r.results ?? []).map((m) => {
       const j = getJob(m.jobId);
-      return j ? { ...m, status: j.status, answer: j.answer ?? m.answer, aiCostUsd: costUsd(j.tokens, j.model) } : m;
+      return j
+        ? {
+            ...m,
+            status: j.status,
+            answer: j.answer ?? m.answer,
+            aiCostUsd: costUsd(j.tokens, j.model),
+            tokens: j.tokens.total,
+            startedAt: j.createdAt,
+          }
+        : m;
     });
     return { ...r, results, status: r.status === "running" ? overallStatus(results) : r.status };
   });
-  return mergeByListingId([...shown, ...looseRequests]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return mergeByListing([...shown, ...looseRequests]).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-// Address searches (platform calls or loose runs) that share a listingId
-// become one row holding every model's search.
-function mergeByListingId(rows: PlatformRequest[]): PlatformRequest[] {
+// Address searches (platform calls or loose runs) of the same listing become
+// one row holding every model's search: same listingId, or, without one, the
+// same listing text and commune (a re-run of the same listing).
+function listingKey(r: PlatformRequest): string | undefined {
+  if (r.kind !== "listing") return undefined;
+  if (r.input.listingId) return `id:${r.input.listingId}`;
+  const text = (r.input.listingText ?? "")
+    .replace(/^Municipality \/ commune: [^\n]*\n*/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return text ? `text:${(r.input.municipality ?? "").trim().toLowerCase()}|${text}` : undefined;
+}
+
+function mergeByListing(rows: PlatformRequest[]): PlatformRequest[] {
   const byId = new Map<string, PlatformRequest>();
   const out: PlatformRequest[] = [];
   for (const r of rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    const id = r.kind === "listing" ? r.input.listingId : undefined;
+    const id = listingKey(r);
     const into = id ? byId.get(id) : undefined;
     if (!id) {
       out.push(r);
@@ -250,8 +278,11 @@ function mergeByListingId(rows: PlatformRequest[]): PlatformRequest[] {
       byId.set(id, copy);
       out.push(copy);
     } else {
-      into.results = [...(into.results ?? []), ...(r.results ?? [])];
+      into.results = [...(into.results ?? []), ...(r.results ?? [])].sort((a, b) =>
+        (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
+      );
       into.input.listingUrl ??= r.input.listingUrl;
+      into.input.radarUrl ??= r.input.radarUrl;
       if (r.updatedAt > into.updatedAt) into.updatedAt = r.updatedAt;
       if (r.source === "platform") into.source = "platform";
       into.status = overallStatus(into.results);

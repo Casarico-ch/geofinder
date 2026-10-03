@@ -8,7 +8,7 @@
 // =============================================================================
 import type { Express, Request, Response } from "express";
 import express from "express";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -47,6 +47,7 @@ const createSchema = z.object({
   listingText: z.string().max(20000).optional(),
   listingId: z.string().trim().min(1).max(200).optional(),
   listingUrl: z.string().trim().url().max(2000).optional(),
+  radarUrl: z.string().trim().url().max(2000).optional(),
   municipality: z.string().max(200).optional(),
   model: z.enum(MODELS).optional(),
 });
@@ -107,7 +108,7 @@ export function registerApiRoutes(app: Express) {
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
-        error: "Expected { imageCount?, images?, listingText?, municipality?, listingId?, listingUrl? }",
+        error: "Expected { imageCount?, images?, listingText?, municipality?, listingId?, listingUrl?, radarUrl? }",
       });
       return;
     }
@@ -126,6 +127,7 @@ export function registerApiRoutes(app: Express) {
           imageCount: images?.length ?? parsed.data.imageCount ?? 0,
           listingId: parsed.data.listingId,
           listingUrl: parsed.data.listingUrl,
+          radarUrl: parsed.data.radarUrl,
         },
         parsed.data.model,
       );
@@ -255,6 +257,7 @@ export function registerApiRoutes(app: Express) {
           imageCount: images.length,
           listingId: src.input.listingId,
           listingUrl: src.input.listingUrl,
+          radarUrl: src.input.radarUrl,
         },
         override.data.model ?? src.model,
       );
@@ -313,14 +316,19 @@ export function registerApiRoutes(app: Express) {
   // Poll one investigation — META ONLY (answer, status, tokens, potential, the
   // step COUNT). The trace itself is fetched in pages via /steps below, so a
   // long investigation opens instantly instead of shipping its whole trace.
-  app.get("/api/geo/investigate/:id", (req: Request, res: Response) => {
+  app.get("/api/geo/investigate/:id", async (req: Request, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
       return;
     }
+    // The listing photos as saved in the run folder (photo1.jpg, …), served under /runs.
+    const photos = (await readdir(job.runDir).catch(() => [] as string[]))
+      .filter((f) => /^photo\d+\.\w+$/.test(f))
+      .sort((a, b) => Number(a.match(/\d+/)![0]) - Number(b.match(/\d+/)![0]))
+      .map((f) => `/runs/${job.id}/${f}`);
     const { runDir: _runDir, steps, ...rest } = job;
-    res.json({ ...rest, stepCount: steps.length, cost: costUsd(job.tokens, job.model), elapsedMs: elapsedMs(job) });
+    res.json({ ...rest, photos, stepCount: steps.length, cost: costUsd(job.tokens, job.model), elapsedMs: elapsedMs(job) });
   });
 
   // The exact prompt text a run was governed by (saved at run start). This is
