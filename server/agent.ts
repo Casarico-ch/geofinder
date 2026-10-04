@@ -17,6 +17,7 @@ import {
   writeSandboxFile,
   readSandboxFile,
 } from "./sandbox";
+import { RunFiles } from "./files";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
 import { shortlistBuildings } from "./shortlist";
@@ -338,47 +339,20 @@ function initialContent(
   return blocks;
 }
 
-// Contact sheets are big images (~1 MB each) and the whole conversation is
-// re-sent every turn, so a long search hit the API's request-size limit (an
-// Opus re-run of c5bc3cfd died with 413 after ~25 sheets). Once more than
-// SHEETS_MAX sheets are in the conversation, all but the last SHEETS_KEEP are
-// replaced by a note: their verdicts already live in the checklist. Pruning in
-// one go, rarely, keeps the prompt cache intact between prunes.
-const SHEETS_MAX = 8;
-const SHEETS_KEEP = 2;
+// Contact sheets, aerials and roof renders reach the model by file_id (see
+// files.ts), so they no longer weigh on the request. Only a picture whose upload
+// failed still travels inline, and if those ever pass IMAGES_MAX_BYTES the
+// oldest are replaced by a note until they are back under IMAGES_KEEP_BYTES —
+// in one go, rarely, since every such edit changes an earlier turn. The listing
+// photos in the first message are never touched.
 const SHEET_NOTE = "North-up aerials (SWISSIMAGE)";
-
-export function pruneOldSheets(messages: Anthropic.Messages.MessageParam[]): void {
-  const sheets: { blocks: Anthropic.Messages.ToolResultBlockParam["content"] & unknown[]; at: number }[] = [];
-  for (const m of messages) {
-    if (m.role !== "user" || !Array.isArray(m.content)) continue;
-    for (const b of m.content) {
-      if (b.type !== "tool_result" || !Array.isArray(b.content)) continue;
-      const isSheet = b.content.some((c) => c.type === "text" && c.text.startsWith(SHEET_NOTE));
-      const at = b.content.findIndex((c) => c.type === "image");
-      if (isSheet && at >= 0) sheets.push({ blocks: b.content as never, at });
-    }
-  }
-  if (sheets.length <= SHEETS_MAX) return;
-  for (const sh of sheets.slice(0, sheets.length - SHEETS_KEEP)) {
-    (sh.blocks as unknown[])[sh.at] = {
-      type: "text",
-      text: "[contact sheet image removed to keep the request small — your verdicts on it are in the checklist]",
-    };
-  }
-}
-
-// Every other image a tool returns — aerials the model fetched and read, roof
-// renders, re-read listing photos — stays in the conversation too, and run
-// 2d54b5be died with 413 after reading 32 aerials (~0.5 MB each). Once the
-// tool-result images pass IMAGES_MAX_BYTES, the oldest are replaced by a note
-// until they are back under IMAGES_KEEP_BYTES — in one go, rarely, so the
-// prompt cache survives between prunes. The listing photos in the first
-// message are never touched.
 const IMAGES_MAX_BYTES = 14_000_000; // base64 characters
 const IMAGES_KEEP_BYTES = 5_000_000;
 
-export function pruneOldImages(messages: Anthropic.Messages.MessageParam[]): void {
+export function pruneOldImages(
+  messages: Anthropic.Messages.MessageParam[],
+  inline: (base64: string) => boolean = () => true,
+): boolean {
   const images: { blocks: unknown[]; at: number; size: number; sheet: boolean }[] = [];
   for (const m of messages) {
     if (m.role !== "user" || !Array.isArray(m.content)) continue;
@@ -386,13 +360,13 @@ export function pruneOldImages(messages: Anthropic.Messages.MessageParam[]): voi
       if (b.type !== "tool_result" || !Array.isArray(b.content)) continue;
       const sheet = b.content.some((c) => c.type === "text" && c.text.startsWith(SHEET_NOTE));
       b.content.forEach((c, at) => {
-        if (c.type === "image" && c.source.type === "base64")
+        if (c.type === "image" && c.source.type === "base64" && inline(c.source.data))
           images.push({ blocks: b.content as unknown[], at, size: c.source.data.length, sheet });
       });
     }
   }
   let total = images.reduce((n, i) => n + i.size, 0);
-  if (total <= IMAGES_MAX_BYTES) return;
+  if (total <= IMAGES_MAX_BYTES) return false;
   for (const img of images) {
     if (total <= IMAGES_KEEP_BYTES) break;
     total -= img.size;
@@ -403,6 +377,7 @@ export function pruneOldImages(messages: Anthropic.Messages.MessageParam[]): voi
         : "[image removed to keep the request small — read the file again if you need to see it]",
     };
   }
+  return true;
 }
 
 export function clip(s: string, n: number): string {
@@ -588,8 +563,14 @@ async function runLoop(
   startTurn: number,
 ): Promise<void> {
   const client = new Anthropic();
+  const files = await RunFiles.load(client, job.runDir);
 
   try {
+    if (startTurn > 0) {
+      const lost = await files.verify();
+      if (lost > 0)
+        await addStep(job, { kind: "note", title: `${lost} uploaded picture(s) had expired and are sent again` });
+    }
     // Active running time only: a run paused for a day, or resumed after a
     // redeploy, must not trip the time limit on its first turn.
     const activeBefore = job.activeMs ?? 0;
@@ -631,8 +612,8 @@ async function runLoop(
         return;
       }
 
-      pruneOldSheets(messages);
-      pruneOldImages(messages);
+      await files.upload(messages);
+      if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
       const resp = await client.messages.create({
         model: job.model ?? MODEL,
         max_tokens: 16_000,
@@ -652,7 +633,7 @@ async function runLoop(
         // conversation — so the re-sent listing photos and the aerials the
         // model has already downloaded are read from cache, not reprocessed.
         cache_control: { type: "ephemeral" },
-        messages,
+        messages: files.wire(messages),
       });
 
       // Record token usage for this turn (input includes cache traffic so the
@@ -755,6 +736,7 @@ async function runLoop(
       // model's reasoning — exactly as the model saw it, for the export.
       await saveConversation(job, messages);
       await clearState(job);
+      await files.deleteAll();
     }
   }
 }
