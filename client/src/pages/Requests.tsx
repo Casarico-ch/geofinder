@@ -96,11 +96,20 @@ interface ModelResult {
     parcels?: { commune: string; plot: string }[];
     confidence: string;
     reasoning: string;
+    proof?: AnswerProof;
   } | null;
   aiCostUsd: number;
   check?: boolean; // a cross-check of another model's answer
   tokens?: number;
   startedAt?: string;
+}
+
+// Mirrors server/jobs.ts AnswerProof: why an exact answer counts as proven.
+interface AnswerProof {
+  egid: string | null;
+  facts: { fact: string; listing: string; building: string; verdict: "match" | "mismatch" | "unknown" }[];
+  ruledOut: number;
+  total: number;
 }
 
 interface PlatformRequest {
@@ -403,8 +412,85 @@ function ModelColumn({ r }: { r: ModelResult }) {
           <p className="text-xs text-muted-foreground capitalize">Confidence: {r.answer.confidence}</p>
         </div>
       )}
+      {r.answer?.proof && <ProofTable proof={r.answer.proof} />}
     </Card>
   );
+}
+
+const VERDICT_TONE: Record<AnswerProof["facts"][number]["verdict"], string> = {
+  match: "bg-emerald-500/10 text-emerald-700",
+  mismatch: "bg-red-500/10 text-red-700",
+  unknown: "bg-muted text-muted-foreground",
+};
+
+// The listing's own facts against the building's, and how much of the
+// checklist was ruled out: what the answer rests on.
+function ProofTable({ proof }: { proof: AnswerProof }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground tabular-nums">
+        {proof.ruledOut} of {proof.total} candidates ruled out
+        {proof.egid ? ` · EGID ${proof.egid}` : ""}
+      </p>
+      {proof.facts.length > 0 && (
+        <Table className="text-xs">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="h-7 px-2">Fact</TableHead>
+              <TableHead className="h-7 px-2">Listing</TableHead>
+              <TableHead className="h-7 px-2">Building</TableHead>
+              <TableHead className="h-7 px-2" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {proof.facts.map((f) => (
+              <TableRow key={f.fact}>
+                <TableCell className="px-2 py-1.5">{f.fact}</TableCell>
+                <TableCell className="px-2 py-1.5 tabular-nums">{f.listing}</TableCell>
+                <TableCell className="px-2 py-1.5 tabular-nums">{f.building}</TableCell>
+                <TableCell className="px-2 py-1.5">
+                  <Badge variant="outline" className={`border-transparent font-normal capitalize ${VERDICT_TONE[f.verdict]}`}>
+                    {f.verdict}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+// Surest first: an exact address or plot beats a block, a block beats a neighbourhood…
+const CONFIDENCE_RANK = ["street", "building", "parcel", "block", "neighborhood", "city", "region", "country", "unknown"];
+const rankOf = (m: ModelResult) => {
+  const i = CONFIDENCE_RANK.indexOf(m.answer?.confidence ?? "unknown");
+  // street, building and parcel are all exact: they tie.
+  return i < 0 ? CONFIDENCE_RANK.length : i <= 2 ? 0 : i;
+};
+
+// The answer a set of runs stands for: a finished cross-check that confirmed a
+// place decides between the models; otherwise the surest model wins, not
+// whichever happens to be listed first.
+function bestOf(results: ModelResult[]): ModelResult | undefined {
+  const done = results.filter((m) => m.status === "done" && m.answer?.found);
+  const check = done.filter((m) => m.check).at(-1);
+  if (check) return check;
+  return done.filter((m) => !m.check).sort((a, b) => rankOf(a) - rankOf(b))[0];
+}
+
+// The different exact places the runs of a listing stand for — more than one
+// means re-runs disagree, and none of them can be taken as the answer.
+function conflictsOf(r: PlatformRequest): string[] {
+  const out = new Map<string, string>();
+  for (const a of attemptsOf(r)) {
+    const best = bestOf(a.results);
+    if (!best?.answer || rankOf(best) > 0) continue;
+    const label = foundLabel(best.answer);
+    out.set(label.split(",")[0].trim().toLowerCase(), label);
+  }
+  return Array.from(out.values());
 }
 
 // What a model found: the address, else its exact plots, else just an area.
@@ -494,11 +580,13 @@ function outcomeOf(r: PlatformRequest): Outcome {
       : { label: "Not found", tone: "bg-muted text-muted-foreground" };
   }
   const results = r.results ?? [];
-  // A finished cross-check that confirmed a place decides between the models.
-  const done = (m: ModelResult) => m.status === "done" && m.answer?.found;
-  const hit = [...results].reverse().find((m) => m.check && done(m)) ?? results.find((m) => !m.check && done(m));
+  const running = results.some((m) => m.status === "running");
+  const split = running ? [] : conflictsOf(r);
+  if (split.length > 1)
+    return { label: "Conflicting", tone: "bg-amber-500/10 text-amber-700", detail: split.join(" vs ") };
+  const hit = bestOf(results);
   if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
-  if (results.some((m) => m.status === "running"))
+  if (running)
     return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
   if (results.some((m) => m.status === "paused")) return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
   return { label: "Not found", tone: "bg-muted text-muted-foreground" };
@@ -574,7 +662,7 @@ function Attempts({ r }: { r: PlatformRequest }) {
         const latest = i === 0;
         const cost = a.results.reduce((s, m) => s + m.aiCostUsd, 0);
         const running = a.results.some((m) => m.status === "running");
-        const hit = a.results.find((m) => m.status === "done" && m.answer?.found);
+        const hit = bestOf(a.results);
         const folded = hidden.has(a.n);
         return (
           <div key={a.n} className="space-y-2">

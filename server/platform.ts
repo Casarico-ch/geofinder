@@ -12,8 +12,9 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { type Candidate, planChecks } from "./consensus";
-import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
+import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
+import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type ModelId } from "./jobs";
+import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -30,6 +31,7 @@ import {
   createRequestFromJobs,
   deleteRows,
   getRequest,
+  CHECK_MARK,
   isCheckText,
   listRequests,
   listRequestsWithLooseJobs,
@@ -194,45 +196,132 @@ export async function startListingRequest(
 const modelLabel = (m: ModelId) =>
   m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
 
-/** The listing text with a check-this-address task appended — Radar's wording, word for word. */
-export function verifyText(listing: string, candidate: Candidate, from: ModelId): string {
+// How many alternatives a cross-check re-opens besides the claimed house.
+const REOPEN = 8;
+
+/**
+ * The checklist a cross-check starts from: the search's own, with its verdicts
+ * kept, except the claimed house and the strongest alternatives it set aside
+ * (strong fits first, then "possible" ones, nearest to the claim first), which
+ * are open again. The proof rules (agent.ts proveAnswer) then mean the checker
+ * can only confirm the claim after a close look at it AND a visible reason
+ * against each re-opened alternative.
+ */
+export function seedForCheck(
+  search: Pick<SearchState, "shortlisted" | "candidates"> | undefined,
+  candidate: Candidate,
+): { seed: Pick<SearchState, "shortlisted" | "candidates">; claim: LedgerEntry | null; reopened: LedgerEntry[] } {
+  const seed = { shortlisted: [...(search?.shortlisted ?? [])], candidates: structuredClone(search?.candidates ?? {}) };
+  const claim = claimedEntry(seed as SearchState, { lat: candidate.latitude, lon: candidate.longitude, address: candidate.address });
+  const near = (c: LedgerEntry) =>
+    claim ? Math.hypot((c.lon - claim.lon) * 78_000, (c.lat - claim.lat) * 111_320) : c.order;
+  const reopened = Object.values(seed.candidates)
+    .filter((c) => c !== claim && (c.strongFit || c.verdict === "possible" || c.verdict === "match"))
+    .sort((a, b) => Number(!!b.strongFit) - Number(!!a.strongFit) || near(a) - near(b))
+    .slice(0, REOPEN);
+  const before = reopened.map((c) => ({ ...c }));
+  for (const c of [claim, ...reopened]) {
+    if (!c) continue;
+    Object.assign(c, { verdict: "unchecked", viewed: false, closeLook: false, reason: undefined });
+  }
+  return { seed, claim, reopened: before };
+}
+
+/**
+ * The listing text with a prove-this-address-wrong task appended. The checker
+ * builds on the other model's search instead of starting over, but its job is
+ * to break the answer: "can you confirm it?" got a yes in 4 checks out of 4,
+ * including Riedweg 89, Zermatt (2 dwellings and a 427 m² plot for a single
+ * chalet on 331 m²).
+ */
+export function verifyText(
+  listing: string,
+  candidate: Candidate,
+  from: ModelId,
+  claim: LedgerEntry | null = null,
+  reopened: LedgerEntry[] = [],
+): string {
   const pin =
     candidate.latitude != null && candidate.longitude != null ? ` (around ${candidate.latitude}, ${candidate.longitude})` : "";
+  const alt = reopened.map(
+    (c) => `- ${c.egid} | ${c.address ?? "?"}${c.strongFit ? " | STRONG FIT" : ""} | earlier: ${c.verdict}${c.reason ? ` — "${c.reason}"` : ""}`,
+  );
   return [
     listing,
     "",
-    "--- VERIFICATION TASK ---",
-    `Another investigator (${modelLabel(from)}) concluded that this property is at: ${candidate.address}${candidate.parcel ? `, plot ${candidate.parcel}` : ""}${pin}.`,
-    "Do NOT take that on trust. Check it against the photos, the listing text and the map evidence yourself.",
-    "If, and only if, you are highly confident that this exact location (street AND house number, or the cadastral plot number) is the property, report found=true with that address and/or plot at street or building confidence.",
-    "If it is wrong, or you cannot confirm it with high confidence, report found=false — or the address you are highly confident is correct instead.",
+    CHECK_MARK,
+    `Another investigator (${modelLabel(from)}) concluded that this property is at: ${candidate.address}${candidate.parcel ? `, plot ${candidate.parcel}` : ""}${pin}${claim ? ` — EGID ${claim.egid} on your checklist` : ""}.`,
+    "Your job is to PROVE THAT ANSWER WRONG. Do not search from scratch: you start from that investigator's checklist. Its verdicts are kept, except the claimed house" +
+      (alt.length ? " and these alternatives it set aside, which are open again:" : ", which is open again."),
+    ...alt,
+    `1. inspect_candidate the claimed house. Every ✗ in its fact sheet (homes, living area, plot area) is a reason it is wrong; then compare its roof, its aerial and its neighbours with the photos. One clear mismatch rejects it — never explain one away ("the register may be wrong").`,
+    "2. inspect_candidate every re-opened alternative and settle it: rejected with the difference you see, or match. If one fits better than the claim, that one is the answer.",
+    "3. Any candidate the checklist still leaves unchecked must be viewed and marked too.",
+    "The claim is confirmed only if it survives step 1 and every alternative is rejected with a visible difference — the code checks this before it records a street/building answer. Otherwise report found=false at block confidence with your ranked candidates and the mismatch you found.",
   ].join("\n");
 }
 
-// A search started here (the website's New search, Run again) gets the
-// cross-checks Radar runs on its own searches: when the models disagree, the
-// other model checks each address (consensus.ts). Radar's searches come in
-// through /v1 and Radar sends those checks itself, so they are left alone.
+const CHECKS_ACROSS_RUNS = 2;
+
+// After the searches of a listing settle, the other model tries to break each
+// address they disagree on (consensus.ts), and every exact address an earlier
+// run of the same listing gave and this one does not is checked too, so three
+// runs cannot end with three "sure" answers side by side. This covers Radar's
+// searches as well: Radar no longer sends checks of its own.
 async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
-  if (req.kind !== "listing" || req.source === "platform" || results.some((m) => m.check)) return false;
+  if (req.kind !== "listing" || results.some((m) => m.check)) return false;
   const searches = results.filter((m) => m.status === "done");
-  const checks = planChecks(searches);
+  const checks: (Check & { fromJob?: string })[] = planChecks(searches).map((c) => ({
+    ...c,
+    fromJob: searches.find((m) => m.model === c.candidateFrom)?.jobId,
+  }));
+  checks.push(...earlierClaims(req, searches));
   if (checks.length === 0) return false;
   const src = getJob(searches[0].jobId);
   const images = src ? await loadListingPhotos(src.runDir) : [];
   if (!src || images.length === 0) return false;
   for (const c of checks) {
-    const listingText = verifyText(src.input.listingText ?? "", c.candidate, c.candidateFrom);
+    const from = c.fromJob ? getJob(c.fromJob) : undefined;
+    const { seed, claim, reopened } = seedForCheck(from?.search, c.candidate);
+    const listingText = verifyText(src.input.listingText ?? "", c.candidate, c.candidateFrom, claim, reopened);
     const job = await createJob({ ...src.input, listingText }, c.verifier);
     results.push({ model: c.verifier, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
-      await runInvestigation(job, images, listingText);
+      await runInvestigation(job, images, listingText, seed.shortlisted.length ? seed : undefined);
     })().catch((err) => console.error(`[platform] cross-check ${job.id} crashed:`, err));
   }
   req.status = "running";
   return true;
+}
+
+// Exact addresses earlier runs of this listing gave that no search of this run
+// agrees with, each checked by one of this run's models.
+function earlierClaims(
+  req: PlatformRequest,
+  searches: { model: ModelId; jobId: string; answer: Answer | null }[],
+): (Check & { fromJob?: string })[] {
+  const id = req.input.listingId;
+  if (!id || searches.length === 0) return [];
+  const now = searches.map((m) => ({ model: m.model, at: exactAddressOf(m.answer) }));
+  const seen = now.flatMap((n) => (n.at ? [n.at] : []));
+  const out: (Check & { fromJob?: string })[] = [];
+  const earlier = listRequests()
+    .filter((r) => r.id !== req.id && r.kind === "listing" && r.input.listingId === id && r.createdAt < req.createdAt)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  for (const r of earlier) {
+    for (const m of r.results ?? []) {
+      if (out.length >= CHECKS_ACROSS_RUNS) return out;
+      const at = m.status === "done" ? exactAddressOf(m.answer) : null;
+      if (!at || seen.some((s) => sameAddress(s, at))) continue;
+      seen.push(at);
+      // The model of this run that did not already land on it checks it.
+      const verifier = (now.find((n) => n.at == null) ?? now.find((n) => n.model !== m.model) ?? now[0]).model;
+      out.push({ verifier, candidate: at, candidateFrom: m.model, fromJob: m.jobId });
+    }
+  }
+  return out;
 }
 
 export function registerPlatformRoutes(app: Express) {

@@ -19,9 +19,9 @@ export interface SheetItem {
   lon: number;
 }
 
-const TILE = 224; // px per tile
+const DEFAULT_TILE = 224; // px per tile
 const SPAN_M = 90; // metres across one tile: the house plus its garden and neighbours
-const COLS = 4;
+const DEFAULT_COLS = 4;
 
 async function fetchBuffer(url: string, ms = 30_000): Promise<Buffer> {
   const ctrl = new AbortController();
@@ -133,22 +133,28 @@ function drawLabel(rgb: Buffer, W: number, x0: number, y0: number, text: string)
   });
 }
 
-function tileUrl(lat: number, lon: number): string {
-  const dLat = SPAN_M / 2 / 111_320;
+function tileUrl(lat: number, lon: number, spanM = SPAN_M, tile = DEFAULT_TILE): string {
+  const dLat = spanM / 2 / 111_320;
   const dLon = dLat / Math.cos((lat * Math.PI) / 180);
   return (
     "https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.swissimage&CRS=EPSG:4326" +
-    `&BBOX=${lat - dLat},${lon - dLon},${lat + dLat},${lon + dLon}&WIDTH=${TILE}&HEIGHT=${TILE}&FORMAT=image/png`
+    `&BBOX=${lat - dLat},${lon - dLon},${lat + dLat},${lon + dLon}&WIDTH=${tile}&HEIGHT=${tile}&FORMAT=image/png`
   );
 }
 
 // Render up to 16 items into one sheet PNG in the run dir. A small cross marks
-// each tile's centre (the register point of the candidate building).
+// each tile's centre (the register point of the candidate building). A close
+// look (inspect_candidate) is the same picture, bigger and tighter: one or two
+// large tiles over a smaller span.
 export async function renderContactSheet(
   runDir: string,
   fileName: string,
   items: SheetItem[],
+  opts: { spanM?: number; tile?: number; cols?: number } = {},
 ): Promise<{ relPath: string; png: Buffer; failed: string[] }> {
+  const TILE = opts.tile ?? DEFAULT_TILE;
+  const COLS = opts.cols ?? DEFAULT_COLS;
+  const spanM = opts.spanM ?? SPAN_M;
   const list = items.slice(0, COLS * COLS);
   const rows = Math.ceil(list.length / COLS);
   const W = COLS * TILE, H = rows * TILE;
@@ -161,7 +167,7 @@ export async function renderContactSheet(
       const it = list[i];
       const ox = (i % COLS) * TILE, oy = Math.floor(i / COLS) * TILE;
       try {
-        const img = decodePNG(await fetchBuffer(tileUrl(it.lat, it.lon)));
+        const img = decodePNG(await fetchBuffer(tileUrl(it.lat, it.lon, spanM, TILE)));
         for (let y = 0; y < Math.min(TILE, img.h); y++) {
           img.rgb.copy(rgb, ((oy + y) * W + ox) * 3, y * img.w * 3, (y * img.w + Math.min(TILE, img.w)) * 3);
         }

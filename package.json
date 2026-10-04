@@ -16,7 +16,7 @@
     "try:popety": "tsx --env-file-if-exists=.env scripts/try-popety.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
-    "test": "tsx scripts/check-magic-feedback.ts"
+    "test": "tsx scripts/check-magic-feedback.ts && tsx scripts/check-proof.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

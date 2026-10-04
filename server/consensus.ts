@@ -1,15 +1,16 @@
 // =============================================================================
 // consensus — when a listing's models disagree, who checks what.
 //
-// The same rules Radar applies to the searches it sends (radar:
-// server/address-search/consensus.ts), so a search started here — the website's
-// New search, or Run again — gets the cross-checks a Radar search would:
+// Every listing search — Radar's through /v1, the website's New search and Run
+// again — gets these cross-checks here (platform.ts crossCheckIfSplit). Radar
+// used to run its own copy (radar: server/address-search/consensus.ts); that
+// copy is being removed, so GeoFinder is the one place they are decided:
 //   * neither found an exact address      → nothing to check
 //   * both found the same address         → agreed, nothing to check
 //   * one found it, the other did not     → the other checks it
 //   * both found DIFFERENT addresses      → each checks the other's
 // "Found" means street or building confidence with a house number, or the
-// cadastral plot number(s). Keep the two copies in step.
+// cadastral plot number(s).
 // =============================================================================
 import type { Answer, ModelId } from "./jobs";
 

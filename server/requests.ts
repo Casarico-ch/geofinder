@@ -177,7 +177,7 @@ const GROUP_WINDOW_MS = 10 * 60_000;
 // A cross-check run is the same listing with a verification task appended
 // ("--- VERIFICATION TASK --- Another investigator concluded …"). It belongs on
 // the listing's row, so grouping compares the listing text without that task.
-const CHECK_MARK = "--- VERIFICATION TASK ---";
+export const CHECK_MARK = "--- VERIFICATION TASK ---";
 export const isCheckText = (t?: string): boolean => (t ?? "").includes(CHECK_MARK);
 const withoutCheck = (t?: string): string => {
   const text = t ?? "";
