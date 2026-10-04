@@ -103,6 +103,10 @@ await check("a flat or multi-family listing does not pin dwellings; a PPE share 
 });
 
 // ---- listing vs building --------------------------------------------------------
+await check("a flat's living area is not compared with the whole building", () => {
+  const rows = factRows(listingFacts("Type: apartment\nLiving area m²: 95"), { floors: 4, dwellings: 8, footprintM2: 239 });
+  assert.equal(rows.find((r) => r.fact === "Living area"), undefined);
+});
 await check("Gryfelblatte 58 fits every fact", () => {
   const rows = factRows(listingFacts(LISTING), GRYFELBLATTE);
   assert.deepEqual(rows.map((r) => r.verdict), ["match", "match", "match"]);

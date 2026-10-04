@@ -157,7 +157,9 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
       verdict: b.dwellings == null ? "unknown" : b.dwellings === l.dwellings ? "match" : "mismatch",
     });
   }
-  if (l.livingM2 != null) {
+  // Footprint × floors is the whole building: it stands for one home's living
+  // area only in a single house, never for a flat in a block.
+  if (l.livingM2 != null && l.dwellings === 1) {
     const gross = b.footprintM2 != null && b.floors != null ? b.footprintM2 * b.floors : null;
     const ratio = gross ? l.livingM2 / gross : null;
     rows.push({
