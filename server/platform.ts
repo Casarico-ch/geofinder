@@ -13,7 +13,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
-import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type ModelId } from "./jobs";
+import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import {
   PROFILE_COST_CHF,
@@ -193,7 +193,7 @@ export async function startListingRequest(
   return record;
 }
 
-const modelLabel = (m: ModelId) =>
+const modelLabel = (m: KnownModel) =>
   m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
 
 // How many alternatives a cross-check re-opens besides the claimed house.
@@ -237,7 +237,7 @@ export function seedForCheck(
 export function verifyText(
   listing: string,
   candidate: Candidate,
-  from: ModelId,
+  from: KnownModel,
   claim: LedgerEntry | null = null,
   reopened: LedgerEntry[] = [],
 ): string {
@@ -300,7 +300,7 @@ async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
 // agrees with, each checked by one of this run's models.
 function earlierClaims(
   req: PlatformRequest,
-  searches: { model: ModelId; jobId: string; answer: Answer | null }[],
+  searches: { model: KnownModel; jobId: string; answer: Answer | null }[],
 ): (Check & { fromJob?: string })[] {
   const id = req.input.listingId;
   if (!id || searches.length === 0) return [];
@@ -318,7 +318,8 @@ function earlierClaims(
       seen.push(at);
       // The model of this run that did not already land on it checks it.
       const verifier = (now.find((n) => n.at == null) ?? now.find((n) => n.model !== m.model) ?? now[0]).model;
-      out.push({ verifier, candidate: at, candidateFrom: m.model, fromJob: m.jobId });
+      const verifierModel = runnableModel(verifier);
+      out.push({ verifier: verifierModel, candidate: at, candidateFrom: m.model, fromJob: m.jobId });
     }
   }
   return out;
@@ -458,7 +459,7 @@ export function registerPlatformRoutes(app: Express) {
     const prefix = src.input.municipality?.trim() ? `Municipality / commune: ${src.input.municipality.trim()}\n\n` : "";
     const text = src.input.listingText ?? "";
     const listingText = prefix && text.startsWith(prefix) ? text.slice(prefix.length) : text;
-    const models = Array.from(new Set((searches.length ? searches : jobs).map((j) => j.model)));
+    const models = Array.from(new Set((searches.length ? searches : jobs).map((j) => runnableModel(j.model))));
     try {
       const record = await startListingRequest(
         {

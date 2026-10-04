@@ -24,6 +24,7 @@ import { exportJobHtml } from "./export";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
+  runnableModel,
   addStep,
   costUsd,
   createJob,
@@ -264,7 +265,7 @@ export function registerApiRoutes(app: Express) {
           listingUrl: src.input.listingUrl,
           radarUrl: src.input.radarUrl,
         },
-        override.data.model ?? src.model,
+        override.data.model ?? runnableModel(src.model),
       );
       void (async () => {
         await saveListingPhotos(job.runDir, images);

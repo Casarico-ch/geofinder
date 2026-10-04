@@ -12,14 +12,14 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
-import { deleteJob, getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type ModelId } from "./jobs";
+import { deleteJob, getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type KnownModel } from "./jobs";
 import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 
 // "paused" is display-only: a request whose unfinished runs are all paused.
 export type RequestStatus = "running" | "paused" | "done" | "error";
 
 export interface ModelResult {
-  model: ModelId;
+  model: KnownModel;
   jobId: string;
   status: JobStatus;
   answer: Answer | null;

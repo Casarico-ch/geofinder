@@ -10,7 +10,7 @@ against open map, aerial, and building-register data.
 
 ## How it works
 
-The Express API (`server/api.ts`) runs two stages with Claude (`claude-opus-4-8`,
+The Express API (`server/api.ts`) runs two stages with Claude (`claude-opus-5-5` by default,
 vision + adaptive thinking):
 
 **1. Deduce the area** — one reasoning pass over the photos and listing text, with

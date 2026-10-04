@@ -94,18 +94,26 @@ export interface TokenUsage {
 }
 
 // Per-model pricing, USD per 1M tokens: [fresh input, cache read (~0.1x),
-// cache write (1.25x, 5-min TTL), output]. Fable is ~2x Opus 4.8.
+// cache write (1.25x, 5-min TTL), output]. Fable is ~2.5x Opus 5.5.
+// MODELS are the ones a new run can pick.
 export const MODELS = [
-  "claude-opus-4-8",
   "claude-opus-5-5",
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
-export const DEFAULT_MODEL: ModelId = "claude-opus-4-8";
+export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
+// Models no longer offered, kept so past runs still show and price correctly.
+const RETIRED_MODELS = ["claude-opus-4-8"] as const;
+export type KnownModel = ModelId | (typeof RETIRED_MODELS)[number];
+const KNOWN_MODELS: readonly string[] = [...MODELS, ...RETIRED_MODELS];
+// A re-run of a past run uses the same model, or the default if it is retired.
+export function runnableModel(m: KnownModel): ModelId {
+  return (MODELS as readonly string[]).includes(m) ? (m as ModelId) : DEFAULT_MODEL;
+}
 
-const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: number; out: number }> = {
+const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: number; out: number }> = {
   "claude-opus-4-8": { in: 5, cacheRead: 0.5, cacheWrite: 6.25, out: 25 },
   "claude-opus-5-5": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
   "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
@@ -114,7 +122,7 @@ const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: numb
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {
-  const p = PRICING[(model as ModelId) in PRICING ? (model as ModelId) : DEFAULT_MODEL];
+  const p = PRICING[(model as KnownModel) in PRICING ? (model as KnownModel) : DEFAULT_MODEL];
   const fresh = Math.max(0, t.input - t.cached - t.cacheWrite);
   const base = (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
   return base + (t.fastPremiumUsd ?? 0);
@@ -138,7 +146,7 @@ export interface Job {
   activeMs?: number; // time the agent loop has actually been running (pauses excluded)
   finishedAt?: string; // when it reached a terminal state (done/error/cancelled)
   updatedAt: string;
-  model: ModelId; // which Claude model runs this investigation
+  model: KnownModel; // which Claude model runs this investigation
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
   // Where to look (commune confidence + neighbour ring) and the candidate ledger:
@@ -376,7 +384,7 @@ export async function loadPersistedJobs(): Promise<Job[]> {
       const job: Job = {
         ...parsed,
         answer: withParcels(parsed.answer),
-        model: (MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
+        model: KNOWN_MODELS.includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
         tokens: {
           input: parsed.tokens?.input ?? 0,
           output: parsed.tokens?.output ?? 0,

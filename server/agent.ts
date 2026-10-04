@@ -51,9 +51,10 @@ import {
   saveSearch,
   setPromptVersion,
   setSignature,
+  DEFAULT_MODEL,
 } from "./jobs";
 
-export const MODEL = "claude-opus-4-8";
+export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
 // Wall-clock budget for one investigation. Checking every candidate takes longer
 // than giving up early, so the cap is what keeps a hopeless search bounded.
@@ -61,7 +62,7 @@ const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
 export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
 // Speed. Fast mode runs the same model at up to 2.5x the output speed for 2x the
 // price; only some models offer it. AGENT_FAST=0 turns it off.
-const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]);
+const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]); // 4.8: resumed old runs
 const FAST_MODE = process.env.AGENT_FAST !== "0";
 // Thinking depth per turn — the biggest single lever on how long a turn takes.
 // "medium" or "low" is faster but looks less carefully.
@@ -666,7 +667,7 @@ async function runLoop(
         model,
         max_tokens: 16_000,
         // display: "summarized" so the model's reasoning is actually returned
-        // (Opus 4.8 / Fable 5 omit thinking text by default) — that's the trace.
+        // (Opus 5.5 / Fable 5 omit thinking text by default) — that's the trace.
         // adaptive thinking is valid on both models (Fable rejects only
         // disabled/budget_tokens, which we never send).
         thinking: { type: "adaptive", display: "summarized" },

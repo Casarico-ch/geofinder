@@ -81,27 +81,26 @@ interface TokenUsage {
 }
 
 const MODEL_IDS = [
-  "claude-opus-4-8",
   "claude-opus-5-5",
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
 ] as const;
 type ModelId = (typeof MODEL_IDS)[number];
-const MODEL_LABEL: Record<ModelId, string> = {
+// Also labels past runs on models no longer offered.
+const MODEL_LABEL: Record<string, string> = {
   "claude-opus-4-8": "Opus 4.8",
   "claude-opus-5-5": "Opus 5.5",
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
 };
-// Price relative to the Opus 4.8 default ($5 in / $25 out per 1M tokens).
+// Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
-  "claude-opus-4-8": "default",
-  "claude-opus-5-5": "0.8×",
-  "claude-sonnet-5-5": "0.4×",
-  "claude-fable-5": "2×",
-  "claude-fable-5-1": "2×",
+  "claude-opus-5-5": "default",
+  "claude-sonnet-5-5": "0.5×",
+  "claude-fable-5": "2.5×",
+  "claude-fable-5-1": "2.5×",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -508,7 +507,7 @@ export default function AddressFinder() {
   const [description, setDescription] = useState("");
   // One investigation is started per selected model, all from the same inputs,
   // so several models can be compared on the first try.
-  const [models, setModels] = useState<ModelId[]>(["claude-opus-4-8"]);
+  const [models, setModels] = useState<ModelId[]>(["claude-opus-5-5"]);
   const toggleModel = useCallback((m: ModelId) => {
     setModels((cur) =>
       cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
