@@ -218,8 +218,8 @@ export async function vote(job: Job, answer: Answer, certainty: number): Promise
       kind: "waiting" as const,
       message:
         `Vote recorded (${mine}, ${sure}%) — not finished: ${why}. ` +
-        `Tell your teammate why in team_post (your strongest evidence, what would change your mind), read their work with team_read, ` +
-        `and keep checking. Vote again with submit_answer whenever your view or certainty changes.`,
+        `Share what you found in team_post, look at their finds with team_read for ideas, and keep searching your own way. ` +
+        `Vote again with submit_answer whenever your view or certainty changes.`,
     };
   });
 }
@@ -231,17 +231,18 @@ export async function agreed(job: Job): Promise<Answer | null> {
 }
 
 export const TEAM_BRIEF = `TEAM RUN
-You are not alone: a teammate (another model) is searching this same listing right now on its own computer, with its own checklist. You do not wait for each other — work at your own pace — but you share a group chat, like colleagues on a forum:
+You are not alone: a teammate (another model) is searching this same listing right now on its own computer, with its own checklist. You do not wait for each other. Run YOUR OWN search, your own way — do not copy theirs, and do not stop your plan to follow them. You share a group chat, like colleagues on a forum, so you can get inspired by what the other one finds:
 - Every turn you are shown what your teammate posted since you last looked.
-- team_post(message, reply_to?) posts to the chat — your finds, a candidate worth a look, a doubt, a counter-argument. Reply to a specific message by its #. Short and concrete: EGIDs, addresses, what you SAW.
-- team_read() shows your teammate's recent steps, checklist coverage and current vote — use it to get inspired, avoid duplicate work, or check their claim.
-- submit_answer is a VOTE with a certainty (0–100). The team stops only when you BOTH vote for the same building at ${AGREE_AT}% or more. Until then a vote comes back and you keep going — challenge each other, verify the other's candidate yourself, and change your mind when the evidence says so. Never raise your certainty just to finish.`;
+- team_post(message, reply_to?) shares a find: a register value, a plot that matches the listing's area, a building ruled out and what you saw, a candidate (EGID/address) worth a look, an approach that worked. Reply to a specific message by its #. Short and concrete.
+- team_read() shows your teammate's recent steps, checklist coverage and current vote — look when you are stuck or want ideas, and to avoid doing work they already did.
+- A clear finding from your teammate is a shared fact: take it as given and build on it. Do not re-check it, judge it or debate whether it is worth something. Only speak up when your OWN evidence contradicts it.
+- submit_answer is a VOTE with a certainty (0–100). The team stops only when you BOTH vote for the same building at ${AGREE_AT}% or more. Until then a vote comes back and you keep searching your own way. Never raise your certainty just to finish.`;
 
 export const TEAM_TOOLS = [
   {
     name: "team_post",
     description:
-      "Post a message to the team chat your teammate sees on their next turn: a find, a candidate (EGID/address), a doubt, a counter-argument. reply_to answers a specific message by its #.",
+      "Share a find in the team chat your teammate sees on their next turn: a register value, a plot match, a building ruled out and why, a candidate (EGID/address), an approach that worked. reply_to answers a specific message by its #.",
     input_schema: {
       type: "object",
       properties: {
@@ -254,7 +255,7 @@ export const TEAM_TOOLS = [
   {
     name: "team_read",
     description:
-      "See your teammate's work: the full team chat, their checklist coverage, their current vote, and their latest steps (commands, reasoning).",
+      "See your teammate's work for ideas: the full team chat, their checklist coverage, their current vote, and their latest steps (commands, reasoning).",
     input_schema: {
       type: "object",
       properties: { steps: { type: "integer", description: "how many of their latest steps to show (default 25, max 60)" } },
