@@ -16,6 +16,7 @@ import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
 import { getJob, type Answer, type Job } from "./jobs";
 import { coverageText } from "./search";
+import { sameAddress, type Candidate } from "./consensus";
 
 export const AGREE_AT = 95; // both must be at least this sure of the same building
 
@@ -188,6 +189,25 @@ export function answerKey(a: Answer): string {
   return plots ? `plots:${plots}` : `ll:${a.latitude?.toFixed(4)},${a.longitude?.toFixed(4)}`;
 }
 
+function candidateOf(a: Answer): Candidate {
+  const parcel = a.parcels?.length ? a.parcels.map((p) => `${p.commune} ${p.plot}`).join(", ") : a.parcel?.trim() || null;
+  return { address: a.address?.trim() || a.commune?.trim() || parcel || "", parcel, latitude: a.latitude, longitude: a.longitude };
+}
+
+/**
+ * Do two votes name the same building? The models word it differently
+ * ("Chemin de la Croix 4 / 4a" vs "4 (and 4a)"), so compare the EGID when both
+ * have one, else plot numbers, else street + house number or pins within 40 m
+ * (consensus.ts sameAddress) — never the raw text.
+ */
+export function sameBuilding(a: Answer, b: Answer): boolean {
+  if (!a.found || !b.found) return false;
+  const ea = a.proof?.egid;
+  const eb = b.proof?.egid;
+  if (ea && eb) return ea === eb;
+  return sameAddress(candidateOf(a), candidateOf(b));
+}
+
 export type VoteOutcome =
   | { kind: "agreed"; answer: Answer }
   | { kind: "waiting"; message: string };
@@ -201,7 +221,8 @@ export async function vote(job: Job, answer: Answer, certainty: number): Promise
     const mateId = room.members.find((m) => m !== job.id);
     const mine = answer.address ?? answer.parcel ?? "no match";
     const theirs = mateId ? room.votes[mateId] : undefined;
-    if (answer.found && sure >= AGREE_AT && theirs && theirs.key === key && theirs.certainty >= AGREE_AT) {
+    const same = !!theirs && sameBuilding(theirs.answer, answer);
+    if (answer.found && sure >= AGREE_AT && theirs && same && theirs.certainty >= AGREE_AT) {
       room.agreed = { key, answer, at: new Date().toISOString() };
       return { kind: "agreed" as const, answer };
     }
@@ -211,7 +232,7 @@ export async function vote(job: Job, answer: Answer, certainty: number): Promise
         ? `You are at ${sure}% — the team stops only when you are both at ${AGREE_AT}% or more`
         : !theirs
           ? "Your teammate has not voted yet"
-          : theirs.key !== key
+          : !same
             ? `Your teammate votes for ${theirs.answer.address ?? theirs.answer.parcel ?? "no match"} at ${theirs.certainty}%`
             : `Your teammate names the same building but is only at ${theirs.certainty}%`;
     return {
