@@ -705,7 +705,7 @@ function Attempts({ r }: { r: PlatformRequest }) {
 function RequestDetails({ r }: { r: PlatformRequest }) {
   return (
     <div className="space-y-3">
-      {r.error && <p className="text-sm text-destructive">{r.error}</p>}
+      {r.error && r.status === "error" && <p className="text-sm text-destructive">{r.error}</p>}
       {r.candidates && r.candidates.length > 0 && (
         <ul className="text-sm list-disc pl-5">
           {r.candidates.map((c) => (
