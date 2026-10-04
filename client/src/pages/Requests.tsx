@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, CornerDownRight, ExternalLink, Loader2, MessageCircleQuestion, Pause, RefreshCw, Trash2, Users } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -398,11 +398,6 @@ function ModelColumn({ r }: { r: ModelResult }) {
             Cross-check
           </Badge>
         )}
-        {r.team && (
-          <Badge variant="outline" className="font-normal" title="Searches together with its teammate; stops when both agree at 95%+">
-            Team
-          </Badge>
-        )}
         <span className="text-xs text-muted-foreground tabular-nums">${r.aiCostUsd.toFixed(2)}</span>
         {r.startedAt && <span className="text-xs text-muted-foreground tabular-nums">{fmtDate(r.startedAt)}</span>}
         <div className="flex-1" />
@@ -419,6 +414,118 @@ function ModelColumn({ r }: { r: ModelResult }) {
         </div>
       )}
       {r.answer?.proof && <ProofTable proof={r.answer.proof} />}
+    </Card>
+  );
+}
+
+// A team run's shared room, as GET /api/teams/:id returns it (server/team.ts).
+interface TeamRoomView {
+  posts: { id: number; at: string; from: string; model: string; text: string; replyTo?: number; ask?: boolean; leading?: string; certainty?: number }[];
+  members: { jobId: string; model: string | null; status: JobStatus | null; vote: { place: string; certainty: number } | null }[];
+  agreed: { place: string } | null;
+}
+
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// The Sonnet + Opus team as ONE chat, like the doctors' panel: every message
+// with who it answers and where its author stands, then each one's vote and
+// the building they agreed on.
+function TeamChat({ members }: { members: ModelResult[] }) {
+  const team = members[0].team!;
+  const running = members.some((m) => m.status === "running");
+  const [room, setRoom] = useState<TeamRoomView | null>(null);
+  useEffect(() => {
+    let stop = false;
+    const load = () =>
+      fetch(`/api/teams/${team}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((v) => !stop && v && setRoom(v))
+        .catch(() => {});
+    void load();
+    const t = running ? setInterval(load, 5_000) : undefined;
+    return () => {
+      stop = true;
+      if (t) clearInterval(t);
+    };
+  }, [team, running]);
+
+  const cost = members.reduce((n, m) => n + m.aiCostUsd, 0);
+  const names = members.map((m) => MODEL_LABEL[m.model] ?? m.model).join(" + ");
+  const answer = members.find((m) => m.answer?.found)?.answer ?? members.find((m) => m.answer)?.answer;
+  const status = room?.agreed
+    ? { label: "Agreed", tone: "bg-emerald-500/10 text-emerald-700" }
+    : running
+      ? { label: "Talking", tone: "bg-primary/10 text-primary" }
+      : { label: "No agreement", tone: "bg-amber-500/10 text-amber-700" };
+  const tone = (from: string) =>
+    members.findIndex((m) => m.jobId === from) === 0 ? "bg-muted" : "bg-primary/10";
+
+  return (
+    <Card className="gap-3 py-3.5 px-3.5 min-w-0 shadow-none lg:col-span-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {running ? <StatusIcon status="running" /> : <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+        <span className="text-sm font-semibold">Team · {names}</span>
+        <Badge variant="outline" className={`border-transparent font-normal ${status.tone}`}>{status.label}</Badge>
+        <span className="text-xs text-muted-foreground tabular-nums">${cost.toFixed(2)}</span>
+        <div className="flex-1" />
+        {members.map((m) => (
+          <Link key={m.jobId} href={`/i/${m.jobId}`} className="text-xs text-primary inline-flex items-center gap-1 hover:underline">
+            {MODEL_LABEL[m.model] ?? m.model} trace <ExternalLink className="h-3 w-3" />
+          </Link>
+        ))}
+      </div>
+
+      <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+        {!room?.posts.length && (
+          <p className="text-sm text-muted-foreground">{running ? "Both are studying the listing — the chat starts with their first finds." : "No messages."}</p>
+        )}
+        {room?.posts.map((p) => {
+          const re = p.replyTo ? room.posts[p.replyTo - 1] : undefined;
+          return (
+            <div key={p.id} className={`rounded-lg px-3 py-2 text-sm ${tone(p.from)}`}>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{p.model.replace(/^./, (c) => c.toUpperCase())}</span>
+                <span className="tabular-nums">{fmtTime(p.at)}</span>
+                {p.ask && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <MessageCircleQuestion className="h-3 w-3" /> asks
+                  </span>
+                )}
+              </div>
+              {re && (
+                <div className="mt-1 flex gap-1 border-l-2 border-border pl-2 text-xs text-muted-foreground">
+                  <CornerDownRight className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">
+                    {re.model.replace(/^./, (c) => c.toUpperCase())}: {re.text}
+                  </span>
+                </div>
+              )}
+              <p className="mt-1 whitespace-pre-wrap">{p.text}</p>
+              {p.leading && (
+                <Badge variant="outline" className="mt-1.5 font-normal">
+                  {p.leading}
+                  {p.certainty !== undefined ? ` · ${p.certainty}%` : ""}
+                </Badge>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-border pt-2 space-y-1 text-sm">
+        {room?.members.map((m) => (
+          <p key={m.jobId} className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{m.model ? m.model.replace(/^./, (c) => c.toUpperCase()) : "Member"}</span>{" "}
+            {m.vote ? `votes ${m.vote.place} · ${m.vote.certainty}%` : m.status === "running" ? "has not voted yet" : "did not vote"}
+          </p>
+        ))}
+        {!running && answer && (
+          <p className="font-medium">
+            {room?.agreed ? "Agreed: " : "Last answer: "}
+            {foundLabel(answer, "Area only").replace(/^not found$/, "Not found")}
+          </p>
+        )}
+      </div>
     </Card>
   );
 }
@@ -729,13 +836,21 @@ function PauseRunning({ rows, onDone }: { rows: PlatformRequest[]; onDone: () =>
 function Attempts({ r }: { r: PlatformRequest }) {
   const attempts = attemptsOf(r).reverse();
   const [hidden, setHidden] = useState<Set<number>>(new Set());
-  const cards = (a: Attempt) => (
-    <div className="grid gap-3 lg:grid-cols-2">
-      {a.results.map((m) => (
-        <ModelColumn key={m.jobId} r={m} />
-      ))}
-    </div>
-  );
+  // Solo runs get a card each; the members of a team share one chat card.
+  const cards = (a: Attempt) => {
+    const teams = new Map<string, ModelResult[]>();
+    for (const m of a.results) if (m.team) teams.set(m.team, [...(teams.get(m.team) ?? []), m]);
+    return (
+      <div className="grid gap-3 lg:grid-cols-2">
+        {a.results.filter((m) => !m.team).map((m) => (
+          <ModelColumn key={m.jobId} r={m} />
+        ))}
+        {Array.from(teams.entries()).map(([id, members]) => (
+          <TeamChat key={id} members={members} />
+        ))}
+      </div>
+    );
+  };
   if (attempts.length <= 1) return attempts[0] ? cards(attempts[0]) : null;
   return (
     <div className="space-y-4">

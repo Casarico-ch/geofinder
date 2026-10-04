@@ -21,6 +21,7 @@ import {
   type AgentImage,
 } from "./agent";
 import { exportJobHtml } from "./export";
+import { roomView } from "./team";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -210,6 +211,20 @@ export function registerApiRoutes(app: Express) {
   });
 
   // List recent investigations (for reopening after the window was closed).
+  // A team run's shared room: the chat, each member's vote and the agreement.
+  app.get("/api/teams/:id", async (req: Request, res: Response) => {
+    if (!/^[\w-]{6,40}$/.test(req.params.id)) {
+      res.status(400).json({ error: "Bad team id" });
+      return;
+    }
+    const room = await roomView(req.params.id);
+    if (!room.members.length) {
+      res.status(404).json({ error: "No such team" });
+      return;
+    }
+    res.json(room);
+  });
+
   app.get("/api/geo/investigations", (_req: Request, res: Response) => {
     res.json({ jobs: listJobs().slice(0, 50).map(jobSummary) });
   });

@@ -722,7 +722,7 @@ async function runLoop(
           return;
         }
         // Show what the teammate posted since this member last looked.
-        const news = await team.unseen(job);
+        const news = await team.unseen(job, i);
         const last = messages[messages.length - 1];
         if (news && last.role === "user") {
           if (typeof last.content === "string") last.content = [{ type: "text", text: last.content }];
@@ -893,12 +893,21 @@ async function runLoop(
         }
         if (job.team && tu.name === "team_post") {
           const inp = tu.input as Record<string, unknown>;
-          const replyTo = Number(inp.reply_to) || undefined;
-          const p = await team.post(job, String(inp.message ?? ""), replyTo);
+          const p = await team.post(
+            job,
+            {
+              text: String(inp.message ?? ""),
+              replyTo: Number(inp.reply_to) || undefined,
+              ask: inp.ask === true,
+              leading: inp.leading == null ? undefined : String(inp.leading),
+              certainty: inp.certainty == null ? undefined : Number(inp.certainty),
+            },
+            i + 1,
+          );
           await addStep(job, {
             kind: "note",
-            title: `Team chat — ${p.model} #${p.id}${replyTo ? ` (re #${replyTo})` : ""}`,
-            detail: p.text,
+            title: `Team chat — ${p.model} #${p.id}${p.replyTo ? ` (re #${p.replyTo})` : ""}`,
+            detail: p.text + (p.leading ? `\nLeading: ${p.leading}${p.certainty !== undefined ? ` · ${p.certainty}%` : ""}` : ""),
           });
           results.push({ type: "tool_result", tool_use_id: tu.id, content: `posted as #${p.id}` });
           continue;
