@@ -351,7 +351,8 @@ export function watchListingRequest(req: PlatformRequest): void {
         return false;
       }
       req.status = all.some((r) => r.status === "done") ? "done" : "error";
-      if (req.status === "error") req.error = "No model finished the investigation.";
+      // A re-run that finishes must not keep the error an earlier run left behind.
+      req.error = req.status === "error" ? "No model finished the investigation." : undefined;
       await saveRequest(req);
       return true;
     }
