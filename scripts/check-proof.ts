@@ -94,7 +94,7 @@ function answer(over: Partial<Answer>): Answer {
 
 // ---- the listing's own facts --------------------------------------------------
 await check("reads land, living area and a single dwelling from the listing", () => {
-  assert.deepEqual(listingFacts(LISTING), { landM2: 331, livingM2: 236, dwellings: 1, sharedLand: false });
+  assert.deepEqual(listingFacts(LISTING), { landM2: 331, livingM2: 236, dwellings: 1, sharedLand: false, rooms: 7, floor: null });
 });
 await check("a flat or multi-family listing does not pin dwellings; a PPE share is not a plot", () => {
   assert.equal(listingFacts("Type: apartment\nLiving area m²: 90").dwellings, null);
@@ -127,6 +127,42 @@ await check("several plots summed can match the land area", () => {
   });
   assert.equal(rows.find((r) => r.fact === "Plot area")?.verdict, "match");
 });
+// ---- the flat, against the register's flats (Ruopigenring 81–91, Luzern) ---------
+// A 96 m² 3.5-room flat "im 5. Obergeschoss". Opus ranked 85/87 first but could
+// not tell the look-alike entrances apart; Sonnet claimed 89. The register's
+// flats separate them: [floor, rooms, m²] per flat, ground floor to attic.
+const RUOPIGEN = "Type: Apartment\nRooms: 3.5\nLiving area m²: 96\nIm 5. Obergeschoss gelegen und bequem mit dem Lift erreichbar.";
+const flats = (rows: [number, number, number][]) => rows.map(([floor, rooms, areaM2]) => ({ floor, rooms, areaM2 }));
+const upper = (big: [number, number], small: [number, number]) =>
+  [1, 2, 3, 4, 5].flatMap((f) => [[f, ...big], [f, ...small]] as [number, number, number][]);
+const R85 = flats([[0, 4, 113], [0, 2, 83], ...upper([4, 113], [3, 96]), [6, 5, 135]]);
+const R83 = flats([[0, 3, 101], [0, 4, 118], ...upper([4, 113], [4, 118]), [6, 5, 134]]);
+const R89 = flats([[0, 5, 132], [0, 3, 95], ...upper([5, 132], [3, 99]), [6, 5, 150]]);
+const block = { floors: 7, dwellings: 13, footprintM2: 261 };
+const flatRowOf = (fl: ReturnType<typeof flats>) => factRows(listingFacts(RUOPIGEN), { ...block, flats: fl }).find((r) => r.fact === "The flat");
+
+await check("reads the flat's rooms and storey from the listing", () => {
+  const f = listingFacts(RUOPIGEN);
+  assert.equal(f.rooms, 3.5);
+  assert.equal(f.floor, 5);
+  assert.equal(listingFacts("Type: apartment\nBright flat on the 3rd floor").floor, 3);
+  assert.equal(listingFacts("Type: apartment\nAppartement au 2e étage").floor, 2);
+  assert.equal(listingFacts("Type: house\n2. OG Schlafzimmer").floor, null);
+});
+await check("Ruopigenring 85 holds a 96 m² 3-room flat on the 5th floor", () => {
+  assert.equal(flatRowOf(R85)?.verdict, "match");
+});
+await check("Ruopigenring 89 (99 m² there) is only close, 83 (no 3-room flat) does not fit", () => {
+  assert.equal(flatRowOf(R89)?.verdict, "unknown");
+  assert.equal(flatRowOf(R83)?.verdict, "mismatch");
+  assert.ok(!flatRowOf(R83)?.hard);
+});
+await check("no flat check without the register's flats, or for a house", () => {
+  assert.equal(flatRowOf(undefined as never), undefined);
+  assert.equal(factRows(listingFacts(LISTING), { ...GRYFELBLATTE, flats: R85 }).find((r) => r.fact === "The flat"), undefined);
+  assert.equal(flatRowOf([])?.verdict, "unknown");
+});
+
 await check("polygon area of a 20 m × 20 m square", () => {
   const dLat = 20 / 111_320, dLon = dLat / Math.cos((46 * Math.PI) / 180);
   const sq = [[7.75, 46], [7.75 + dLon, 46], [7.75 + dLon, 46 + dLat], [7.75, 46 + dLat], [7.75, 46]];

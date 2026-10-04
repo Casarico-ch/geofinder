@@ -14,6 +14,8 @@
 //     not be rejected from a contact-sheet glance.
 // =============================================================================
 
+import type { Flat } from "./gwr";
+
 const API = "https://api3.geo.admin.ch/rest/services/api/MapServer";
 const PLOT_LAYER = "ch.kantone.cadastralwebmap-farbe";
 
@@ -24,6 +26,9 @@ export interface ListingFacts {
   dwellings: number | null;
   /** Condominium (PPE / STWE): the stated land is a share, so it is not a plot area. */
   sharedLand: boolean;
+  rooms: number | null; // "Rooms: 3.5"
+  /** The flat's storey, 0 = ground floor ("im 5. Obergeschoss" = 5); flats only. */
+  floor: number | null;
 }
 
 const num = (s: string | undefined): number | null => {
@@ -44,7 +49,18 @@ export function listingFacts(text: string | undefined): ListingFacts {
     /multi|immeuble|mehrfamilien|rendite|investment|apartment building|plurifamiliale/.test(type) ||
     /\b(?:deux|trois|quatre|2|3|4)\s+(?:logements|appartements|Wohnungen|unités)\b/i.test(t);
   const house = /\bhouse\b|maison|villa|chalet|einfamilienhaus|\bhaus\b/.test(type);
-  return { landM2, livingM2, dwellings: house && !multi ? 1 : null, sharedLand };
+  const rooms = num(line(/^Rooms:\s*([\d.,]+)$/im));
+  return { landM2, livingM2, dwellings: house && !multi ? 1 : null, sharedLand, rooms, floor: house ? null : flatFloor(t) };
+}
+
+// "im 5. Obergeschoss", "5. OG", "5th floor", "5e étage", or Radar's "Floor: 5".
+function flatFloor(t: string): number | null {
+  const m =
+    t.match(/^Floor:\s*(-?\d{1,2})\s*$/im) ??
+    t.match(/\b(\d{1,2})\.\s*(?:Obergeschoss|OG|Stock|Etage)\b/i) ??
+    t.match(/\b(\d{1,2})(?:st|nd|rd|th)\s+floor\b/i) ??
+    t.match(/\b(\d{1,2})(?:e|er|ème)\s+étage\b/i);
+  return m ? Number(m[1]) : null;
 }
 
 export interface Plot {
@@ -139,12 +155,17 @@ export interface BuildingFacts {
   footprintM2: number | null;
   /** Total area of the plot(s) the answer covers, with their numbers. */
   plots?: Plot[];
+  /** The register's flats in this building (looked up for a close look and an answer only). */
+  flats?: Flat[];
 }
 
 // Bands, wide on purpose: a register footprint is gross and outside the walls,
 // a listed living area is net and counts an attic the register may not.
 const LIVING_MIN = 0.45, LIVING_MAX = 1.35;
 const PLOT_MATCH = 0.05, PLOT_CLOSE = 0.15;
+// A flat's register area is the same survey number the listing usually quotes;
+// near-identical entrances differ by a few m² (Ruopigenring 85: 96 m², 89: 99 m²).
+const FLAT_MATCH_M2 = 2, FLAT_CLOSE = 0.1;
 
 /** Listing vs building, one row per fact both sides state. */
 export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
@@ -169,6 +190,7 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
       verdict: ratio == null ? "unknown" : ratio >= LIVING_MIN && ratio <= LIVING_MAX ? "match" : "mismatch",
     });
   }
+  if (l.livingM2 != null && l.dwellings !== 1 && b.flats) rows.push(flatRow(l, l.livingM2, b.flats));
   if (l.landM2 != null && !l.sharedLand) {
     const plots = b.plots ?? [];
     const total = plots.reduce((s, p) => s + p.areaM2, 0);
@@ -182,6 +204,31 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
     });
   }
   return rows;
+}
+
+// Is the listed flat in this building? The register lists every flat with its
+// storey, rooms (whole rooms: a listed 3.5 is 3) and area. Ruopigenring 81–91,
+// six identical-looking entrances: only 81, 85 and 87 hold a 96 m² flat on the
+// 5th floor, so a view match alone could not tell them apart and 89 was claimed.
+function flatRow(l: ListingFacts, living: number, flats: Flat[]): FactRow {
+  const storey = (f: number | null) => (f == null ? "?" : f === 0 ? "ground floor" : f < 0 ? `basement ${-f}` : `floor ${f}`);
+  const roomsFit = (r: number | null) => l.rooms == null || r == null || r === Math.floor(l.rooms) || r === Math.ceil(l.rooms);
+  const onFloor = flats.filter((f) => l.floor == null || f.floor == null || f.floor === l.floor);
+  const off = (f: Flat) => (f.areaM2 == null ? Infinity : Math.abs(f.areaM2 - living));
+  const exact = onFloor.filter((f) => roomsFit(f.rooms) && off(f) <= FLAT_MATCH_M2);
+  const close = onFloor.filter((f) => roomsFit(f.rooms) && off(f) <= living * FLAT_CLOSE);
+  const listing = [`${living} m²`, l.rooms != null ? `${l.rooms} rooms` : "", l.floor != null ? storey(l.floor) : ""].filter(Boolean).join(", ");
+  const show = (fs: Flat[]) =>
+    fs.slice(0, 6).map((f) => `${storey(f.floor)} ${f.areaM2 ?? "?"} m² ${f.rooms ?? "?"} rooms`).join("; ");
+  const where = l.floor != null ? ` on ${storey(l.floor)}` : "";
+  if (!flats.length) return { fact: "The flat", listing, building: "no flats in the register", verdict: "unknown" };
+  if (exact.length) return { fact: "The flat", listing, building: `${exact.length} of ${flats.length} flats fit: ${show(exact)}`, verdict: "match" };
+  return {
+    fact: "The flat",
+    listing,
+    building: `no flat of ${living} m²${where} (of ${flats.length}): ${show(onFloor.length ? onFloor : flats) || "none there"}`,
+    verdict: close.length ? "unknown" : "mismatch",
+  };
 }
 
 /**
