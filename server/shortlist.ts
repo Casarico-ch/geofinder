@@ -129,6 +129,10 @@ export interface ShortlistOptions {
   attached?: boolean;
   dwellings?: number;
   maxResults?: number;
+  // Rank survivors by distance from this point instead of by footprint.
+  near?: { lat: number; lon: number };
+  // EGIDs already on the run's checklist; only consulted past the cap.
+  known?: ReadonlySet<string>;
 }
 
 // Floors and dwellings are matched as a ±1 RANGE (unknown passes); the
@@ -140,6 +144,45 @@ function inRange(v: number | null, est: number | undefined, lo: number, hi: numb
 function inBand(v: number | null, est: number | undefined): boolean {
   if (v == null || typeof est !== "number" || est <= 0) return true;
   return v >= est * 0.55 && v <= est * 1.7;
+}
+
+// The survivors one call returns. Within the cap: all of them, in rank order,
+// exactly as before. Past it (Zermatt: 580 survivors, 150 per call) every call
+// used to return the same closest-by-footprint slice, so re-shortlisting
+// re-listed houses already on the checklist and the rest were never seen.
+// Now the ones not on the checklist come first, so repeated calls page
+// through every survivor; nothing is dropped.
+function pickPage<T>(
+  ranked: T[],
+  max: number,
+  egidOf: (t: T) => string,
+  known: ReadonlySet<string> | undefined,
+): { page: T[]; again: boolean; unseenLeft: number } {
+  if (ranked.length <= max) return { page: ranked, again: false, unseenLeft: 0 };
+  const isNew = (t: T) => !known?.has(egidOf(t));
+  const fresh = ranked.filter(isNew);
+  const page = [...fresh, ...ranked.filter((t) => !isNew(t))].slice(0, max);
+  return { page, again: fresh.length < ranked.length, unseenLeft: Math.max(0, fresh.length - max) };
+}
+
+function metresBetween(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  return Math.hypot((a.lon - b.lon) * 111320 * Math.cos((a.lat * Math.PI) / 180), (a.lat - b.lat) * 111320);
+}
+
+// Most first calls overflow the cap (120 by default, 40 in Geneva) and runs
+// that find their house usually do it from that first batch, so the first call
+// keeps its old wording. Paging and `near` are offered only when the run comes
+// back for more of a commune it already has on its checklist.
+function capNote(max: number, again: boolean, unseenLeft: number, near?: { lat: number; lon: number }): string {
+  if (!again && !near) return ` (showing the ${max} closest by footprint)`;
+  const order = near ? `closest to ${near.lat.toFixed(5)},${near.lon.toFixed(5)}` : "closest by footprint";
+  return (
+    ` (showing ${max}, ${order}, the ones not yet on your checklist first). ` +
+    (unseenLeft > 0
+      ? `${unseenLeft} more survivors are not on your checklist yet: call again with the same estimates for the next batch — nothing is dropped. `
+      : `Every survivor of these estimates is now on your checklist. `) +
+    `To check the likeliest area first, pass near: {lat, lon} — the point your LOCATIONAL clues put the house near (which way the slope and the view face, the bearing of a landmark in the photos, distances to amenities) — and survivors come back closest to it first`
+  );
 }
 
 export async function shortlistBuildings(opts: ShortlistOptions): Promise<ShortlistResult> {
@@ -163,10 +206,11 @@ async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promis
     .filter((b) => inRange(b.dwellings, opts.dwellings, 1, 1))
     .filter((b) => inBand(b.footprintM2, opts.footprintM2))
     .sort((x, y) => {
+      if (opts.near) return metresBetween(x, opts.near) - metresBetween(y, opts.near);
       if (opts.footprintM2 == null || x.footprintM2 == null || y.footprintM2 == null) return 0;
       return Math.abs(x.footprintM2 - opts.footprintM2) - Math.abs(y.footprintM2 - opts.footprintM2);
     });
-  const top = survivors.slice(0, max);
+  const { page: top, again, unseenLeft } = pickPage(survivors, max, (b) => String(Number(b.egid)), opts.known);
   return {
     commune: c.name,
     bfs: c.bfs,
@@ -187,7 +231,7 @@ async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promis
     })),
     note:
       `${c.name}: enumerated ${all.length} buildings from the federal register, ${residential.length} residential, ${survivors.length} passed the recall-first filters` +
-      (survivors.length > max ? ` (showing the ${max} closest by footprint)` : "") +
+      (survivors.length > max ? capNote(max, again, unseenLeft, opts.near) : "") +
       `. Floors${typeof opts.dwellings === "number" ? " and dwellings" : ""} matched as a ±1 range, footprint as a wide band, era NOT filtered.` +
       (typeof opts.attached === "boolean" ? " attached/detached is not in the register here — ignored; judge it on the aerial." : "") +
       ` Now look at them with view_candidates and record each verdict with mark_candidates — do NOT re-filter them by era or exact floors.`,
@@ -237,11 +281,12 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
   // Rank by footprint closeness (the most reliable signal) so the best matches
   // come first, but do NOT hard-drop — recall over precision.
   const ranked = filtered.sort((x, y) => {
+    if (opts.near) return metresBetween(x.b, opts.near) - metresBetween(y.b, opts.near);
     if (opts.footprintM2 == null || x.b.surf == null || y.b.surf == null) return 0;
     return Math.abs((x.b.surf ?? 0) - opts.footprintM2) - Math.abs((y.b.surf ?? 0) - opts.footprintM2);
   });
   const survivorsCount = ranked.length;
-  const top = ranked.slice(0, max);
+  const { page: top, again, unseenLeft } = pickPage(ranked, max, (x) => String(x.b.egid), opts.known);
   const candidates: Candidate[] = top.map((x) => ({
     egid: x.b.egid,
     lat: x.b.lat,
@@ -260,7 +305,7 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     candidates,
     note:
       `Enumerated ${all.length} buildings, ${residential.length} residential, ${survivorsCount} passed the recall-first filters` +
-      (survivorsCount > max ? ` (showing the ${max} closest by footprint)` : "") +
+      (survivorsCount > max ? capNote(max, again, unseenLeft, opts.near) : "") +
       `. Floors matched as a ±1 range; era was NOT filtered. Now look at them with view_candidates (and render_roofs for roof shape), record each verdict with mark_candidates — do NOT re-filter these by era or exact floors.`,
   };
 }

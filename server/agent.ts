@@ -865,6 +865,11 @@ export async function dispatchTool(
         dwellings: num(input.dwellings),
         attached: typeof input.attached === "boolean" ? input.attached : undefined,
         maxResults: num(input.maxResults),
+        // `near` is deliberately not in the tool schema: the shortlist note
+        // offers it only when the run comes back for more of a commune, so
+        // every other run keeps exactly the prompt it had.
+        near: nearOf(input.near),
+        known: new Set(Object.keys(search.candidates)),
       });
       // HIGH commune confidence: the stated commune is exhausted before any other.
       const blocked = r.supported ? leavePrimaryBlocked(search, r.commune) : null;
@@ -1057,6 +1062,16 @@ function searchOf(job: Job): SearchState {
     };
   }
   return job.search;
+}
+
+// shortlist_buildings' `near`: {lat, lon} or "lat,lon"; anything else is ignored.
+function nearOf(v: unknown): { lat: number; lon: number } | undefined {
+  let lat: unknown, lon: unknown;
+  if (typeof v === "string") [lat, lon] = v.split(",").map((x) => Number(x.trim()));
+  else if (v && typeof v === "object") ({ lat, lon } = v as { lat?: unknown; lon?: unknown });
+  else return undefined;
+  const ok = (x: unknown, lo: number, hi: number): x is number => typeof x === "number" && Number.isFinite(x) && x >= lo && x <= hi;
+  return ok(lat, 45, 48.5) && ok(lon, 5.5, 11) ? { lat, lon } : undefined;
 }
 
 // Persist the listing photos into the run dir so the model can crop/inspect
