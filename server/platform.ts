@@ -12,7 +12,8 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type ModelId } from "./jobs";
+import { type Candidate, planChecks } from "./consensus";
+import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -24,7 +25,6 @@ import {
   getProfileByLandId,
 } from "./popety";
 import {
-  type ModelResult,
   type PlatformRequest,
   createRequest,
   createRequestFromJobs,
@@ -161,6 +161,7 @@ export async function startListingRequest(
   input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string },
   images: AgentImage[],
   models: ModelId[],
+  source: PlatformRequest["source"] = "platform",
 ) {
   const { municipality, listingId, listingUrl, radarUrl } = input;
   const listingText =
@@ -175,6 +176,7 @@ export async function startListingRequest(
     listingUrl,
     radarUrl,
   });
+  record.source = source;
   record.results = [];
   for (const model of models) {
     const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model);
@@ -189,75 +191,47 @@ export async function startListingRequest(
   return record;
 }
 
-// The model that settles a split: cheap, since it checks given places rather
-// than searching the commune.
-const CHECK_MODEL: ModelId = (MODELS as readonly string[]).includes(process.env.GEOFINDER_CHECK_MODEL ?? "")
-  ? (process.env.GEOFINDER_CHECK_MODEL as ModelId)
-  : "claude-sonnet-5-5";
-
-// Pinned to one property: an address or plot at street, building or parcel confidence.
-const pinned = (a: Answer | null): a is Answer =>
-  !!a?.found && (!!a.address || a.parcels.length > 0 || !!a.parcel) && ["street", "building", "parcel"].includes(a.confidence);
-
-const placeKey = (a: Answer): string =>
-  a.parcels.length
-    ? a.parcels.map((p) => `${p.commune} ${p.plot}`.toLowerCase()).sort().join("+")
-    : (a.parcel ?? a.address ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-
-const describeAnswer = (a: Answer): string => {
-  const plots = a.parcels.length ? a.parcels.map((p) => `${p.commune} ${p.plot}`).join(" + ") : a.parcel;
-  const where = [a.address, plots && `plot ${plots}`].filter(Boolean).join(", ");
-  const at = a.latitude != null && a.longitude != null ? ` (around ${a.latitude.toFixed(6)}, ${a.longitude.toFixed(6)})` : "";
-  return `${where || "an unnamed place"}${at}`;
-};
-
 const modelLabel = (m: ModelId) =>
   m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
 
-// The verification task for a listing whose models settled on different places
-// (or where only one pinned it), else null: they agree, nobody pinned a place,
-// fewer than two finished, or it was already cross-checked.
-export function splitTask(results: ModelResult[]): string | null {
-  if (results.some((m) => m.check)) return null;
-  const searches = results.filter((m) => m.status === "done" && m.answer);
-  const claims = searches.filter((m) => pinned(m.answer));
-  if (searches.length < 2 || claims.length === 0) return null;
-  if (claims.length === searches.length && new Set(claims.map((m) => placeKey(m.answer!))).size === 1) return null;
-  const lines = searches.map((m) => {
-    const a = m.answer!;
-    return a.found && (a.address || a.parcel || a.parcels.length)
-      ? `- ${modelLabel(m.model)}: ${describeAnswer(a)} — confidence ${a.confidence}`
-      : `- ${modelLabel(m.model)}: did not find it`;
-  });
+/** The listing text with a check-this-address task appended — Radar's wording, word for word. */
+export function verifyText(listing: string, candidate: Candidate, from: ModelId): string {
+  const pin =
+    candidate.latitude != null && candidate.longitude != null ? ` (around ${candidate.latitude}, ${candidate.longitude})` : "";
   return [
+    listing,
+    "",
     "--- VERIFICATION TASK ---",
-    "Other investigators disagree on where this property is:",
-    ...lines,
-    "Do NOT take any of them on trust. Check each place against the photos, the listing text and the map evidence yourself.",
-    "If, and only if, you are highly confident that one of these exact locations (street AND house number, or the cadastral plot number) is the property, report found=true with that address and/or plot at street or building confidence.",
-    "If none is right, or you cannot confirm one with high confidence, report found=false — or the address you are highly confident is correct instead.",
+    `Another investigator (${modelLabel(from)}) concluded that this property is at: ${candidate.address}${candidate.parcel ? `, plot ${candidate.parcel}` : ""}${pin}.`,
+    "Do NOT take that on trust. Check it against the photos, the listing text and the map evidence yourself.",
+    "If, and only if, you are highly confident that this exact location (street AND house number, or the cadastral plot number) is the property, report found=true with that address and/or plot at street or building confidence.",
+    "If it is wrong, or you cannot confirm it with high confidence, report found=false — or the address you are highly confident is correct instead.",
   ].join("\n");
 }
 
-// When the models split, one more run checks their places against the listing
-// and decides. It is the verification task the platform used to send on its
-// own, so it shows on the request as a Cross-check card, even on a re-run.
+// A search started here (the website's New search, Run again) gets the
+// cross-checks Radar runs on its own searches: when the models disagree, the
+// other model checks each address (consensus.ts). Radar's searches come in
+// through /v1 and Radar sends those checks itself, so they are left alone.
 async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
-  const task = req.kind === "listing" ? splitTask(results) : null;
-  if (!task) return false;
-  const first = results.find((m) => m.status === "done" && m.answer);
-  const src = first && getJob(first.jobId);
+  if (req.kind !== "listing" || req.source === "platform" || results.some((m) => m.check)) return false;
+  const searches = results.filter((m) => m.status === "done");
+  const checks = planChecks(searches);
+  if (checks.length === 0) return false;
+  const src = getJob(searches[0].jobId);
   const images = src ? await loadListingPhotos(src.runDir) : [];
   if (!src || images.length === 0) return false;
-  const listingText = `${src.input.listingText ?? ""}\n\n${task}`;
-  const job = await createJob({ ...src.input, listingText }, CHECK_MODEL);
-  results.push({ model: CHECK_MODEL, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
+  for (const c of checks) {
+    const listingText = verifyText(src.input.listingText ?? "", c.candidate, c.candidateFrom);
+    const job = await createJob({ ...src.input, listingText }, c.verifier);
+    results.push({ model: c.verifier, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
+    void (async () => {
+      await saveListingPhotos(job.runDir, images);
+      await runInvestigation(job, images, listingText);
+    })().catch((err) => console.error(`[platform] cross-check ${job.id} crashed:`, err));
+  }
   req.status = "running";
-  void (async () => {
-    await saveListingPhotos(job.runDir, images);
-    await runInvestigation(job, images, listingText);
-  })().catch((err) => console.error(`[platform] cross-check ${job.id} crashed:`, err));
   return true;
 }
 
@@ -407,6 +381,7 @@ export function registerPlatformRoutes(app: Express) {
         },
         images,
         models,
+        "website",
       );
       res.status(202).json({ requestId: record.id });
     } catch (err) {
