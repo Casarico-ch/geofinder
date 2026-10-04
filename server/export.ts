@@ -6,8 +6,9 @@
 // nothing clipped. Images are embedded, so the file opens offline.
 // =============================================================================
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 import type Anthropic from "@anthropic-ai/sdk";
 import { loadConversation, loadListingPhotos } from "./agent";
 import { costUsd, elapsedMs, type Job } from "./jobs";
@@ -40,6 +41,77 @@ class Images {
       this.index.set(key, i);
     }
     return `<img data-i="${i}" alt="">`;
+  }
+  // Shrink every embedded picture (see export-shrink.ts) in a worker thread,
+  // caching each result in the run dir so a second export is instant. Any
+  // failure keeps the original: a heavy export beats a broken one.
+  async shrink(runDir: string): Promise<void> {
+    const cacheDir = path.join(runDir, ".export-cache");
+    await mkdir(cacheDir, { recursive: true }).catch(() => {});
+    let worker: Worker | null = null;
+    let dead = false;
+    const pending = new Map<number, (r: { changed: boolean; data: Uint8Array } | null) => void>();
+    const giveUp = (why: unknown) => {
+      if (!dead) console.error("[export] shrink worker stopped; keeping the remaining pictures as they are:", why);
+      dead = true;
+      pending.forEach((r) => r(null));
+      pending.clear();
+    };
+    const viaWorker = (id: number, media: string, data: Buffer) =>
+      new Promise<{ changed: boolean; data: Uint8Array } | null>((resolve) => {
+        if (dead) return resolve(null);
+        try {
+          if (!worker) {
+            // Bundled: dist/export-worker.js beside dist/index.js. Dev (tsx): the .ts
+            // source, through tsx's loader, which a worker does not inherit.
+            if (import.meta.url.endsWith(".ts")) {
+              const tsx = JSON.stringify(import.meta.resolve("tsx/esm/api"));
+              const src = JSON.stringify(new URL("./export-worker.ts", import.meta.url).href);
+              worker = new Worker(`import(${tsx}).then((m) => { m.register(); return import(${src}); })`, { eval: true });
+            } else {
+              worker = new Worker(new URL("./export-worker.js", import.meta.url));
+            }
+            worker.on("message", (m: { id: number; changed: boolean; data: Uint8Array }) => {
+              pending.get(m.id)?.(m);
+              pending.delete(m.id);
+            });
+            worker.on("error", giveUp);
+            worker.on("exit", (code) => giveUp(`exit ${code}`));
+          }
+          pending.set(id, resolve);
+          worker.postMessage({ id, media, data });
+        } catch (err) {
+          giveUp(err);
+          resolve(null);
+        }
+      });
+    try {
+      for (let i = 0; i < this.data.length; i++) {
+        const d = this.data[i];
+        if (d.media !== "image/png" && d.media !== "image/jpeg") continue;
+        const key = createHash("sha1").update(d.base64).digest("hex");
+        const cached = path.join(cacheDir, `${key}.jpg`);
+        const kept = path.join(cacheDir, `${key}.orig`);
+        try {
+          this.data[i] = { media: "image/jpeg", base64: (await readFile(cached)).toString("base64") };
+          continue;
+        } catch {
+          /* not cached as a smaller JPEG */
+        }
+        if (await readFile(kept).then(() => true, () => false)) continue;
+        const out = await viaWorker(i, d.media, Buffer.from(d.base64, "base64"));
+        if (!out) continue;
+        if (!out.changed) {
+          await writeFile(kept, "").catch(() => {});
+        } else {
+          await writeFile(cached, out.data).catch(() => {});
+          this.data[i] = { media: "image/jpeg", base64: Buffer.from(out.data).toString("base64") };
+        }
+      }
+    } finally {
+      dead = true; // our own terminate is not a failure worth logging
+      await (worker as Worker | null)?.terminate();
+    }
   }
   script(): string {
     const uris = this.data.map((d) => `data:${d.media};base64,${d.base64}`);
@@ -118,6 +190,14 @@ export async function exportJobHtml(job: Job): Promise<string> {
 </div>`);
   }
 
+  const conversationHtml = conversation
+    ? conversation
+        .map((m, i) => `<div class="msg"><p class="muted">${i + 1} · ${m.role === "user" ? "Sent to the model" : "Model"}</p>${renderBlocks(m.content, images)}</div>`)
+        .join("\n")
+    : `<p class="muted">This run finished before full conversations were kept; the steps above are everything recorded.</p>`;
+  const photosHtml = photos.map((p) => images.tag(p.mediaType, p.base64)).join("");
+  await images.shrink(job.runDir);
+
   const a = job.answer;
   const meta: Array<[string, unknown]> = [
     ["Investigation", job.id],
@@ -156,7 +236,7 @@ ${a ? `<p><b>${esc(a.address ?? a.parcel ?? (a.found ? "Found" : "Not found"))}<
 ${job.error ? `<p><b>Error</b></p>${pre(job.error)}` : ""}
 
 <h2>What we sent: photos (${photos.length})</h2>
-<div class="photos">${photos.map((p) => images.tag(p.mediaType, p.base64)).join("")}</div>
+<div class="photos">${photosHtml}</div>
 
 <h2>What we sent: listing text</h2>
 ${pre(job.input.listingText ?? "(none)")}
@@ -168,13 +248,7 @@ ${prompt ? pre(prompt) : `<p class="muted">Not recorded for this run.</p>`}
 ${steps.join("\n")}
 
 <h2>Full conversation with the model</h2>
-${
-  conversation
-    ? conversation
-        .map((m, i) => `<div class="msg"><p class="muted">${i + 1} · ${m.role === "user" ? "Sent to the model" : "Model"}</p>${renderBlocks(m.content, images)}</div>`)
-        .join("\n")
-    : `<p class="muted">This run finished before full conversations were kept; the steps above are everything recorded.</p>`
-}
+${conversationHtml}
 ${images.script()}
 </body></html>`;
 }
