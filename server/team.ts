@@ -1,0 +1,270 @@
+// =============================================================================
+// Team runs — two models search the same listing side by side, each with its
+// own computer and checklist, and talk in a shared room like a group chat.
+//
+// Neither waits on the other. Every turn, each one is shown what its teammate
+// posted since it last looked, and it can read the teammate's recent trace
+// (team_read) or post / reply (team_post). An answer is a VOTE: the team stops
+// only when both have voted for the same building at >= 95 % certainty. If one
+// of them stops for any other reason (limit, error, cancel), the other carries
+// on and finishes under the normal solo rules.
+//
+// The room is a file (RUNS_ROOT/_teams/<id>.json), so it outlives a restart.
+// =============================================================================
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { RUNS_ROOT } from "./sandbox";
+import { getJob, type Answer, type Job } from "./jobs";
+import { coverageText } from "./search";
+
+export const AGREE_AT = 95; // both must be at least this sure of the same building
+
+export interface TeamPost {
+  id: number;
+  at: string;
+  from: string; // job id
+  model: string;
+  text: string;
+  replyTo?: number;
+}
+
+export interface TeamVote {
+  key: string; // what identifies the building (EGID, else the normalized address)
+  certainty: number; // 0–100
+  answer: Answer;
+  at: string;
+}
+
+export interface TeamRoom {
+  id: string;
+  members: string[]; // job ids
+  posts: TeamPost[];
+  seen: Record<string, number>; // job id → last post id it was shown
+  votes: Record<string, TeamVote>;
+  agreed?: { key: string; answer: Answer; at: string };
+}
+
+// RUNS_ROOT can fall back at boot, so the folder is resolved on each use.
+const dir = () => path.join(RUNS_ROOT, "_teams");
+const rooms = new Map<string, TeamRoom>();
+const queue = new Map<string, Promise<unknown>>();
+
+const file = (id: string) => path.join(dir(), `${id.replace(/[^\w-]/g, "")}.json`);
+
+async function load(id: string): Promise<TeamRoom> {
+  const hit = rooms.get(id);
+  if (hit) return hit;
+  let room: TeamRoom;
+  try {
+    room = JSON.parse(await readFile(file(id), "utf8")) as TeamRoom;
+  } catch {
+    room = { id, members: [], posts: [], seen: {}, votes: {} };
+  }
+  rooms.set(id, room);
+  return room;
+}
+
+async function save(room: TeamRoom): Promise<void> {
+  await mkdir(dir(), { recursive: true });
+  const tmp = `${file(room.id)}.tmp`;
+  await writeFile(tmp, JSON.stringify(room, null, 2));
+  await rename(tmp, file(room.id));
+}
+
+// Both members run in the same process, so changes to one room are chained.
+function withRoom<T>(id: string, fn: (room: TeamRoom) => T | Promise<T>): Promise<T> {
+  const prev = queue.get(id) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    const room = await load(id);
+    const out = await fn(room);
+    await save(room);
+    return out;
+  });
+  queue.set(id, next.catch(() => {}));
+  return next;
+}
+
+export function getRoom(id: string): Promise<TeamRoom> {
+  return load(id);
+}
+
+export async function joinTeam(id: string, jobId: string): Promise<void> {
+  await withRoom(id, (room) => {
+    if (!room.members.includes(jobId)) room.members.push(jobId);
+  });
+}
+
+const label = (model: string) => model.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2");
+
+/** The teammate's job, while it is still searching. */
+function liveMate(room: TeamRoom, me: string): Job | undefined {
+  const mateId = room.members.find((m) => m !== me);
+  const mate = mateId ? getJob(mateId) : undefined;
+  return mate && mate.status === "running" ? mate : undefined;
+}
+
+export async function hasLiveMate(job: Job): Promise<boolean> {
+  return !!job.team && !!liveMate(await load(job.team), job.id);
+}
+
+export async function post(job: Job, text: string, replyTo?: number): Promise<TeamPost> {
+  return withRoom(job.team!, (room) => {
+    const p: TeamPost = {
+      id: room.posts.length + 1,
+      at: new Date().toISOString(),
+      from: job.id,
+      model: label(job.model),
+      text: text.trim().slice(0, 4000),
+      ...(replyTo ? { replyTo } : {}),
+    };
+    room.posts.push(p);
+    return p;
+  });
+}
+
+function postLine(room: TeamRoom, p: TeamPost, me: string): string {
+  const who = p.from === me ? "you" : p.model;
+  const re = p.replyTo ? room.posts[p.replyTo - 1] : undefined;
+  const quote = re ? ` (replying to #${re.id} by ${re.from === me ? "you" : re.model}: "${re.text.slice(0, 80)}…")` : "";
+  return `#${p.id} ${who}${quote}: ${p.text}`;
+}
+
+/** What the teammate said since this member last looked, as a turn note — or null. */
+export async function unseen(job: Job): Promise<{ text: string; posts: TeamPost[] } | null> {
+  return withRoom(job.team!, (room) => {
+    const from = room.seen[job.id] ?? 0;
+    const fresh = room.posts.slice(from).filter((p) => p.from !== job.id);
+    room.seen[job.id] = room.posts.length;
+    const mate = room.members.find((m) => m !== job.id);
+    const vote = mate ? room.votes[mate] : undefined;
+    const voteLine = vote
+      ? `Teammate's current vote: ${vote.answer.address ?? vote.answer.parcel ?? "no match"} at ${vote.certainty}%.`
+      : "";
+    if (!fresh.length) return null;
+    return {
+      posts: fresh,
+      text:
+        `[team chat] New from your teammate:\n${fresh.map((p) => postLine(room, p, job.id)).join("\n")}` +
+        (voteLine ? `\n${voteLine}` : "") +
+        `\n(Reply with team_post — reply_to the # you answer — or look at their work with team_read.)`,
+    };
+  });
+}
+
+/** team_read: the whole chat plus the teammate's recent trace and checklist coverage. */
+export async function readMate(job: Job, steps = 25): Promise<string> {
+  const room = await load(job.team!);
+  const mateId = room.members.find((m) => m !== job.id);
+  const mate = mateId ? getJob(mateId) : undefined;
+  const chat = room.posts.length ? room.posts.map((p) => postLine(room, p, job.id)).join("\n") : "(no messages yet)";
+  if (!mate) return `Team chat:\n${chat}\n\nYour teammate's run is not available.`;
+  const trace = mate.steps
+    .slice(-Math.max(1, Math.min(60, steps)))
+    .map((s) => {
+      const body = (s.reasoning ?? s.detail ?? "").replace(/\s+/g, " ").slice(0, s.kind === "reasoning" ? 600 : 300);
+      return `- [${s.kind}] ${s.title}${body ? ` — ${body}` : ""}`;
+    })
+    .join("\n");
+  const vote = room.votes[mate.id];
+  return [
+    `Teammate: ${label(mate.model)} — ${mate.status}, ${mate.steps.length} steps so far.`,
+    mate.search ? `Their checklist: ${coverageText(mate.search)}.` : "",
+    mate.signature ? `Their target signature: ${mate.signature.clues.join("; ")}` : "",
+    vote ? `Their vote: ${vote.answer.address ?? vote.answer.parcel ?? "no match"} at ${vote.certainty}% — ${vote.answer.reasoning.slice(0, 600)}` : "Their vote: none yet.",
+    `\nTeam chat:\n${chat}`,
+    `\nTheir latest steps:\n${trace}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** One building, however the two members wrote it. */
+export function answerKey(a: Answer): string {
+  if (!a.found) return "none";
+  if (a.proof?.egid) return `egid:${a.proof.egid}`;
+  const addr = (a.address ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  if (addr) return `addr:${addr}`;
+  const plots = a.parcels.map((p) => `${p.commune}/${p.plot}`.toLowerCase()).sort().join("+");
+  return plots ? `plots:${plots}` : `ll:${a.latitude?.toFixed(4)},${a.longitude?.toFixed(4)}`;
+}
+
+export type VoteOutcome =
+  | { kind: "agreed"; answer: Answer }
+  | { kind: "waiting"; message: string };
+
+/** Record a member's vote; the team agrees when both name the same building at AGREE_AT or more. */
+export async function vote(job: Job, answer: Answer, certainty: number): Promise<VoteOutcome> {
+  return withRoom(job.team!, (room) => {
+    const key = answerKey(answer);
+    const sure = Math.max(0, Math.min(100, Math.round(certainty)));
+    room.votes[job.id] = { key, certainty: sure, answer, at: new Date().toISOString() };
+    const mateId = room.members.find((m) => m !== job.id);
+    const mine = answer.address ?? answer.parcel ?? "no match";
+    const theirs = mateId ? room.votes[mateId] : undefined;
+    if (answer.found && sure >= AGREE_AT && theirs && theirs.key === key && theirs.certainty >= AGREE_AT) {
+      room.agreed = { key, answer, at: new Date().toISOString() };
+      return { kind: "agreed" as const, answer };
+    }
+    const why = !answer.found
+      ? "A team only stops on a building you BOTH name"
+      : sure < AGREE_AT
+        ? `You are at ${sure}% — the team stops only when you are both at ${AGREE_AT}% or more`
+        : !theirs
+          ? "Your teammate has not voted yet"
+          : theirs.key !== key
+            ? `Your teammate votes for ${theirs.answer.address ?? theirs.answer.parcel ?? "no match"} at ${theirs.certainty}%`
+            : `Your teammate names the same building but is only at ${theirs.certainty}%`;
+    return {
+      kind: "waiting" as const,
+      message:
+        `Vote recorded (${mine}, ${sure}%) — not finished: ${why}. ` +
+        `Tell your teammate why in team_post (your strongest evidence, what would change your mind), read their work with team_read, ` +
+        `and keep checking. Vote again with submit_answer whenever your view or certainty changes.`,
+    };
+  });
+}
+
+/** The building the team agreed on, once it has. */
+export async function agreed(job: Job): Promise<Answer | null> {
+  if (!job.team) return null;
+  return (await load(job.team)).agreed?.answer ?? null;
+}
+
+export const TEAM_BRIEF = `TEAM RUN
+You are not alone: a teammate (another model) is searching this same listing right now on its own computer, with its own checklist. You do not wait for each other — work at your own pace — but you share a group chat, like colleagues on a forum:
+- Every turn you are shown what your teammate posted since you last looked.
+- team_post(message, reply_to?) posts to the chat — your finds, a candidate worth a look, a doubt, a counter-argument. Reply to a specific message by its #. Short and concrete: EGIDs, addresses, what you SAW.
+- team_read() shows your teammate's recent steps, checklist coverage and current vote — use it to get inspired, avoid duplicate work, or check their claim.
+- submit_answer is a VOTE with a certainty (0–100). The team stops only when you BOTH vote for the same building at ${AGREE_AT}% or more. Until then a vote comes back and you keep going — challenge each other, verify the other's candidate yourself, and change your mind when the evidence says so. Never raise your certainty just to finish.`;
+
+export const TEAM_TOOLS = [
+  {
+    name: "team_post",
+    description:
+      "Post a message to the team chat your teammate sees on their next turn: a find, a candidate (EGID/address), a doubt, a counter-argument. reply_to answers a specific message by its #.",
+    input_schema: {
+      type: "object",
+      properties: {
+        message: { type: "string" },
+        reply_to: { type: "integer", description: "the # of the message you are answering" },
+      },
+      required: ["message"],
+    },
+  },
+  {
+    name: "team_read",
+    description:
+      "See your teammate's work: the full team chat, their checklist coverage, their current vote, and their latest steps (commands, reasoning).",
+    input_schema: {
+      type: "object",
+      properties: { steps: { type: "integer", description: "how many of their latest steps to show (default 25, max 60)" } },
+    },
+  },
+];
+
+export const CERTAINTY_FIELD = {
+  type: "integer",
+  minimum: 0,
+  maximum: 100,
+  description: `TEAM RUN: how sure you are, 0–100, that this is the property. The team stops when you both name the same building at ${AGREE_AT}+.`,
+};

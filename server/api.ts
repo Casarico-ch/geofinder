@@ -54,6 +54,8 @@ const createSchema = z.object({
   radarUrl: z.string().trim().url().max(2000).optional(),
   municipality: z.string().max(200).optional(),
   model: z.enum(MODELS).optional(),
+  // A team run: the jobs created with the same id share a chat room (team.ts).
+  team: z.string().regex(/^[\w-]{6,40}$/).optional(),
 });
 
 const photosSchema = z.object({ images: imagesSchema });
@@ -136,6 +138,7 @@ export function registerApiRoutes(app: Express) {
           radarUrl: parsed.data.radarUrl,
         },
         parsed.data.model,
+        parsed.data.team,
       );
 
       if (images && images.length > 0) {

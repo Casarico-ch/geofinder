@@ -54,6 +54,7 @@ import {
   DEFAULT_MODEL,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
+import * as team from "./team";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -330,6 +331,23 @@ const TOOLS = [
   },
 ] as unknown as Anthropic.Messages.ToolUnion[];
 
+// A team run gets the chat tools and a certainty on its votes (team.ts).
+const TEAM_RUN_TOOLS = [
+  ...TOOLS.map((t) => {
+    const tool = t as unknown as { name: string; input_schema: { properties: Record<string, unknown>; required: string[] } };
+    if (tool.name !== "submit_answer") return t;
+    return {
+      ...tool,
+      input_schema: {
+        ...tool.input_schema,
+        properties: { ...tool.input_schema.properties, certainty: team.CERTAINTY_FIELD },
+        required: [...tool.input_schema.required, "certainty"],
+      },
+    } as unknown as Anthropic.Messages.ToolUnion;
+  }),
+  ...(team.TEAM_TOOLS as unknown as Anthropic.Messages.ToolUnion[]),
+];
+
 const SYSTEM = `You are GeoFinder — an autonomous investigator that finds the exact street address and cadastral parcel of a Swiss property from its listing (photos + text + municipality).
 
 You have no geo tools. You have a real Linux computer (Node ≥18 with global fetch, network access) and you build your own access to public data by writing and running code, like a human analyst. The method is entirely yours — reason it out, invent and switch approaches freely, and verify however you see fit.
@@ -396,6 +414,7 @@ function initialContent(
   images: AgentImage[],
   listingText: string | undefined,
   searchPlan: string,
+  teamRun = false,
 ): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
   images.forEach((img, i) => {
@@ -407,7 +426,8 @@ function initialContent(
     text:
       `${TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
       `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}` +
-      `\n\n${searchPlan}`,
+      `\n\n${searchPlan}` +
+      (teamRun ? `\n\n${team.TEAM_BRIEF}` : ""),
   });
   return blocks;
 }
@@ -560,10 +580,11 @@ export async function runInvestigation(
     search.candidates = structuredClone(seed.candidates);
   }
   await saveSearch(job, search);
+  if (job.team) await team.joinTeam(job.team, job.id);
   const plan = searchPlanText(search);
   await addStep(job, { kind: "note", title: `Search plan: commune confidence ${search.confidence}`, detail: plan });
   const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: initialContent(images, listingText, plan) },
+    { role: "user", content: initialContent(images, listingText, plan, !!job.team) },
   ];
   await saveState(job, 0, messages);
   await runLoop(job, messages, 0);
@@ -692,6 +713,26 @@ async function runLoop(
         return;
       }
 
+      if (job.team) {
+        // The teammate's vote may have settled it while this member was busy.
+        const settled = await team.agreed(job);
+        if (settled) {
+          await addStep(job, { kind: "answer", title: `Team agreed: ${settled.address ?? settled.parcel ?? "Answer"}`, detail: settled.reasoning });
+          await finishJob(job, { status: "done", answer: settled });
+          return;
+        }
+        // Show what the teammate posted since this member last looked.
+        const news = await team.unseen(job);
+        const last = messages[messages.length - 1];
+        if (news && last.role === "user") {
+          if (typeof last.content === "string") last.content = [{ type: "text", text: last.content }];
+          last.content.push({ type: "text", text: news.text });
+          for (const p of news.posts)
+            await addStep(job, { kind: "note", title: `Team chat — ${p.model} #${p.id}`, detail: p.text });
+          await saveState(job, i, messages);
+        }
+      }
+
       await files.upload(messages);
       if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
       const model = job.model ?? MODEL;
@@ -709,7 +750,7 @@ async function runLoop(
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-        tools: TOOLS,
+        tools: job.team ? TEAM_RUN_TOOLS : TOOLS,
         // Top-level auto-caching rolls a second breakpoint over the growing
         // conversation — so the re-sent listing photos and the aerials the
         // model has already downloaded are read from cache, not reprocessed.
@@ -822,6 +863,23 @@ async function runLoop(
             final = pr.blocking.length ? unprovenAsShortlist(answer, pr.blocking) : answer;
             if (pr.proof) final = { ...final, proof: pr.proof };
           }
+          // A team run stops only when both members name the same building at
+          // team.AGREE_AT or more; until then the answer is a vote. Once the
+          // teammate has stopped (or near the limit) the solo rules apply.
+          if (job.team && !nearLimit(i + 1) && (await team.hasLiveMate(job))) {
+            const certainty = Number((tu.input as Record<string, unknown>).certainty ?? 0);
+            const outcome = await team.vote(job, final, certainty);
+            if (outcome.kind === "waiting") {
+              await addStep(job, {
+                kind: "note",
+                title: `Vote: ${final.found ? (final.address ?? final.parcel ?? "Answer") : "no match"} · ${Math.round(certainty)}%`,
+                detail: outcome.message,
+              });
+              results.push({ type: "tool_result", tool_use_id: tu.id, content: outcome.message, is_error: true });
+              continue;
+            }
+            await addStep(job, { kind: "note", title: `Team agreed at ${team.AGREE_AT}%+`, detail: "Both members voted for this building." });
+          }
           const rankNote = job.search ? answerRank(job.search, final) : null;
           if (rankNote) await addStep(job, { kind: "note", title: "Checking order", detail: rankNote });
           await addStep(job, {
@@ -832,6 +890,23 @@ async function runLoop(
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
           await finishJob(job, { status: "done", answer: final });
           return;
+        }
+        if (job.team && tu.name === "team_post") {
+          const inp = tu.input as Record<string, unknown>;
+          const replyTo = Number(inp.reply_to) || undefined;
+          const p = await team.post(job, String(inp.message ?? ""), replyTo);
+          await addStep(job, {
+            kind: "note",
+            title: `Team chat — ${p.model} #${p.id}${replyTo ? ` (re #${replyTo})` : ""}`,
+            detail: p.text,
+          });
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: `posted as #${p.id}` });
+          continue;
+        }
+        if (job.team && tu.name === "team_read") {
+          const out = await team.readMate(job, Number((tu.input as Record<string, unknown>).steps) || 25);
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: clip(out, MAX_TOOL_TEXT) });
+          continue;
         }
         if (tu.name === "record_signature") {
           const sig = coerceSignature(tu.input as Record<string, unknown>);
