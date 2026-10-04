@@ -19,12 +19,17 @@ import {
 } from "./sandbox";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
+import { buildingAt, normalizeCommune } from "./gwr";
+import { annotateFit, factRows, fitText, listingFacts, plotAt, plotByEgrid, strongFit, type Plot } from "./proof";
 import { shortlistBuildings } from "./shortlist";
 import { renderContactSheet } from "./sheet";
 import {
+  type LedgerEntry,
   type SearchState,
   addCandidates,
   assessCommune,
+  claimedEntry,
+  openPossibles,
   coverageText,
   leavePrimaryBlocked,
   nextToView,
@@ -34,6 +39,7 @@ import {
 } from "./search";
 import {
   type Answer,
+  type AnswerProof,
   type Confidence,
   type Job,
   type Signature,
@@ -184,6 +190,19 @@ const TOOLS = [
     },
   },
   {
+    name: "inspect_candidate",
+    description:
+      "Take a CLOSE LOOK at one candidate: its fact sheet (register floors, dwellings and footprint, and its cadastral plot with the plot's area, each checked against the listing's own numbers ✓/✗), a tight 40 m north-up aerial centred on it, and its real 3D roof. Required before you reject a candidate the shortlist flags STRONG FIT, and before the candidate you submit as the answer — an exact answer must be a candidate you inspected and marked match. Pass the EGID from your checklist; a building not on it can be given by lat/lon and is added.",
+    input_schema: {
+      type: "object",
+      properties: {
+        egid: { type: "string" },
+        lat: { type: "number", description: "only for a building not on your checklist" },
+        lon: { type: "number" },
+      },
+    },
+  },
+  {
     name: "render_roofs",
     description:
       "Given your shortlist of candidate buildings (each with lat/lon), render each one's REAL roof from swissBUILDINGS3D — swisstopo's national 3D building models — as a clean two-angle oblique 3D view, and get the images back to LOOK at. Use this in the confirm step to separate near-identical row houses: compare each candidate's roof SHAPE against the roof in the listing photos — hip vs gable, ridge direction, the step down to a lower wing. Pure built structure; vegetation is irrelevant here. Pass 2–12 candidates. Covers all of Switzerland.",
@@ -208,7 +227,8 @@ const TOOLS = [
   },
   {
     name: "submit_answer",
-    description: "Call once, when you are confident, to report the final result (or found=false).",
+    description:
+      "Call once, when you are confident, to report the final result (or found=false). A street/building answer is only recorded once it is PROVEN: it is a candidate you inspected (inspect_candidate) and marked match, nothing else is marked match, every shortlisted candidate has a verdict, none is left as possible, and the listing's facts (homes, living area, plot area) do not contradict it. Otherwise it is sent back with what is missing — and near the time limit an unproven address is recorded as a ranked shortlist, not as the address.",
     input_schema: {
       type: "object",
       properties: {
@@ -284,9 +304,12 @@ Your first message carries a SEARCH PLAN: the commune confidence and the ring of
 Treat each commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
 1. Read the building's HARD structural attributes off the photos: the levels the register counts (a two-storey block + single-storey wing reads as ~3; a semi-basement "rez inférieur" + two storeys + attic is 4), the number of dwellings when the listing says it ("PPE de deux logements" = 2), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
 2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It enumerates every building in the commune and filters SAFELY so the target cannot be dropped (floors and dwellings matched ±1, footprint wide, and NO era filter). Never hand-write this filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. Two things to get right when you pass estimates: (a) footprintM2 is the MAIN building's GROUND footprint, NOT the listing's living area — a "262 m² house" over ~3 levels is only ~90–130 m² on the ground; (b) estimate floors generously — a two-storey block with a habitable attic is registered as 3. Then treat the returned list as your candidate set and do NOT re-filter it by era or exact floors — that is exactly how the right house gets discarded.
-3. Match the BUILDING FOOTPRINT, never the plot/parcel land-area. A property is usually several parcels summed (house parcel + garden parcels), so the listing's land area (e.g. 1481 m²) matches NO single parcel — but the house is ONE building footprint (~130 m²). Land-area matching is a trap; ignore it.
-4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict.
+3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer.
+4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
 5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
+
+PROOF — what the code accepts as an exact address
+An exact (street/building) answer is recorded only when: it is a candidate you inspected with inspect_candidate and marked match; no other candidate is marked match; every shortlisted candidate has a verdict and none is left "possible" (settle each one: inspect it, then reject it with the visible difference, or match); and the listing's facts do not contradict it (a single house in a 2-dwelling building, a living area the building cannot hold, a plot of a different size). Until then submit_answer sends it back with what is missing. If you cannot get there, submit found=false at block confidence with your ranked candidates and what would separate them.
 
 ANSWER HONESTLY — a shortlist beats a wrong pin
 Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
@@ -305,7 +328,7 @@ const TASK = `The images above and the text below are a property listing. Find t
 
 FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
 
-Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors + footprint + dwellings, never plot land-area), look at every candidate with view_candidates and record a verdict with mark_candidates, then confirm the survivors on the aerial by their built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when the aerial confirms it and it clearly beats the runner-up — otherwise submit your ranked shortlist honestly.`;
+Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors + footprint + dwellings — the plot area is checked for you afterwards), look at every candidate with view_candidates and record a verdict with mark_candidates, inspect every strong fit and every possible with inspect_candidate, then confirm the survivor by its built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when it meets the PROOF rules — otherwise submit your ranked shortlist honestly.`;
 
 // A content fingerprint of the exact prompt (SYSTEM + TASK) a run is governed
 // by. Stamped onto every job at start and saved to prompt.txt, so a past run's
@@ -495,6 +518,8 @@ export async function runInvestigation(
   job: Job,
   images: AgentImage[],
   listingText: string | undefined,
+  // A cross-check starts from the checklist of the search it checks.
+  seed?: Pick<SearchState, "shortlisted" | "candidates">,
 ): Promise<void> {
   // Attribute this run to the exact prompt it will use: stamp the version and
   // save the full prompt text next to the trace. This is what lets a later
@@ -505,6 +530,10 @@ export async function runInvestigation(
   // Where to look: commune confidence + neighbour ring, decided in code from the
   // listing before the model starts, and handed to it as the SEARCH PLAN.
   const search = await assessCommune(job.input.municipality, listingText);
+  if (seed) {
+    search.shortlisted = [...seed.shortlisted];
+    search.candidates = structuredClone(seed.candidates);
+  }
   await saveSearch(job, search);
   const plan = searchPlanText(search);
   await addStep(job, { kind: "note", title: `Search plan: commune confidence ${search.confidence}`, detail: plan });
@@ -703,13 +732,34 @@ async function runLoop(
             results.push({ type: "tool_result", tool_use_id: tu.id, content: gate, is_error: true });
             continue;
           }
+          // An exact address is recorded only once it is proven (proveAnswer).
+          // Unproven, it goes back with what is missing (up to 3 times); near
+          // the limit, or after that, it is recorded as a ranked shortlist.
+          let final = answer;
+          if (answer.found && EXACT.has(answer.confidence)) {
+            const search = searchOf(job);
+            const pr = await proveAnswer(job, answer);
+            const asks = [...pr.blocking, ...((search.foundGates ?? 0) === 0 ? pr.soft : [])];
+            if (asks.length && !nearLimit(i + 1) && (search.foundGates ?? 0) < 3) {
+              search.foundGates = (search.foundGates ?? 0) + 1;
+              await saveSearch(job, search);
+              const msg =
+                `Not recorded — this address is not proven yet:\n${asks.map((x) => `- ${x}`).join("\n")}\n` +
+                `Do that and submit again, or submit found=false at block confidence with your ranked candidates.`;
+              await addStep(job, { kind: "note", title: "Not proven yet — answer sent back", detail: msg });
+              results.push({ type: "tool_result", tool_use_id: tu.id, content: msg, is_error: true });
+              continue;
+            }
+            final = pr.blocking.length ? unprovenAsShortlist(answer, pr.blocking) : answer;
+            if (pr.proof) final = { ...final, proof: pr.proof };
+          }
           await addStep(job, {
             kind: "answer",
-            title: answer.address ?? answer.parcel ?? (answer.found ? "Answer" : "No confident match"),
-            detail: answer.reasoning,
+            title: final.found ? (final.address ?? final.parcel ?? "Answer") : "No proven match",
+            detail: final.reasoning,
           });
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
-          await finishJob(job, { status: "done", answer });
+          await finishJob(job, { status: "done", answer: final });
           return;
         }
         if (tu.name === "record_signature") {
@@ -915,20 +965,27 @@ export async function dispatchTool(
         await addStep(job, { kind: "note", title: `shortlist_buildings(${r.commune}) refused`, detail: blocked });
         return `refused: ${blocked}`;
       }
-      const added = r.supported ? addCandidates(search, r.commune, r.candidates) : 0;
+      const facts = listingFacts(job.input.listingText);
+      const cands = r.supported ? await annotateFit(facts, r.candidates) : [];
+      const added = r.supported ? addCandidates(search, r.commune, cands) : 0;
       await saveSearch(job, search);
       await addStep(job, {
         kind: "bash",
         title: `shortlist_buildings(${r.commune})`,
         detail: `${r.enumerated} enumerated → ${r.residential} residential → ${r.survivors} survivors; returned ${r.candidates.length} (${added} new on the checklist)`,
       });
-      const lines = r.candidates.map(
+      const strong = cands.filter((c) => c.strongFit).length;
+      const lines = cands.map(
         (c) =>
           `${c.egid} | ${c.address ?? "?"} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
-          `${c.attached == null ? "" : c.attached ? " | attached" : " | detached"} | ${c.lat.toFixed(6)},${c.lon.toFixed(6)}`,
+          `${c.attached == null ? "" : c.attached ? " | attached" : " | detached"} | ${c.lat.toFixed(6)},${c.lon.toFixed(6)}` +
+          (c.strongFit ? ` | STRONG FIT: ${c.fit}` : ""),
       );
+      const strongNote = strong
+        ? `\n\n${strong} candidate(s) are STRONG FIT: every fact the register holds fits the listing's own numbers. Reject one only after inspect_candidate.`
+        : "";
       return clip(
-        `${r.note}\n\nChecklist coverage: ${coverageText(search)}.\n\negid | address | floors | dwellings | footprint | lat,lon\n${lines.join("\n")}`,
+        `${r.note}${strongNote}\n\nChecklist coverage: ${coverageText(search)}.\n\negid | address | floors | dwellings | footprint | lat,lon | fit\n${lines.join("\n")}`,
         MAX_TOOL_TEXT,
       );
     } catch (err) {
@@ -972,7 +1029,8 @@ export async function dispatchTool(
       const legend = list
         .map(
           (c, k) =>
-            `${k + 1}: ${c.egid} | ${c.address ?? "?"}, ${c.commune} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²`,
+            `${k + 1}: ${c.egid} | ${c.address ?? "?"}, ${c.commune} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
+            (c.strongFit ? ` | STRONG FIT (${c.fit}) — inspect before rejecting` : ""),
         )
         .join("\n");
       await addStep(job, {
@@ -1010,6 +1068,8 @@ export async function dispatchTool(
       ` Coverage: ${coverageText(search)}.`
     );
   }
+
+  if (name === "inspect_candidate") return inspectCandidate(job, input);
 
   if (name === "render_roofs") {
     const raw = Array.isArray(input.candidates) ? input.candidates : [];
@@ -1051,6 +1111,188 @@ export async function dispatchTool(
   return `Unknown tool: ${name}`;
 }
 
+// Why a verdict is refused, or null. A rejection has to name what was seen
+// ("no" and "small" threw out the right house in Zermatt), and a strong fit
+// can only be rejected after a close look, never from a 90 m contact sheet.
+export function rejectionProblem(
+  c: Pick<LedgerEntry, "strongFit" | "closeLook">,
+  verdict: string,
+  reason: string,
+): string | null {
+  if (verdict !== "rejected") return null;
+  const words = reason.trim().split(/\s+/).filter((w) => /[a-z0-9]/i.test(w));
+  if (words.length < 3) return `"${reason.trim() || "no reason"}" is not a reason — name what you saw that rules it out`;
+  if (c.strongFit && !c.closeLook) return "STRONG FIT: every register fact fits the listing — inspect_candidate it before rejecting";
+  return null;
+}
+
+// inspect_candidate: the fact sheet, a tight aerial and the roof of one house.
+async function inspectCandidate(
+  job: Job,
+  input: Record<string, unknown>,
+): Promise<Anthropic.Messages.ToolResultBlockParam["content"]> {
+  const search = searchOf(job);
+  let c = input.egid != null ? search.candidates[String(input.egid).trim()] : undefined;
+  if (!c && typeof input.lat === "number" && typeof input.lon === "number") {
+    c = (await addFromRegister(search, input.lat, input.lon)) ?? undefined;
+  }
+  if (!c) return `error: ${input.egid ?? "that point"} is not on your checklist and no register building of a shortlisted commune was found there — pass an EGID from your checklist, or lat/lon on the building (shortlist its commune first if it is in another one).`;
+  const facts = listingFacts(job.input.listingText);
+  const plot = c.plot ?? (await plotAt(c.lat, c.lon)) ?? undefined;
+  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plot ? [plot] : [] });
+  Object.assign(c, { plot, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
+  await saveSearch(job, search);
+  const sheetNo = String(job.steps.filter((st) => st.title.startsWith("close look")).length + 1).padStart(2, "0");
+  const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [];
+  const sheet = text(
+    [
+      `Close look at ${c.egid} | ${c.address ?? "?"}, ${c.commune} (verdict so far: ${c.verdict}).`,
+      `Register: floors ${c.floors ?? "?"}, dwellings ${c.dwellings ?? "?"}, footprint ${c.footprintM2 ?? "?"} m².`,
+      `Plot: ${plot ? `${plot.number}${plot.egrid ? ` (${plot.egrid})` : ""}, ${plot.areaM2} m²` : "not found"}.`,
+      rows.length
+        ? `Against the listing:\n${rows.map((r) => `- ${r.fact}: listing ${r.listing}, building ${r.building} → ${r.verdict}`).join("\n")}`
+        : "The listing states no homes / living area / land area to check against.",
+      `Below: a 40 m north-up aerial (red cross = register point) and the real 3D roof. Compare them with the photos, then record your verdict with mark_candidates — a rejection names the difference you see.`,
+    ].join("\n"),
+  );
+  blocks.push(sheet);
+  try {
+    const aerial = await renderContactSheet(job.runDir, `close_${sheetNo}.png`, [{ label: "", lat: c.lat, lon: c.lon }], {
+      spanM: 40,
+      tile: 640,
+      cols: 1,
+    });
+    await addStep(job, {
+      kind: "read",
+      title: `close look ${sheetNo}: ${c.address ?? c.egid}`,
+      detail: rows.map((r) => `${r.fact}: ${r.listing} vs ${r.building} → ${r.verdict}`).join("\n"),
+      image: `/runs/${job.id}/${aerial.relPath}`,
+    });
+    blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: aerial.png.toString("base64") } });
+  } catch (err) {
+    blocks.push(text(`(aerial failed: ${err instanceof Error ? err.message : String(err)})`));
+  }
+  try {
+    const [roof] = await renderCandidateRoofs(job.runDir, [{ label: `roof_${c.egid}`, lat: c.lat, lon: c.lon }]);
+    if (roof?.relPath) {
+      blocks.push(text(`Real roof (${roof.faces} faces):`));
+      blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: await readRoofPng(job.runDir, roof.relPath) } });
+    } else if (roof) blocks.push(text(`Roof: ${roof.note}`));
+  } catch (err) {
+    blocks.push(text(`(roof render failed: ${err instanceof Error ? err.message : String(err)})`));
+  }
+  return blocks;
+}
+
+const text = (t: string): Anthropic.Messages.TextBlockParam => ({ type: "text", text: t });
+
+// Put the register building at a point on the checklist (an answer or a close
+// look outside the shortlist). Only into a commune already being searched.
+async function addFromRegister(search: SearchState, lat: number, lon: number): Promise<LedgerEntry | null> {
+  const b = await buildingAt(lat, lon).catch(() => null);
+  if (!b) return null;
+  const commune = search.shortlisted.find((x) => normalizeCommune(x) === normalizeCommune(b.commune));
+  if (!commune) return null;
+  const key = String(Number(b.egid));
+  if (!search.candidates[key]) {
+    addCandidates(search, commune, [
+      { egid: Number(b.egid), lat: b.lat, lon: b.lon, floors: b.floors, footprintM2: b.footprintM2, dwellings: b.dwellings, address: b.address },
+    ]);
+  }
+  return search.candidates[key];
+}
+
+const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"]);
+
+export interface ProofResult {
+  proof: AnswerProof | null;
+  blocking: string[]; // must be fixed before the address is recorded
+  soft: string[]; // mismatches to explain or reconsider (sent back once)
+}
+
+// Is this exact answer proven? See the PROOF section of the prompt.
+export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
+  const search = searchOf(job);
+  const blocking: string[] = [], soft: string[] = [];
+  if (!search.shortlisted.length) {
+    blocking.push("Nothing is shortlisted: shortlist the commune, view every candidate and give each a verdict.");
+    return { proof: null, blocking, soft };
+  }
+  const claim =
+    claimedEntry(search, { lat: a.latitude, lon: a.longitude, address: a.address }) ??
+    (a.latitude != null && a.longitude != null ? await addFromRegister(search, a.latitude, a.longitude) : null);
+  if (!claim) {
+    blocking.push("Your answer is not a building on the checklist: give its exact pin (latitude/longitude on the building), shortlist its commune if it is not shortlisted yet, and inspect it with inspect_candidate.");
+  } else {
+    if (!claim.closeLook) blocking.push(`Inspect your answer first: inspect_candidate ${claim.egid} (${claim.address ?? "?"}).`);
+    if (claim.verdict !== "match") blocking.push(`Mark ${claim.egid} (${claim.address ?? "?"}) as match once the close look confirms it.`);
+  }
+  const all = Object.values(search.candidates);
+  const others = all.filter((c) => c !== claim && c.verdict === "match");
+  if (others.length) {
+    blocking.push(
+      `Other candidates are also marked match: ${others.slice(0, 6).map((c) => `${c.egid} ${c.address ?? ""}`).join(", ")}. Reject them with the visible difference, or submit a ranked shortlist at block confidence.`,
+    );
+  }
+  const open = unchecked(search).length;
+  if (open) blocking.push(`${open} shortlisted candidates have no verdict yet (${coverageText(search)}): view and mark them.`);
+  const poss = openPossibles(search).filter((c) => c !== claim);
+  if (poss.length) {
+    blocking.push(
+      `${poss.length} candidates are still "possible" (${poss.slice(0, 8).map((c) => `${c.egid} ${c.address ?? ""}`).join(", ")}${poss.length > 8 ? ", …" : ""}): inspect each and settle it — rejected with the difference you see, or match.`,
+    );
+  }
+  if (!claim) return { proof: null, blocking, soft };
+
+  const plots = await plotsOf(a, claim);
+  const rows = factRows(listingFacts(job.input.listingText), {
+    floors: claim.floors,
+    dwellings: claim.dwellings,
+    footprintM2: claim.footprintM2,
+    plots,
+  });
+  for (const r of rows.filter((x) => x.verdict === "mismatch")) {
+    const line = `${r.fact} does not fit: the listing says ${r.listing}, the building has ${r.building}.`;
+    if (r.hard) blocking.push(`${line} If the property covers several plots, list every one in parcels[]; otherwise this is not the house.`);
+    else soft.push(`${line} Check it against the photos and reconsider; if you still hold it is the house, submit again and say why in the reasoning.`);
+  }
+  return {
+    proof: {
+      egid: claim.egid,
+      facts: rows.map(({ fact, listing, building, verdict }) => ({ fact, listing, building, verdict })),
+      ruledOut: all.filter((c) => c.verdict === "rejected").length,
+      total: all.length,
+    },
+    blocking,
+    soft,
+  };
+}
+
+// The plots an answer covers: the ones it names (by EGRID), else the one under its building.
+async function plotsOf(a: Answer, claim: LedgerEntry): Promise<Plot[]> {
+  const named = (await Promise.all(a.parcels.filter((p) => p.egrid).map((p) => plotByEgrid(p.egrid!)))).filter(
+    (p): p is Plot => !!p,
+  );
+  if (named.length) return named;
+  const own = claim.plot ?? (await plotAt(claim.lat, claim.lon));
+  return own ? [own] : [];
+}
+
+// An address that could not be proven is kept, as the top of a ranked
+// shortlist, but not reported as the address.
+export function unprovenAsShortlist(a: Answer, problems: string[]): Answer {
+  return {
+    ...a,
+    found: false,
+    confidence: "block",
+    candidates: [
+      { address: a.address, parcel: a.parcel, note: "Best candidate, not proven: " + problems.join(" ") },
+      ...a.candidates,
+    ],
+    reasoning: `Not reported as the address because it is not proven: ${problems.join(" ")}\n\n${a.reasoning}`,
+  };
+}
+
 // Apply verdicts to the checklist. A rejection needs the candidate to have been
 // on a contact sheet — the checklist must mean "looked at", not "dismissed".
 async function recordMarks(
@@ -1068,8 +1310,13 @@ async function recordMarks(
       refused.push(`${egid || "?"} (not on the checklist or bad verdict)`);
       continue;
     }
-    if (verdict === "rejected" && !c.viewed) {
+    if (verdict === "rejected" && !c.viewed && !c.closeLook) {
       refused.push(`${egid} (never viewed — view_candidates first)`);
+      continue;
+    }
+    const why = rejectionProblem(c, verdict, String(o.reason ?? ""));
+    if (why) {
+      refused.push(`${egid} (${why})`);
       continue;
     }
     c.verdict = verdict as "rejected" | "possible" | "match";

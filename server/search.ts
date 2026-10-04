@@ -36,6 +36,12 @@ export interface LedgerEntry {
   viewed: boolean; // shown on a view_candidates contact sheet
   verdict: Verdict;
   reason?: string;
+  // The candidate's register facts all fit the listing (proof.ts strongFit):
+  // it may only be rejected after a close look, never from a contact sheet.
+  strongFit?: boolean;
+  fit?: string; // the fit line shown to the model
+  plot?: { number: string; egrid: string | null; areaM2: number };
+  closeLook?: boolean; // looked at on its own with inspect_candidate
 }
 
 export interface SearchState {
@@ -47,6 +53,7 @@ export interface SearchState {
   shortlisted: string[]; // communes already shortlisted (official names)
   candidates: Record<string, LedgerEntry>; // by EGID; `order` keeps the shortlist ranking
   submitGated?: boolean; // a premature found=false was turned back once
+  foundGates?: number; // times an unproven exact answer was turned back
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +196,9 @@ export function addCandidates(
     footprintM2: number | null;
     dwellings?: number | null;
     address?: string | null;
+    strongFit?: boolean;
+    fit?: string;
+    plot?: LedgerEntry["plot"];
   }[],
 ): number {
   if (!s.shortlisted.includes(commune)) s.shortlisted.push(commune);
@@ -196,7 +206,12 @@ export function addCandidates(
   let order = Object.keys(s.candidates).length;
   for (const c of cands) {
     const key = String(c.egid);
-    if (s.candidates[key]) continue;
+    const known = s.candidates[key];
+    if (known) {
+      // Re-shortlisted: keep the verdict, refresh what the facts say.
+      if (c.fit !== undefined) Object.assign(known, { strongFit: c.strongFit, fit: c.fit, plot: c.plot ?? known.plot });
+      continue;
+    }
     s.candidates[key] = {
       egid: key,
       order: order++,
@@ -209,6 +224,7 @@ export function addCandidates(
       footprintM2: c.footprintM2,
       viewed: false,
       verdict: "unchecked",
+      ...(c.fit !== undefined ? { strongFit: c.strongFit, fit: c.fit, plot: c.plot } : {}),
     };
     added++;
   }
@@ -268,4 +284,40 @@ export function leavePrimaryBlocked(s: SearchState, requested: string): string |
     return `Commune confidence is HIGH for ${s.primary} and ${left.length} of its candidates have no verdict yet. View them (view_candidates) and record a verdict (mark_candidates) before shortlisting ${requested}. If ${s.primary}'s shortlist itself looks wrong, re-shortlist ${s.primary} with wider estimates instead.`;
   }
   return null;
+}
+
+// Candidates still left as "possible": an exact answer has to settle them.
+export function openPossibles(s: SearchState): LedgerEntry[] {
+  return Object.values(s.candidates)
+    .filter((c) => c.verdict === "possible")
+    .sort((a, b) => a.order - b.order);
+}
+
+// The checklist entry an answer points at: the closest candidate within 25 m of
+// its pin, else the one with its address.
+export function claimedEntry(
+  s: SearchState,
+  at: { lat: number | null; lon: number | null; address: string | null },
+): LedgerEntry | null {
+  const all = Object.values(s.candidates);
+  if (at.lat != null && at.lon != null) {
+    let best: LedgerEntry | null = null, bestD = 25;
+    for (const c of all) {
+      const d = Math.hypot((c.lon - at.lon) * 111_320 * Math.cos((c.lat * Math.PI) / 180), (c.lat - at.lat) * 111_320);
+      if (d <= bestD) [best, bestD] = [c, d];
+    }
+    if (best) return best;
+  }
+  const want = at.address ? addressKey(at.address) : "";
+  return (want && all.find((c) => c.address && addressKey(c.address) === want)) || null;
+}
+
+// "Gryfelblatte 58, 3920 Zermatt" → "gryfelblatte 58".
+function addressKey(a: string): string {
+  return (a.split(",")[0] ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }

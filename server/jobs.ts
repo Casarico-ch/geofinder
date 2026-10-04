@@ -53,6 +53,16 @@ export interface Answer {
   reasoning: string;
   candidates: AnswerCandidate[];
   links: string[];
+  // Why an exact answer counts as proven (proof.ts): the listing's facts
+  // against the building's, and how much of the checklist was ruled out.
+  proof?: AnswerProof;
+}
+
+export interface AnswerProof {
+  egid: string | null;
+  facts: { fact: string; listing: string; building: string; verdict: "match" | "mismatch" | "unknown" }[];
+  ruledOut: number; // candidates rejected with a reason
+  total: number; // candidates on the checklist
 }
 
 // One documented moment in the investigation. `reasoning` carries the model's
