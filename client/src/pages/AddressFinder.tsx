@@ -526,7 +526,7 @@ export default function AddressFinder() {
   const [models, setModels] = useState<ModelId[]>(["claude-opus-5-5"]);
   // Team run (experiment): Sonnet 5.5 and Opus 5.5 search side by side, share a
   // chat, and stop only when both name the same building at 95 % or more.
-  const [teamRun, setTeamRun] = useState(false);
+  const [teamRun, setTeamRun] = useState(true);
   const toggleModel = useCallback((m: ModelId) => {
     setModels((cur) =>
       cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
@@ -726,9 +726,12 @@ export default function AddressFinder() {
       // 1) Create one job per selected model on tiny metadata requests — each
       //    returns in milliseconds.
       const team = teamRun ? `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` : undefined;
-      const runModels: ModelId[] = teamRun ? ["claude-sonnet-5-5", "claude-opus-5-5"] : models;
+      const runs: { model: ModelId; team?: string }[] = [
+        ...models.map((model) => ({ model })),
+        ...(team ? (["claude-sonnet-5-5", "claude-opus-5-5"] as const).map((model) => ({ model, team })) : []),
+      ];
       const jobIds = await Promise.all(
-        runModels.map(async (model) => {
+        runs.map(async ({ model, team }) => {
           const res = await fetch("/api/geo/investigate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1059,7 +1062,7 @@ export default function AddressFinder() {
                   <Label htmlFor="team-run" className="text-sm font-normal leading-snug cursor-pointer">
                     <span className="font-medium">Team run (experiment)</span>
                     <span className="block text-muted-foreground">
-                      Sonnet 5.5 + Opus 5.5 search side by side, share a chat, and stop only when both agree on the same building at 95%+. Replaces the model choice above.
+                      Also runs Sonnet 5.5 + Opus 5.5 as a team, next to the models above: they share a chat and stop only when both agree on the same building at 95%+.
                     </span>
                   </Label>
                 </div>
@@ -1070,10 +1073,8 @@ export default function AddressFinder() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Starting…
                     </>
-                  ) : teamRun ? (
-                    "Find address · Sonnet + Opus team"
-                  ) : models.length > 1 ? (
-                    `Find address · ${models.length} models`
+                  ) : models.length > 1 || teamRun ? (
+                    `Find address · ${models.length} model${models.length > 1 ? "s" : ""}${teamRun ? " + team" : ""}`
                   ) : (
                     "Find address"
                   )}

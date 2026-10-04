@@ -100,6 +100,7 @@ interface ModelResult {
   } | null;
   aiCostUsd: number;
   check?: boolean; // a cross-check of another model's answer
+  team?: string; // a member of a team run: Sonnet + Opus searching together until they agree
   tokens?: number;
   startedAt?: string;
 }
@@ -397,6 +398,11 @@ function ModelColumn({ r }: { r: ModelResult }) {
             Cross-check
           </Badge>
         )}
+        {r.team && (
+          <Badge variant="outline" className="font-normal" title="Searches together with its teammate; stops when both agree at 95%+">
+            Team
+          </Badge>
+        )}
         <span className="text-xs text-muted-foreground tabular-nums">${r.aiCostUsd.toFixed(2)}</span>
         {r.startedAt && <span className="text-xs text-muted-foreground tabular-nums">{fmtDate(r.startedAt)}</span>}
         <div className="flex-1" />
@@ -592,10 +598,12 @@ function attemptsOf(r: PlatformRequest): Attempt[] {
 function modelsOf(r: PlatformRequest): string {
   const all = r.results ?? [];
   const searches = all.filter((m) => !m.check);
-  const names = Array.from(new Set((searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  const solo = searches.filter((m) => !m.team);
+  const names = Array.from(new Set((solo.length ? solo : searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
   const runs = attemptsOf(r).length;
   return (
     names.join(" + ") +
+    (solo.length && searches.some((m) => m.team) ? " + team" : "") +
     (runs > 1 ? ` · Run ${runs} of ${runs}` : "") +
     (all.some((m) => m.check) ? " · cross-checked" : "")
   );

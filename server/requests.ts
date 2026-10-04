@@ -27,6 +27,7 @@ export interface ModelResult {
   tokens?: number; // total tokens of the run, filled in when listing
   startedAt?: string; // when the run was created, filled in when listing
   check?: boolean; // a cross-check of another model's answer, not a search of its own
+  team?: string; // a member of a team run (team.ts): two models that search together
 }
 
 export interface PlatformRequest {
@@ -151,6 +152,7 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
     status: j.status,
     answer: j.answer,
     aiCostUsd: costUsd(j.tokens, j.model),
+    ...(j.team ? { team: j.team } : {}),
   }));
   await saveRequest(req);
   watchListingRequest(req);
@@ -221,6 +223,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       tokens: j.tokens.total,
       startedAt: j.createdAt,
       check: isCheckText(j.input.listingText),
+      ...(j.team ? { team: j.team } : {}),
     }));
     // The row shows the listing as searched, not a cross-check's extra task.
     const first = g.find((j) => !isCheckText(j.input.listingText)) ?? g[0];
@@ -258,6 +261,7 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
             tokens: j.tokens.total,
             startedAt: j.createdAt,
             check: isCheckText(j.input.listingText),
+            ...(j.team ? { team: j.team } : {}),
           }
         : m;
     });
