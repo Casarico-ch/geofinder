@@ -13,7 +13,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
-import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
+import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type Effort, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import {
   PROFILE_COST_CHF,
@@ -51,11 +51,23 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-sonne
 const SONNET: ModelId = "claude-sonnet-5-5";
 const OPUS: ModelId = "claude-opus-5-5";
 const HAIKU: ModelId = "claude-haiku-4-5";
+const FABLE: ModelId = "claude-fable-5-1";
+// Solo variants next to the listing models: other Claude models or depths.
+// GEOFINDER_VARIANTS picks which (comma list of the names; "none" for none).
+const VARIANTS: Record<string, { model: ModelId; effort?: Effort }> = {
+  fable: { model: FABLE }, // Fable 5.1, Anthropic's most capable model (~2.5x Opus)
+  "opus-max": { model: OPUS, effort: "max" }, // Opus 5.5 thinking as long as it needs
+};
+const VARIANTS_ON: string[] = (process.env.GEOFINDER_VARIANTS ?? Object.keys(VARIANTS).join(","))
+  .split(",")
+  .map((v) => v.trim())
+  .filter((v) => v in VARIANTS);
 const TEAMS: Record<string, ModelId[]> = {
   mixed: [SONNET, OPUS],
   haiku: [HAIKU, HAIKU, HAIKU, HAIKU, HAIKU],
   sonnet: [SONNET, SONNET, SONNET],
   opus: [OPUS, OPUS, OPUS],
+  "fable-opus": [FABLE, OPUS],
 };
 const TEAMS_ON: string[] =
   process.env.GEOFINDER_TEAM === "0"
@@ -200,16 +212,31 @@ export async function startListingRequest(
   });
   record.source = source;
   record.results = [];
-  const runs = [
-    ...models.map((model) => ({ model, team: undefined as string | undefined })),
+  type Run = { model: ModelId; team?: string; effort?: Effort; variant?: string };
+  // A re-run lists the variants' models among its models (Fable); they run once,
+  // as the variant, so they stay out of the cross-checks like the first time.
+  const variants = VARIANTS_ON.map((variant) => ({ ...VARIANTS[variant], variant }));
+  const plain = models.filter((m) => !variants.some((v) => !v.effort && v.model === m));
+  const runs: Run[] = [
+    ...(plain.length ? plain : models).map((model) => ({ model })),
+    ...variants.filter((v) => v.effort || plain.length),
     ...TEAMS_ON.flatMap((name) => {
       const team = `t${name}${randomUUID().replace(/-/g, "").slice(0, 10)}`;
       return TEAMS[name].map((model) => ({ model, team }));
     }),
   ];
-  for (const { model, team } of runs) {
-    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model, team);
-    record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, ...(team ? { team } : {}) });
+  for (const { model, team, effort, variant } of runs) {
+    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model, team, effort);
+    record.results.push({
+      model,
+      jobId: job.id,
+      status: "running",
+      answer: null,
+      aiCostUsd: 0,
+      ...(team ? { team } : {}),
+      ...(effort ? { effort } : {}),
+      ...(variant ? { variant } : {}),
+    });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
       await runInvestigation(job, images, listingText);
@@ -299,7 +326,8 @@ async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
   if (req.kind !== "listing" || results.some((m) => m.check)) return false;
   // A team already settled its own split; checks are planned between the solo searches.
-  const searches = results.filter((m) => m.status === "done" && !m.team);
+  // Variants are compared, not cross-checked, so they add no checks of their own.
+  const searches = results.filter((m) => m.status === "done" && !m.team && !m.variant);
   if (searches.length === 0) return false;
   const checks: (Check & { fromJob?: string })[] = planChecks(searches).map((c) => ({
     ...c,

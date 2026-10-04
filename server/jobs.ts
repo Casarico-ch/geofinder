@@ -152,6 +152,7 @@ export interface Job {
   updatedAt: string;
   model: KnownModel; // which Claude model runs this investigation
   team?: string; // a team run: the room it shares with its teammate (team.ts)
+  effort?: Effort; // thinking depth for this run, when it differs from the default (a variant)
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
   // Where to look (commune confidence + neighbour ring) and the candidate ledger:
@@ -218,7 +219,15 @@ export function getJob(id: string): Job | undefined {
   return jobs.get(id);
 }
 
-export async function createJob(input: Job["input"], model: ModelId = DEFAULT_MODEL, team?: string): Promise<Job> {
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+export async function createJob(
+  input: Job["input"],
+  model: ModelId = DEFAULT_MODEL,
+  team?: string,
+  effort?: Effort,
+): Promise<Job> {
   const id = cryptoRandomId();
   const runDir = await ensureRunDir(id);
   const job: Job = {
@@ -228,6 +237,7 @@ export async function createJob(input: Job["input"], model: ModelId = DEFAULT_MO
     updatedAt: nowIso(),
     model,
     ...(team ? { team } : {}),
+    ...(effort ? { effort } : {}),
     input,
     steps: [],
     answer: null,
