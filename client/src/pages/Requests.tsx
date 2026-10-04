@@ -486,10 +486,16 @@ function bestOf(results: ModelResult[]): ModelResult | undefined {
   return done.filter((m) => !m.check).sort((a, b) => rankOf(a) - rankOf(b))[0];
 }
 
-// One exact place, however a model wrote it ("Rue A 3, 1233 Bernex" = "rue a 3").
+// One exact place, however a model wrote it: "Chemin de la Croix 4 / 4a, 1233
+// Bernex" and "Chemin de la Croix 4 (and 4a)" are both "chemin de la croix 4".
 function placeKey(m: ModelResult): string | null {
   if (!m.answer?.found || rankOf(m) > 0) return null;
-  return foundLabel(m.answer).split(",")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const fold = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const street = fold((m.answer.address ?? "").split(",")[0]);
+  const at = street.match(/^(.*?[a-z].*?)\s+(\d{1,4}[a-z]?)\b/);
+  if (at) return `${at[1].replace(/[^a-z0-9]+/g, " ").trim()} ${at[2]}`;
+  const plots = (m.answer.parcels ?? []).map((p) => fold(`${p.commune} ${p.plot}`)).sort();
+  return plots.length ? plots.join("+") : fold(foundLabel(m.answer)).replace(/\s+/g, " ").trim();
 }
 
 // What one attempt's room settled on. A single model finding an address is not

@@ -81,6 +81,10 @@ const STREET_WORDS: Array<[RegExp, string]> = [
 /** The street name alone, folded: "Ch. des Roses 4" → "chemin des roses". */
 export function streetOf(address: string): string {
   let s = fold(address.split(",")[0] ?? "").replace(/ß/g, "ss");
+  // The street is what comes before the house number: "Chemin de la Croix
+  // 4 (and 4a)" and "… 4 / 4a" are one street. "12 rue X" puts it after.
+  const at = s.search(/(?:^|\s)\d{1,4}\s?[a-z]?(?=$|[\s\-/(])/);
+  if (at > 0 && /[a-z]/.test(s.slice(0, at))) s = s.slice(0, at);
   s = s.replace(/\d{1,4}\s?[a-z]?(?=$|[\s\-/])/g, " ");
   for (const [re, to] of STREET_WORDS) s = s.replace(re, to);
   return s.replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
