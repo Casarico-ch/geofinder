@@ -8,7 +8,7 @@
 //                      or { plots: [ ...2-10 of those ] } → each plot + the plots combined (CHF 3.80 per plot)
 // The admin website reads the same records through /api/requests.
 // =============================================================================
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
@@ -45,6 +45,10 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-sonne
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+// Next to them, every listing request also runs a team (team.ts): Sonnet and
+// Opus searching together until they agree. GEOFINDER_TEAM=0 turns it off.
+const TEAM_MODELS: ModelId[] = ["claude-sonnet-5-5", "claude-opus-5-5"];
+const TEAM_ON = process.env.GEOFINDER_TEAM !== "0";
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
@@ -148,6 +152,7 @@ function publicView(r: PlatformRequest) {
             status: m.status,
             answer: m.answer,
             ...(m.check ? { check: true } : {}),
+            ...(m.team ? { team: true } : {}),
           })),
         }),
     popetyCostChf: r.popetyCostChf,
@@ -180,9 +185,14 @@ export async function startListingRequest(
   });
   record.source = source;
   record.results = [];
-  for (const model of models) {
-    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model);
-    record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
+  const team = TEAM_ON ? `t${randomUUID().replace(/-/g, "").slice(0, 12)}` : undefined;
+  const runs = [
+    ...models.map((model) => ({ model, team: undefined as string | undefined })),
+    ...(team ? TEAM_MODELS.map((model) => ({ model, team })) : []),
+  ];
+  for (const { model, team } of runs) {
+    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model, team);
+    record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, ...(team ? { team } : {}) });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
       await runInvestigation(job, images, listingText);
@@ -271,7 +281,9 @@ const CHECKS_ACROSS_RUNS = 2;
 async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
   if (req.kind !== "listing" || results.some((m) => m.check)) return false;
-  const searches = results.filter((m) => m.status === "done");
+  // A team already settled its own split; checks are planned between the solo searches.
+  const searches = results.filter((m) => m.status === "done" && !m.team);
+  if (searches.length === 0) return false;
   const checks: (Check & { fromJob?: string })[] = planChecks(searches).map((c) => ({
     ...c,
     fromJob: searches.find((m) => m.model === c.candidateFrom)?.jobId,
@@ -448,7 +460,7 @@ export function registerPlatformRoutes(app: Express) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
       return;
     }
-    const searches = jobs.filter((j) => !isCheckText(j.input.listingText));
+    const searches = jobs.filter((j) => !isCheckText(j.input.listingText) && !j.team);
     const src = (searches.length ? searches : jobs).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     const images = await loadListingPhotos(src.runDir);
     if (images.length === 0) {
