@@ -16,7 +16,16 @@
 // federal building register (gwr.ts) — no footprint geometry there, so
 // `attached` is unknown, but floors/dwellings/footprint follow the same rules.
 // =============================================================================
-import { fetchCommuneBuildings, resolveCommune, type Commune } from "./gwr";
+import { fetchCommuneBuildings, resolveCommune, type Commune, type GwrBuilding } from "./gwr";
+import {
+  cluesText,
+  hasClues,
+  locationRank,
+  resolveLandmarks,
+  scoreLocations,
+  type LocationClues,
+  type LocationScore,
+} from "./locate";
 
 interface RawBuilding {
   egid: number;
@@ -36,6 +45,7 @@ export interface Candidate {
   attached: boolean | null; // null: unknown (the register has no footprint geometry)
   dwellings?: number | null;
   address?: string | null;
+  loc?: LocationScore; // how well its surroundings fit the photos' location clues
 }
 export interface ShortlistResult {
   commune: string;
@@ -133,6 +143,9 @@ export interface ShortlistOptions {
   near?: { lat: number; lon: number };
   // EGIDs already on the run's checklist; only consulted past the cap.
   known?: ReadonlySet<string>;
+  // The photos' location clues (record_signature): survivors whose slope and
+  // landmarks fit come first. Ordering only; `near`, when given, wins.
+  location?: LocationClues;
 }
 
 // Floors and dwellings are matched as a ±1 RANGE (unknown passes); the
@@ -144,6 +157,15 @@ function inRange(v: number | null, est: number | undefined, lo: number, hi: numb
 function inBand(v: number | null, est: number | undefined): boolean {
   if (v == null || typeof est !== "number" || est <= 0) return true;
   return v >= est * 0.55 && v <= est * 1.7;
+}
+
+// Closeness of a footprint to the estimate, for ranking. An unknown footprint
+// ranks last: the old comparator returned 0 for it ("equal to everything"),
+// which is not a consistent order, and the sort scattered the list — Zermatt's
+// house, 3rd by footprint, came out 196th of 307, outside the first batch.
+export function footprintKey(v: number | null, est: number | undefined): number {
+  if (typeof est !== "number" || est <= 0) return 0;
+  return v == null ? 1e9 : Math.abs(v - est);
 }
 
 // The survivors one call returns. Within the cap: all of them, in rank order,
@@ -207,10 +229,10 @@ async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promis
     .filter((b) => inBand(b.footprintM2, opts.footprintM2))
     .sort((x, y) => {
       if (opts.near) return metresBetween(x, opts.near) - metresBetween(y, opts.near);
-      if (opts.footprintM2 == null || x.footprintM2 == null || y.footprintM2 == null) return 0;
-      return Math.abs(x.footprintM2 - opts.footprintM2) - Math.abs(y.footprintM2 - opts.footprintM2);
+      return footprintKey(x.footprintM2, opts.footprintM2) - footprintKey(y.footprintM2, opts.footprintM2);
     });
-  const { page: top, again, unseenLeft } = pickPage(survivors, max, (b) => String(Number(b.egid)), opts.known);
+  const located = await orderByLocation(survivors, (b) => b, opts, all);
+  const { page: top, again, unseenLeft } = pickPage(located.ranked, max, (b) => String(Number(b.egid)), opts.known);
   return {
     commune: c.name,
     bfs: c.bfs,
@@ -228,10 +250,12 @@ async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promis
       attached: null,
       dwellings: b.dwellings,
       address: b.address,
+      loc: located.scores.get(b),
     })),
     note:
       `${c.name}: enumerated ${all.length} buildings from the federal register, ${residential.length} residential, ${survivors.length} passed the recall-first filters` +
       (survivors.length > max ? capNote(max, again, unseenLeft, opts.near) : "") +
+      located.note +
       `. Floors${typeof opts.dwellings === "number" ? " and dwellings" : ""} matched as a ±1 range, footprint as a wide band, era NOT filtered.` +
       (typeof opts.attached === "boolean" ? " attached/detached is not in the register here — ignored; judge it on the aerial." : "") +
       ` Now look at them with view_candidates and record each verdict with mark_candidates — do NOT re-filter them by era or exact floors.`,
@@ -280,11 +304,17 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
   }
   // Rank by footprint closeness (the most reliable signal) so the best matches
   // come first, but do NOT hard-drop — recall over precision.
-  const ranked = filtered.sort((x, y) => {
+  const sorted = filtered.sort((x, y) => {
     if (opts.near) return metresBetween(x.b, opts.near) - metresBetween(y.b, opts.near);
-    if (opts.footprintM2 == null || x.b.surf == null || y.b.surf == null) return 0;
-    return Math.abs((x.b.surf ?? 0) - opts.footprintM2) - Math.abs((y.b.surf ?? 0) - opts.footprintM2);
+    return footprintKey(x.b.surf, opts.footprintM2) - footprintKey(y.b.surf, opts.footprintM2);
   });
+  // Churches for the location clues come from the federal register (SITG has no building class).
+  const register = async () => {
+    const c = await resolveCommune(commune);
+    return c ? fetchCommuneBuildings(c) : [];
+  };
+  const located = await orderByLocation(sorted, (x) => x.b, opts, register);
+  const ranked = located.ranked;
   const survivorsCount = ranked.length;
   const { page: top, again, unseenLeft } = pickPage(ranked, max, (x) => String(x.b.egid), opts.known);
   const candidates: Candidate[] = top.map((x) => ({
@@ -294,6 +324,7 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     footprintM2: x.b.surf,
     floors: x.b.niv,
     attached: x.attached,
+    loc: located.scores.get(x),
   }));
   return {
     commune,
@@ -306,6 +337,86 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     note:
       `Enumerated ${all.length} buildings, ${residential.length} residential, ${survivorsCount} passed the recall-first filters` +
       (survivorsCount > max ? capNote(max, again, unseenLeft, opts.near) : "") +
+      located.note +
       `. Floors matched as a ±1 range; era was NOT filtered. Now look at them with view_candidates (and render_roofs for roof shape), record each verdict with mark_candidates — do NOT re-filter these by era or exact floors.`,
   };
+}
+
+// Survivors re-ordered by the photos' location clues: the location order (best
+// fit first, footprint closeness within a fit step) merged with the footprint
+// order, see interleave. Nothing is dropped. `near` and missing clues leave the
+// order untouched.
+async function orderByLocation<T>(
+  survivors: T[],
+  point: (t: T) => { lat: number; lon: number },
+  opts: ShortlistOptions,
+  buildings: GwrBuilding[] | (() => Promise<GwrBuilding[]>),
+): Promise<{ ranked: T[]; scores: Map<T, LocationScore>; note: string }> {
+  const scores = new Map<T, LocationScore>();
+  if (opts.near || !hasClues(opts.location) || survivors.length === 0) return { ranked: survivors, scores, note: "" };
+  const clues = opts.location;
+  try {
+    const pts = survivors.map(point);
+    const centre = {
+      lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+      lon: pts.reduce((s, p) => s + p.lon, 0) / pts.length,
+    };
+    const needsRegister = (clues.landmarks ?? []).some((l) => l.kind === "church");
+    const all = Array.isArray(buildings) ? buildings : needsRegister ? await buildings() : [];
+    const landmarks = await resolveLandmarks(clues.landmarks ?? [], centre, all);
+    const wrapped = survivors.map((t) => ({ t, ...point(t) }));
+    const { scores: byHouse, terrainMeasured } = await scoreLocations(wrapped, clues, landmarks);
+    for (const w of wrapped) {
+      const sc = byHouse.get(w);
+      if (sc) scores.set(w.t, sc);
+    }
+    const index = new Map(survivors.map((t, i) => [t, i]));
+    const byLocation = [...survivors].sort(
+      (a, b) => locationRank(scores.get(a)) - locationRank(scores.get(b)) || index.get(a)! - index.get(b)!,
+    );
+    const ranked = interleave(byLocation, survivors, mergeRatio(clues));
+    const resolved = landmarks.map((l) => l.note).join("; ");
+    const terrainNote = clues.slope ? ` Terrain measured for ${terrainMeasured}/${survivors.length}.` : "";
+    return {
+      ranked,
+      scores,
+      note:
+        `. Ordered by your location clues (${cluesText(clues)}) mixed with footprint order — ordering only, every survivor is still on the list.` +
+        terrainNote +
+        (resolved ? ` Landmarks: ${resolved}.` : ""),
+    };
+  } catch (err) {
+    return { ranked: survivors, scores, note: `. Location clues could not be applied (${err instanceof Error ? err.message : String(err)}); footprint order kept` };
+  }
+}
+
+// A misread clue must not bury the house. The two orders are merged in turns —
+// `take[0]` houses from the location order, then `take[1]` from the footprint
+// order — so a house's place is at most about (take[0] + take[1]) / take[1]
+// times its place in the footprint order, whatever the clues say, while a right
+// clue still brings it well forward. Zermatt with rough estimates (~300
+// survivors), the answer's place: footprint order #108; right slope clue #27
+// with the location order alone, #40 merged; a wrong one off the first 150
+// alone, within about 2x merged (scripts/try-locate.ts).
+export function interleave<T>(primary: T[], fallback: T[], take: [number, number]): T[] {
+  const out: T[] = [];
+  const seen = new Set<T>();
+  let i = 0, j = 0;
+  const next = (list: T[], at: number): number => {
+    while (at < list.length && seen.has(list[at])) at++;
+    return at;
+  };
+  while (out.length < primary.length) {
+    for (let k = 0; k < take[0] && (i = next(primary, i)) < primary.length; k++) { seen.add(primary[i]); out.push(primary[i]); }
+    for (let k = 0; k < take[1] && (j = next(fallback, j)) < fallback.length; k++) { seen.add(fallback[j]); out.push(fallback[j]); }
+    if (next(primary, i) >= primary.length && next(fallback, j) >= fallback.length) break;
+  }
+  return out;
+}
+
+// How far the clues may reorder, by the strongest clue's confidence: a sure
+// clue at most triples a house's place, a likely one doubles it, a guess 1.5×.
+function mergeRatio(c: LocationClues): [number, number] {
+  const all = [c.slope?.confidence, ...(c.landmarks ?? []).map((l) => l.confidence)];
+  return all.includes("sure") ? [2, 1] : all.includes("likely") ? [1, 1] : [1, 2];
 }

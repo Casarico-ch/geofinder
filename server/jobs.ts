@@ -7,6 +7,7 @@
 // finished job at any time. Jobs are mirrored to disk (RUNS_ROOT/<id>/job.json)
 // so a process restart or a reopened window recovers the full trace.
 // =============================================================================
+import type { LocationClues } from "./locate";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -136,6 +137,7 @@ export function costUsd(t: TokenUsage, model?: string): number {
 export interface Signature {
   clues: string[]; // ordered, biggest filter first
   schematicSvg?: string; // optional top-down sketch of the target
+  location?: LocationClues; // where the photos place it: slope side, landmarks — orders the shortlist
 }
 
 export interface Job {

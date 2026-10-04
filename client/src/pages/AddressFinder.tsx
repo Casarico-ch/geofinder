@@ -147,9 +147,23 @@ interface Job {
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
   promptVersion?: string | null;
-  signature?: { clues: string[]; schematicSvg?: string } | null;
+  signature?: { clues: string[]; schematicSvg?: string; location?: LocationClues } | null;
   search?: SearchPlan | null;
   elapsedMs?: number;
+}
+
+// Where the photos place the house; it orders the shortlist (server/locate.ts).
+interface LocationClues {
+  slope?: { faces: string; confidence: string };
+  landmarks?: { kind: string; name?: string; direction: string; distanceM?: number; confidence: string }[];
+}
+
+function locationText(l: LocationClues): string {
+  const parts: string[] = [];
+  if (l.slope) parts.push(l.slope.faces === "flat" ? `flat ground (${l.slope.confidence})` : `slope falls ${l.slope.faces} (${l.slope.confidence})`);
+  for (const m of l.landmarks ?? [])
+    parts.push(`${m.name ?? m.kind} to the ${m.direction}${m.distanceM ? ` ~${m.distanceM} m` : ""} (${m.confidence})`);
+  return parts.join(" · ");
 }
 
 // Where the finder was told to look, and what it has checked (server/search.ts).
@@ -1186,6 +1200,12 @@ export default function AddressFinder() {
                       </li>
                     ))}
                   </ol>
+                  {job.signature.location && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Location clues:</span>{" "}
+                      {locationText(job.signature.location)}
+                    </p>
+                  )}
                   {job.signature.schematicSvg && (
                     <img
                       alt="Target schematic"
