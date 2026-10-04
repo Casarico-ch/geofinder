@@ -480,15 +480,50 @@ function bestOf(results: ModelResult[]): ModelResult | undefined {
   return done.filter((m) => !m.check).sort((a, b) => rankOf(a) - rankOf(b))[0];
 }
 
-// The different exact places the runs of a listing stand for — more than one
-// means re-runs disagree, and none of them can be taken as the answer.
-function conflictsOf(r: PlatformRequest): string[] {
+// One exact place, however a model wrote it ("Rue A 3, 1233 Bernex" = "rue a 3").
+function placeKey(m: ModelResult): string | null {
+  if (!m.answer?.found || rankOf(m) > 0) return null;
+  return foundLabel(m.answer).split(",")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+// What one attempt's room settled on. A single model finding an address is not
+// enough: "found" means every voice agrees on one exact place.
+//   * no cross-check: every finished model names the same exact place
+//   * cross-checks ran: exactly one place survived them — a check that tries
+//     to prove an answer wrong and still confirms it settles the split
+// Anything else (two places, or a find the others did not reach or could not
+// confirm) is still doubt in the room: conflicting.
+type Consensus = { kind: "found"; hit: ModelResult } | { kind: "none" } | { kind: "conflict"; places: string[] };
+
+function consensusOf(results: ModelResult[]): Consensus {
+  const done = results.filter((m) => m.status === "done");
+  const searches = done.filter((m) => !m.check);
+  const checks = done.filter((m) => m.check);
+  const labels = new Map<string, string>();
+  for (const m of done) {
+    const k = placeKey(m);
+    if (k && m.answer && !labels.has(k)) labels.set(k, foundLabel(m.answer));
+  }
+  if (labels.size === 0) return { kind: "none" };
+  const voices = checks.length ? checks : searches;
+  const named = new Set(voices.map(placeKey).filter((k): k is string => !!k));
+  const agreed = checks.length ? named.size === 1 : named.size === 1 && voices.every((m) => placeKey(m));
+  if (agreed) {
+    const key = Array.from(named)[0];
+    return { kind: "found", hit: voices.find((m) => placeKey(m) === key)! };
+  }
+  const places = Array.from(labels.values());
+  if (places.length === 1) places.push("not confirmed");
+  return { kind: "conflict", places };
+}
+
+// The places a listing's attempts agreed on — more than one means re-runs
+// disagree, and none of them can be taken as the answer.
+function attemptPlaces(r: PlatformRequest): string[] {
   const out = new Map<string, string>();
   for (const a of attemptsOf(r)) {
-    const best = bestOf(a.results);
-    if (!best?.answer || rankOf(best) > 0) continue;
-    const label = foundLabel(best.answer);
-    out.set(label.split(",")[0].trim().toLowerCase(), label);
+    const c = consensusOf(a.results);
+    if (c.kind === "found" && c.hit.answer) out.set(placeKey(c.hit)!, foundLabel(c.hit.answer));
   }
   return Array.from(out.values());
 }
@@ -581,14 +616,17 @@ function outcomeOf(r: PlatformRequest): Outcome {
   }
   const results = r.results ?? [];
   const running = results.some((m) => m.status === "running");
-  const split = running ? [] : conflictsOf(r);
-  if (split.length > 1)
-    return { label: "Conflicting", tone: "bg-amber-500/10 text-amber-700", detail: split.join(" vs ") };
-  const hit = bestOf(results);
-  if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
   if (running)
     return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
   if (results.some((m) => m.status === "paused")) return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
+  const conflicting = { label: "Conflicting", tone: "bg-amber-500/10 text-amber-700" };
+  const across = attemptPlaces(r);
+  if (across.length > 1) return { ...conflicting, detail: across.join(" vs ") };
+  const latest = attemptsOf(r).at(-1);
+  const c = latest ? consensusOf(latest.results) : ({ kind: "none" } as const);
+  if (c.kind === "conflict") return { ...conflicting, detail: c.places.join(" vs ") };
+  if (c.kind === "found" && c.hit.answer)
+    return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(c.hit.answer) };
   return { label: "Not found", tone: "bg-muted text-muted-foreground" };
 }
 
