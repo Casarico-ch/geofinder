@@ -194,7 +194,13 @@ export async function startListingRequest(
 const modelLabel = (m: ModelId) =>
   m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
 
-/** The listing text with a check-this-address task appended — Radar's wording, word for word. */
+/**
+ * The listing text with a try-to-disprove-this-address task appended. The
+ * checker builds on the other model's answer instead of searching again, but
+ * its job is to find what is WRONG with it: "can I confirm it?" is a question a
+ * model answers yes to far too easily, so it only passes an address it tried
+ * and failed to break.
+ */
 export function verifyText(listing: string, candidate: Candidate, from: ModelId): string {
   const pin =
     candidate.latitude != null && candidate.longitude != null ? ` (around ${candidate.latitude}, ${candidate.longitude})` : "";
@@ -203,9 +209,13 @@ export function verifyText(listing: string, candidate: Candidate, from: ModelId)
     "",
     "--- VERIFICATION TASK ---",
     `Another investigator (${modelLabel(from)}) concluded that this property is at: ${candidate.address}${candidate.parcel ? `, plot ${candidate.parcel}` : ""}${pin}.`,
-    "Do NOT take that on trust. Check it against the photos, the listing text and the map evidence yourself.",
-    "If, and only if, you are highly confident that this exact location (street AND house number, or the cadastral plot number) is the property, report found=true with that address and/or plot at street or building confidence.",
-    "If it is wrong, or you cannot confirm it with high confidence, report found=false — or the address you are highly confident is correct instead.",
+    "Your job is to PROVE THAT ANSWER WRONG. Do not search the area from scratch: start from that exact building and attack it.",
+    "1. List the hard signals the listing gives: floors, footprint and living area, roof shape and ridge direction, building era, attached or detached, garage or outbuildings, terrace and garden side, the view and the landmarks in it, slope, neighbours, distances to amenities.",
+    "2. Check each one against THAT building with your tools: look at it on the aerial, render its roof (render_roofs), read its register entry, and compare the view direction from it with the photos.",
+    "3. For each signal write match, mismatch or cannot-tell, with the evidence. One clear mismatch is enough to reject it. Never explain a mismatch away (\"the photo may be old\", \"the register may be wrong\").",
+    "4. Check the neighbours too: if a building next to it fits the signals as well or better, the answer is not proven.",
+    "Only if you tried hard and found no mismatch, and no neighbour fits as well, report found=true with that address and/or plot at street or building confidence.",
+    "If you found a mismatch, report found=false and name the mismatch in your reasoning — or, if your checks pinned the right building instead, report that one.",
   ].join("\n");
 }
 
