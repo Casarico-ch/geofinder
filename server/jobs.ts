@@ -89,6 +89,8 @@ export interface TokenUsage {
   cached: number; // subset of input served from the prompt cache (cheap reads)
   cacheWrite: number; // input tokens written to the cache (1.25x price)
   total: number;
+  fastTurns?: number; // model turns served in fast mode (2x price)
+  fastPremiumUsd?: number; // what fast mode added on top of the standard price
 }
 
 // Per-model pricing, USD per 1M tokens: [fresh input, cache read (~0.1x),
@@ -114,7 +116,8 @@ const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: numb
 export function costUsd(t: TokenUsage, model?: string): number {
   const p = PRICING[(model as ModelId) in PRICING ? (model as ModelId) : DEFAULT_MODEL];
   const fresh = Math.max(0, t.input - t.cached - t.cacheWrite);
-  return (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
+  const base = (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
+  return base + (t.fastPremiumUsd ?? 0);
 }
 
 // The target's "visual signature" — what the property should look like from
@@ -230,7 +233,15 @@ export async function addUsage(
   output: number,
   cached: number,
   cacheWrite: number,
+  fast = false,
 ): Promise<void> {
+  if (fast) {
+    // Fast mode bills every token class at 2x, so the premium equals this
+    // turn's standard price.
+    const turn = { input, output, cached, cacheWrite, total: input + output };
+    job.tokens.fastTurns = (job.tokens.fastTurns ?? 0) + 1;
+    job.tokens.fastPremiumUsd = (job.tokens.fastPremiumUsd ?? 0) + costUsd(turn, job.model);
+  }
   job.tokens.input += input;
   job.tokens.output += output;
   job.tokens.cached += cached;
@@ -324,14 +335,26 @@ function serialize(job: Job): string {
   return JSON.stringify(rest, null, 2);
 }
 
-async function persist(job: Job): Promise<void> {
-  if (job.deleted) return;
-  try {
-    await mkdir(job.runDir, { recursive: true });
-    await writeFile(path.join(job.runDir, "job.json"), serialize(job), "utf8");
-  } catch (err) {
-    console.error(`[jobs] failed to persist ${job.id}:`, err);
-  }
+// Writes of one job are chained: tools run in parallel each add steps, and two
+// overlapping writeFile calls on job.json could interleave into a corrupt file.
+const persistQueue = new Map<string, Promise<void>>();
+
+function persist(job: Job): Promise<void> {
+  const prev = persistQueue.get(job.id) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    if (job.deleted) return;
+    try {
+      await mkdir(job.runDir, { recursive: true });
+      await writeFile(path.join(job.runDir, "job.json"), serialize(job), "utf8");
+    } catch (err) {
+      console.error(`[jobs] failed to persist ${job.id}:`, err);
+    }
+  });
+  persistQueue.set(job.id, next);
+  void next.then(() => {
+    if (persistQueue.get(job.id) === next) persistQueue.delete(job.id);
+  });
+  return next;
 }
 
 // On boot, reload persisted jobs so reopened windows see history. Any job left

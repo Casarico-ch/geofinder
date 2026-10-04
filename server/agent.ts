@@ -59,6 +59,20 @@ const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
 // than giving up early, so the cap is what keeps a hopeless search bounded.
 const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
 export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
+// Speed. Fast mode runs the same model at up to 2.5x the output speed for 2x the
+// price; only some models offer it. AGENT_FAST=0 turns it off.
+const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]);
+const FAST_MODE = process.env.AGENT_FAST !== "0";
+// Thinking depth per turn — the biggest single lever on how long a turn takes.
+// "medium" or "low" is faster but looks less carefully.
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+const EFFORT: (typeof EFFORTS)[number] = (EFFORTS as readonly string[]).includes(process.env.AGENT_EFFORT ?? "")
+  ? (process.env.AGENT_EFFORT as (typeof EFFORTS)[number])
+  : "high";
+// Tools that only read or fetch, and touch no search state: several of them in
+// one turn run at the same time. write_file and the checklist tools run alone,
+// in order, so "write fetch.mjs, then run it" still works.
+const PARALLEL_TOOLS = new Set(["bash", "read_file", "render_roofs"]);
 
 export interface AgentImage {
   base64: string;
@@ -322,6 +336,9 @@ SOURCES (starting points, not limits; set a User-Agent header)
 - Aerial (swisstopo SWISSIMAGE) — download the JPEG then read_file: https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.swissimage&CRS=EPSG:4326&BBOX={latmin},{lonmin},{latmax},{lonmax}&WIDTH=1200&HEIGHT=1200&FORMAT=image/jpeg (lat,lon order; square bbox in metres: dLat=span/2/111320, dLon=dLat/cos(lat)).
 - Building register (GWR, nationwide): https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry={lon},{lat}&geometryType=esriGeometryPoint&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=15&sr=4326&geometryFormat=geojson&mapExtent={lon-0.002},{lat-0.0015},{lon+0.002},{lat+0.0015}&imageDisplay=800,600,96 — strname_deinr (street+no.), gbauj (year), gastw (floors), ganzwhg (dwellings), egid.
 - OSM amenities: Overpass POST https://overpass-api.de/api/interpreter (body 'data='+urlencoded QL). Geocoding: https://nominatim.openstreetmap.org/search?q=...&format=json. Compute haversine/bearing yourself.
+
+SPEED
+Several tool calls in one turn run at the same time (bash, read_file, render_roofs). When calls do not depend on each other — fetching several aerials or registers, reading several images — make them all in the same turn instead of one per turn.
 
 Reason explicitly about why you run each command — your thinking is the saved trace of the investigation.`;
 
@@ -610,6 +627,7 @@ async function runLoop(
     };
     const nearTimeLimit = () => elapsedMinutes() >= MAX_MINUTES * 0.85;
     const nearLimit = (step: number) => step >= MAX_STEPS - 15 || nearTimeLimit();
+    let fastUnavailable = false;
     for (let i = startTurn; i < MAX_STEPS; i++) {
       if (elapsedMinutes() >= MAX_MINUTES) {
         await finishJob(job, {
@@ -643,8 +661,9 @@ async function runLoop(
 
       await files.upload(messages);
       if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
-      const resp = await client.messages.create({
-        model: job.model ?? MODEL,
+      const model = job.model ?? MODEL;
+      const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
+        model,
         max_tokens: 16_000,
         // display: "summarized" so the model's reasoning is actually returned
         // (Opus 4.8 / Fable 5 omit thinking text by default) — that's the trace.
@@ -653,7 +672,7 @@ async function runLoop(
         thinking: { type: "adaptive", display: "summarized" },
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
-        output_config: { effort: "high" },
+        output_config: { effort: EFFORT },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
@@ -663,7 +682,26 @@ async function runLoop(
         // model has already downloaded are read from cache, not reprocessed.
         cache_control: { type: "ephemeral" },
         messages: files.wire(messages),
-      });
+      };
+      let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable;
+      let resp: Anthropic.Messages.Message;
+      try {
+        resp = fast
+          ? ((await client.beta.messages.create({
+              ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+              speed: "fast",
+              betas: ["fast-mode-2026-02-01"],
+            })) as unknown as Anthropic.Messages.Message)
+          : await client.messages.create(params);
+      } catch (err) {
+        // Fast mode has its own rate limit: when it is exhausted (or refused),
+        // finish the run at standard speed instead of failing it.
+        if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError)) throw err;
+        fastUnavailable = true;
+        fast = false;
+        await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
+        resp = await client.messages.create(params);
+      }
 
       // Record token usage for this turn (input includes cache traffic so the
       // total reflects what actually moved through the model).
@@ -672,7 +710,7 @@ async function runLoop(
         const cacheRead = u.cache_read_input_tokens ?? 0;
         const cacheWrite = u.cache_creation_input_tokens ?? 0;
         const inTok = (u.input_tokens ?? 0) + cacheRead + cacheWrite;
-        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead, cacheWrite);
+        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead, cacheWrite, fast);
       }
 
       if (resp.stop_reason === "refusal") {
@@ -697,8 +735,25 @@ async function runLoop(
         return;
       }
 
+      // A run of consecutive read/fetch-only calls is started together when the
+      // loop reaches its first call — after every call before it has finished —
+      // and its outputs are then used in order, as if run one by one.
+      const early = new Map<string, Promise<Anthropic.Messages.ToolResultBlockParam["content"]>>();
+      const startGroup = (from: number) => {
+        for (let k = from; k < toolUses.length && PARALLEL_TOOLS.has(toolUses[k].name); k++) {
+          const tu = toolUses[k];
+          const out = dispatchTool(job, tu.name, tu.input as Record<string, unknown>);
+          // Awaited in order below; if an earlier one throws, the run ends and
+          // a later failure must not surface as an unhandled rejection.
+          out.catch(() => {});
+          early.set(tu.id, out);
+        }
+      };
+
       const results: Anthropic.Messages.ToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
+      for (let idx = 0; idx < toolUses.length; idx++) {
+        const tu = toolUses[idx];
+        if (PARALLEL_TOOLS.has(tu.name) && !early.has(tu.id)) startGroup(idx);
         if (tu.name === "submit_answer") {
           const answer = coerceAnswer(tu.input as Record<string, unknown>);
           // A "not found" while the plan still has unchecked candidates (or
@@ -754,7 +809,7 @@ async function runLoop(
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
           continue;
         }
-        const out = await dispatchTool(job, tu.name, tu.input as Record<string, unknown>);
+        const out = await (early.get(tu.id) ?? dispatchTool(job, tu.name, tu.input as Record<string, unknown>));
         results.push({ type: "tool_result", tool_use_id: tu.id, content: out });
       }
       const content: Anthropic.Messages.ContentBlockParam[] = [...results];
