@@ -407,6 +407,23 @@ function ModelColumn({ r }: { r: ModelResult }) {
   );
 }
 
+// Surest first: an exact address or plot beats a block, a block beats a neighbourhood…
+const CONFIDENCE_RANK = ["street", "building", "parcel", "block", "neighborhood", "city", "region", "country", "unknown"];
+const rankOf = (m: ModelResult) => {
+  const i = CONFIDENCE_RANK.indexOf(m.answer?.confidence ?? "unknown");
+  return i < 0 ? CONFIDENCE_RANK.length : Math.min(i, 2);
+};
+
+// The answer a set of runs stands for: a finished cross-check that confirmed a
+// place decides between the models; otherwise the surest model wins, not
+// whichever happens to be listed first.
+function bestOf(results: ModelResult[]): ModelResult | undefined {
+  const done = results.filter((m) => m.status === "done" && m.answer?.found);
+  const check = done.filter((m) => m.check).at(-1);
+  if (check) return check;
+  return done.filter((m) => !m.check).sort((a, b) => rankOf(a) - rankOf(b))[0];
+}
+
 // What a model found: the address, else its exact plots, else just an area.
 function foundLabel(a: NonNullable<ModelResult["answer"]>, area = "area"): string {
   if (!a.found) return "not found";
@@ -494,9 +511,7 @@ function outcomeOf(r: PlatformRequest): Outcome {
       : { label: "Not found", tone: "bg-muted text-muted-foreground" };
   }
   const results = r.results ?? [];
-  // A finished cross-check that confirmed a place decides between the models.
-  const done = (m: ModelResult) => m.status === "done" && m.answer?.found;
-  const hit = [...results].reverse().find((m) => m.check && done(m)) ?? results.find((m) => !m.check && done(m));
+  const hit = bestOf(results);
   if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
   if (results.some((m) => m.status === "running"))
     return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
@@ -574,7 +589,7 @@ function Attempts({ r }: { r: PlatformRequest }) {
         const latest = i === 0;
         const cost = a.results.reduce((s, m) => s + m.aiCostUsd, 0);
         const running = a.results.some((m) => m.status === "running");
-        const hit = a.results.find((m) => m.status === "done" && m.answer?.found);
+        const hit = bestOf(a.results);
         const folded = hidden.has(a.n);
         return (
           <div key={a.n} className="space-y-2">
