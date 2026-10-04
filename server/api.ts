@@ -10,6 +10,8 @@ import type { Express, Request, Response } from "express";
 import express from "express";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import { z } from "zod";
 import {
   loadListingPhotos,
@@ -91,6 +93,8 @@ function jobSummary(job: ReturnType<typeof listJobs>[number]) {
     elapsedMs: elapsedMs(job),
   };
 }
+
+const gzipAsync = promisify(gzip);
 
 export function registerApiRoutes(app: Express) {
   app.use(express.json({ limit: "30mb" }));
@@ -363,7 +367,14 @@ export function registerApiRoutes(app: Express) {
       const html = await exportJobHtml(job);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="geofinder-${job.id}.html"`);
-      res.send(html);
+      res.setHeader("Vary", "Accept-Encoding");
+      // Base64 pictures compress by about a quarter on the wire; the saved file is unchanged.
+      if (req.acceptsEncodings("gzip")) {
+        res.setHeader("Content-Encoding", "gzip");
+        res.send(await gzipAsync(html));
+      } else {
+        res.send(html);
+      }
     } catch (err) {
       console.error(`[api] export ${job.id} failed:`, err);
       res.status(500).json({ error: "Could not export this investigation." });
