@@ -102,6 +102,7 @@ export const MODELS = [
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
+  "claude-haiku-4-5", // runs the five-member Haiku team
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
@@ -120,6 +121,7 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },
+  "claude-haiku-4-5": { in: 1, cacheRead: 0.1, cacheWrite: 1.25, out: 5 },
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {

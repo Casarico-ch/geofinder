@@ -66,6 +66,25 @@ export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the 
 // price; only some models offer it. AGENT_FAST=0 turns it off.
 const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]); // 4.8: resumed old runs
 const FAST_MODE = process.env.AGENT_FAST !== "0";
+// Haiku 4.5 takes a fixed thinking budget (no adaptive thinking, no effort)
+// and has a 200K context, so its old tool results are cleared as the
+// investigation grows instead of overflowing it.
+const SMALL_MODELS = new Set(["claude-haiku-4-5"]);
+async function smallModelTurn(
+  client: Anthropic,
+  params: Anthropic.Messages.MessageCreateParamsNonStreaming,
+): Promise<Anthropic.Messages.Message> {
+  const { thinking: _thinking, output_config: _effort, ...rest } = params;
+  return (await client.beta.messages.create({
+    ...(rest as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+    thinking: { type: "enabled", budget_tokens: 8_000 },
+    betas: ["context-management-2025-06-27"],
+    context_management: {
+      edits: [{ type: "clear_tool_uses_20250919", trigger: { type: "input_tokens", value: 120_000 }, keep: { type: "tool_uses", value: 6 } }],
+    },
+  })) as unknown as Anthropic.Messages.Message;
+}
+
 // Thinking depth per turn — the biggest single lever on how long a turn takes.
 // "medium" or "low" is faster but looks less carefully.
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -760,7 +779,9 @@ async function runLoop(
       let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable;
       let resp: Anthropic.Messages.Message;
       try {
-        resp = fast
+        resp = SMALL_MODELS.has(model)
+          ? await smallModelTurn(client, params)
+          : fast
           ? ((await client.beta.messages.create({
               ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
               speed: "fast",
