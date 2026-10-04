@@ -642,6 +642,35 @@ function RunAgain({ rows, onDone }: { rows: PlatformRequest[]; onDone: () => voi
   );
 }
 
+// Pause the running searches of the selected requests at their next turn; each
+// keeps its saved conversation and spends no tokens while paused.
+function PauseRunning({ rows, onDone }: { rows: PlatformRequest[]; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const jobIds = rows.flatMap((r) => (r.results ?? []).filter((m) => m.status === "running").map((m) => m.jobId));
+  if (jobIds.length === 0) return null;
+  const pause = async () => {
+    setBusy(true);
+    try {
+      for (const id of jobIds) {
+        const res = await fetch(`/api/geo/investigate/${id}/pause`, { method: "POST" });
+        if (!res.ok) throw new Error();
+      }
+      toast.success(jobIds.length === 1 ? "Pausing after its current step" : `Pausing ${jobIds.length} runs after their current step`);
+      onDone();
+    } catch {
+      toast.error("Could not pause. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="outline" size="sm" disabled={busy} onClick={() => void pause()}>
+      {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Pause className="mr-1.5 h-3.5 w-3.5" />}
+      Pause
+    </Button>
+  );
+}
+
 // The model cards, one block per attempt, newest first. With a single attempt
 // it is just the cards; after a re-run each block gets a "Run n" header and the
 // older ones are faded and can be folded away.
@@ -921,6 +950,10 @@ export default function Requests() {
                   <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                     Clear
                   </Button>
+                  <PauseRunning
+                    rows={(requests ?? []).filter((r) => selected.has(r.id))}
+                    onDone={() => setReload((n) => n + 1)}
+                  />
                   <RunAgain
                     rows={(requests ?? []).filter((r) => selected.has(r.id))}
                     onDone={() => {
