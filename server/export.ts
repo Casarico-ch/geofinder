@@ -5,6 +5,7 @@
 // tool call with its complete input, every tool result with its images),
 // nothing clipped. Images are embedded, so the file opens offline.
 // =============================================================================
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
@@ -23,6 +24,26 @@ const pre = (s: unknown) => `<pre>${esc(s)}</pre>`;
 
 const MEDIA: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
 
+// The same picture recurs across the thread (a listing photo is sent to the
+// model and shown in the photo grid; a step's screenshot is also its tool
+// result), so each distinct image is embedded once and every <img> points at it.
+class Images {
+  private index = new Map<string, number>();
+  private data: string[] = [];
+  tag(uri: string): string {
+    const key = createHash("sha1").update(uri).digest("hex");
+    let i = this.index.get(key);
+    if (i === undefined) {
+      i = this.data.push(uri) - 1;
+      this.index.set(key, i);
+    }
+    return `<img data-i="${i}" alt="">`;
+  }
+  script(): string {
+    return `<script>const I=${JSON.stringify(this.data)};document.querySelectorAll("img[data-i]").forEach(e=>{e.src=I[+e.dataset.i]})</script>`;
+  }
+}
+
 // A step's image lives under /runs/<id>/…; embed it so the file stands alone.
 async function stepImage(src: string): Promise<string | null> {
   const rel = src.replace(/^\/runs\//, "");
@@ -39,14 +60,14 @@ async function stepImage(src: string): Promise<string | null> {
 
 type Block = Record<string, unknown> & { type?: string };
 
-function imageBlock(b: Block): string {
+function imageBlock(b: Block, images: Images): string {
   const src = b.source as { type?: string; media_type?: string; data?: string; url?: string } | undefined;
-  if (src?.type === "base64" && src.data) return `<img src="data:${esc(src.media_type)};base64,${src.data}" alt="">`;
+  if (src?.type === "base64" && src.data) return images.tag(`data:${esc(src.media_type)};base64,${src.data}`);
   if (src?.type === "url" && src.url) return `<img src="${esc(src.url)}" alt="">`;
   return `<p class="muted">[image]</p>`;
 }
 
-function renderBlocks(content: Anthropic.Messages.MessageParam["content"]): string {
+function renderBlocks(content: Anthropic.Messages.MessageParam["content"], images: Images): string {
   if (typeof content === "string") return pre(content);
   return (content as unknown as Block[])
     .map((b) => {
@@ -54,7 +75,7 @@ function renderBlocks(content: Anthropic.Messages.MessageParam["content"]): stri
         case "text":
           return pre(b.text);
         case "image":
-          return imageBlock(b);
+          return imageBlock(b, images);
         case "thinking":
           return `<details open><summary>Reasoning</summary>${pre(b.thinking)}</details>`;
         case "redacted_thinking":
@@ -64,7 +85,7 @@ function renderBlocks(content: Anthropic.Messages.MessageParam["content"]): stri
         case "tool_result": {
           const inner = b.content as Anthropic.Messages.ToolResultBlockParam["content"];
           const body =
-            typeof inner === "string" ? pre(inner) : renderBlocks((inner ?? []) as Anthropic.Messages.MessageParam["content"]);
+            typeof inner === "string" ? pre(inner) : renderBlocks((inner ?? []) as Anthropic.Messages.MessageParam["content"], images);
           return `<div class="result"><b>Tool result${b.is_error ? " (error)" : ""}</b>${body}</div>`;
         }
         default:
@@ -81,6 +102,7 @@ export async function exportJobHtml(job: Job): Promise<string> {
     loadConversation(job.runDir),
   ]);
 
+  const images = new Images();
   const steps: string[] = [];
   for (const s of job.steps) {
     const img = s.image ? await stepImage(s.image) : null;
@@ -89,7 +111,7 @@ export async function exportJobHtml(job: Job): Promise<string> {
   <p><b>${esc(s.title)}</b></p>
   ${s.reasoning ? `<details open><summary>Reasoning</summary>${pre(s.reasoning)}</details>` : ""}
   ${s.detail ? pre(s.detail) : ""}
-  ${img ? `<img src="${img}" alt="">` : ""}
+  ${img ? images.tag(img) : ""}
 </div>`);
   }
 
@@ -131,7 +153,7 @@ ${a ? `<p><b>${esc(a.address ?? a.parcel ?? (a.found ? "Found" : "Not found"))}<
 ${job.error ? `<p><b>Error</b></p>${pre(job.error)}` : ""}
 
 <h2>What we sent: photos (${photos.length})</h2>
-<div class="photos">${photos.map((p) => `<img src="data:${p.mediaType};base64,${p.base64}" alt="">`).join("")}</div>
+<div class="photos">${photos.map((p) => images.tag(`data:${p.mediaType};base64,${p.base64}`)).join("")}</div>
 
 <h2>What we sent: listing text</h2>
 ${pre(job.input.listingText ?? "(none)")}
@@ -146,9 +168,10 @@ ${steps.join("\n")}
 ${
   conversation
     ? conversation
-        .map((m, i) => `<div class="msg"><p class="muted">${i + 1} · ${m.role === "user" ? "Sent to the model" : "Model"}</p>${renderBlocks(m.content)}</div>`)
+        .map((m, i) => `<div class="msg"><p class="muted">${i + 1} · ${m.role === "user" ? "Sent to the model" : "Model"}</p>${renderBlocks(m.content, images)}</div>`)
         .join("\n")
     : `<p class="muted">This run finished before full conversations were kept; the steps above are everything recorded.</p>`
 }
+${images.script()}
 </body></html>`;
 }
