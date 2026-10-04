@@ -96,7 +96,17 @@ const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
+  "claude-haiku-4-5": "Haiku 4.5",
 };
+// The teams a New search runs next to the chosen models — the same four the
+// server runs on every listing request (server/platform.ts TEAMS).
+type RunModel = ModelId | "claude-haiku-4-5";
+const TEAMS: { name: string; models: RunModel[] }[] = [
+  { name: "mixed", models: ["claude-sonnet-5-5", "claude-opus-5-5"] },
+  { name: "haiku", models: Array(5).fill("claude-haiku-4-5") },
+  { name: "sonnet", models: Array(3).fill("claude-sonnet-5-5") },
+  { name: "opus", models: Array(3).fill("claude-opus-5-5") },
+];
 // Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
   "claude-opus-5-5": "default",
@@ -725,10 +735,14 @@ export default function AddressFinder() {
     try {
       // 1) Create one job per selected model on tiny metadata requests — each
       //    returns in milliseconds.
-      const team = teamRun ? `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}` : undefined;
-      const runs: { model: ModelId; team?: string }[] = [
+      const runs: { model: RunModel; team?: string }[] = [
         ...models.map((model) => ({ model })),
-        ...(team ? (["claude-sonnet-5-5", "claude-opus-5-5"] as const).map((model) => ({ model, team })) : []),
+        ...(teamRun
+          ? TEAMS.flatMap((t) => {
+              const team = `t${t.name}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+              return t.models.map((model) => ({ model, team }));
+            })
+          : []),
       ];
       const jobIds = await Promise.all(
         runs.map(async ({ model, team }) => {
@@ -1060,9 +1074,9 @@ export default function AddressFinder() {
                 <div className="flex items-start gap-2">
                   <Checkbox id="team-run" checked={teamRun} onCheckedChange={(v) => setTeamRun(v === true)} className="mt-0.5" />
                   <Label htmlFor="team-run" className="text-sm font-normal leading-snug cursor-pointer">
-                    <span className="font-medium">Team run (experiment)</span>
+                    <span className="font-medium">Teams (experiment)</span>
                     <span className="block text-muted-foreground">
-                      Also runs Sonnet 5.5 + Opus 5.5 as a team, next to the models above: they share a chat and stop only when both agree on the same building at 95%+.
+                      Also runs four teams next to the models above — Sonnet + Opus, 5 × Haiku, 3 × Sonnet, 3 × Opus. Each shares one chat and stops only when all its members agree on the same building at 95%+.
                     </span>
                   </Label>
                 </div>
@@ -1074,7 +1088,7 @@ export default function AddressFinder() {
                       Starting…
                     </>
                   ) : models.length > 1 || teamRun ? (
-                    `Find address · ${models.length} model${models.length > 1 ? "s" : ""}${teamRun ? " + team" : ""}`
+                    `Find address · ${models.length} model${models.length > 1 ? "s" : ""}${teamRun ? " + 4 teams" : ""}`
                   ) : (
                     "Find address"
                   )}

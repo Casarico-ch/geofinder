@@ -2,8 +2,9 @@
 // Team runs — two models search the same listing side by side, each with its
 // own computer and checklist, and talk in a shared room like a group chat.
 //
-// Neither waits on the other. Every turn, each one is shown what its teammate
-// posted since it last looked, and it can read the teammate's recent trace
+// Two or more members (Sonnet + Opus, or a crowd of one model). Nobody waits
+// on anybody. Every turn, each one is shown what its teammates posted since it
+// last looked, and it can read their recent traces
 // (team_read) or post / reply (team_post). An answer is a VOTE: the team stops
 // only when both have voted for the same building at >= 95 % certainty. If one
 // of them stops for any other reason (limit, error, cancel), the other carries
@@ -27,7 +28,8 @@ export interface TeamPost {
   model: string;
   text: string;
   replyTo?: number;
-  ask?: boolean; // a direct question to the teammate: they answer it next
+  ask?: boolean; // a direct question: whoever it is addressed to answers it next
+  to?: string; // the member asked (their chat name); unset = everyone
   // Like a doctor on the panel, every message carries where its author stands.
   leading?: string; // current best candidate (address / EGID), or "none yet"
   certainty?: number; // 0–100
@@ -102,21 +104,40 @@ export async function joinTeam(id: string, jobId: string): Promise<void> {
 
 const label = (model: string) => model.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2");
 
-/** The teammate's job, while it is still searching. */
-function liveMate(room: TeamRoom, me: string): Job | undefined {
-  const mateId = room.members.find((m) => m !== me);
-  const mate = mateId ? getJob(mateId) : undefined;
-  return mate && mate.status === "running" ? mate : undefined;
+/**
+ * A member's name in the chat: its model, numbered when the team has several
+ * of the same model ("haiku 4.5 #3"). Numbers follow join order, which is fixed
+ * once a member has joined, so a name never changes.
+ */
+export function memberName(room: TeamRoom, jobId: string): string {
+  const model = (id: string) => getJob(id)?.model ?? "";
+  const mine = model(jobId);
+  const same = room.members.filter((m) => model(m) === mine);
+  const base = mine ? label(mine) : "member";
+  return same.length > 1 ? `${base} #${same.indexOf(jobId) + 1}` : base;
+}
+
+const others = (room: TeamRoom, me: string) => room.members.filter((m) => m !== me);
+
+/** Teammates still searching. */
+function liveMates(room: TeamRoom, me: string): Job[] {
+  return others(room, me)
+    .map((m) => getJob(m))
+    .filter((j): j is Job => !!j && j.status === "running");
 }
 
 export async function hasLiveMate(job: Job): Promise<boolean> {
-  return !!job.team && !!liveMate(await load(job.team), job.id);
+  return !!job.team && liveMates(await load(job.team), job.id).length > 0;
 }
+
+const fold = (t: string) => t.toLowerCase().replace(/[^a-z0-9#.]+/g, " ").trim();
+const voteText = (v: TeamVote) => `${v.answer.found ? (v.answer.address ?? v.answer.parcel ?? "found") : "no match"} at ${v.certainty}%`;
 
 export interface PostInput {
   text: string;
   replyTo?: number;
   ask?: boolean;
+  to?: string;
   leading?: string;
   certainty?: number;
 }
@@ -129,10 +150,11 @@ export async function post(job: Job, input: PostInput, turn = 0): Promise<TeamPo
       id: room.posts.length + 1,
       at: new Date().toISOString(),
       from: job.id,
-      model: label(job.model),
+      model: memberName(room, job.id),
       text: input.text.trim().slice(0, 4000),
       ...(replyTo ? { replyTo } : {}),
       ...(input.ask ? { ask: true } : {}),
+      ...(input.ask && input.to?.trim() ? { to: input.to.trim().slice(0, 60) } : {}),
       ...(input.leading?.trim() ? { leading: input.leading.trim().slice(0, 200) } : {}),
       ...(certainty !== undefined ? { certainty } : {}),
     };
@@ -151,31 +173,38 @@ function postLine(room: TeamRoom, p: TeamPost, me: string): string {
   const re = p.replyTo ? room.posts[p.replyTo - 1] : undefined;
   const quote = re ? ` (replying to #${re.id} by ${re.from === me ? "you" : re.model}: "${re.text.slice(0, 80)}…")` : "";
   const stand = p.leading ? ` [leading: ${p.leading}${p.certainty !== undefined ? ` · ${p.certainty}%` : ""}]` : "";
-  return `#${p.id} ${who}${p.ask ? " asks you" : ""}${quote}: ${p.text}${stand}`;
+  const asks = p.ask ? (p.to ? ` asks ${askedMe(room, p, me) ? "you" : p.to}` : " asks everyone") : "";
+  return `#${p.id} ${who}${asks}${quote}: ${p.text}${stand}`;
 }
 
-/** What the teammate said since this member last looked, as a turn note — or null. */
+function askedMe(room: TeamRoom, p: TeamPost, me: string): boolean {
+  if (!p.ask || p.from === me) return false;
+  if (!p.to) return true;
+  const want = fold(p.to);
+  const name = fold(memberName(room, me));
+  return name === want || name.includes(want) || want.includes(name);
+}
+
+/** What the teammates said since this member last looked, as a turn note — or null. */
 export async function unseen(job: Job, turn = 0): Promise<{ text: string; posts: TeamPost[] } | null> {
   return withRoom(job.team!, (room) => {
     room.lastPostTurn = { [job.id]: turn, ...room.lastPostTurn }; // the clock starts on the first turn
     const from = room.seen[job.id] ?? 0;
     const fresh = room.posts.slice(from).filter((p) => p.from !== job.id);
     room.seen[job.id] = room.posts.length;
-    const mate = room.members.find((m) => m !== job.id);
-    const vote = mate ? room.votes[mate] : undefined;
-    const voteLine = vote
-      ? `Teammate's current vote: ${vote.answer.address ?? vote.answer.parcel ?? "no match"} at ${vote.certainty}%.`
-      : "";
-    const asked = fresh.filter((p) => p.ask).at(-1);
+    const votes = others(room, job.id)
+      .filter((m) => room.votes[m])
+      .map((m) => `${memberName(room, m)}: ${voteText(room.votes[m])}`);
+    const asked = fresh.filter((p) => askedMe(room, p, job.id)).at(-1);
     const quiet = turn - (room.lastPostTurn[job.id] ?? turn) >= QUIET_TURNS;
     if (!fresh.length && !quiet) return null;
     const lines: string[] = [];
     if (fresh.length) {
-      lines.push(`[team chat] New from your teammate:\n${fresh.map((p) => postLine(room, p, job.id)).join("\n")}`);
-      if (voteLine) lines.push(voteLine);
+      lines.push(`[team chat] New since you last looked (you are ${memberName(room, job.id)}):\n${fresh.map((p) => postLine(room, p, job.id)).join("\n")}`);
+      if (votes.length) lines.push(`Current votes — ${votes.join("; ")}.`);
     }
     if (asked)
-      lines.push(`Your teammate asked you directly in #${asked.id} — answer it with team_post (reply_to ${asked.id}) this turn, from what you have.`);
+      lines.push(`${asked.model} asked you directly in #${asked.id} — answer it with team_post (reply_to ${asked.id}) this turn, from what you have.`);
     else if (quiet)
       lines.push(`[team chat] You have not posted for ${QUIET_TURNS} turns. Post one short update with team_post: what you found or ruled out since, your leading candidate and your certainty.`);
     else lines.push(`(Reply with team_post — reply_to the # you answer — or look at their work with team_read.)`);
@@ -184,31 +213,36 @@ export async function unseen(job: Job, turn = 0): Promise<{ text: string; posts:
   });
 }
 
-/** team_read: the whole chat plus the teammate's recent trace and checklist coverage. */
+/** team_read: the whole chat plus each teammate's recent trace and checklist coverage. */
 export async function readMate(job: Job, steps = 25): Promise<string> {
   const room = await load(job.team!);
-  const mateId = room.members.find((m) => m !== job.id);
-  const mate = mateId ? getJob(mateId) : undefined;
   const chat = room.posts.length ? room.posts.map((p) => postLine(room, p, job.id)).join("\n") : "(no messages yet)";
-  if (!mate) return `Team chat:\n${chat}\n\nYour teammate's run is not available.`;
-  const trace = mate.steps
-    .slice(-Math.max(1, Math.min(60, steps)))
-    .map((s) => {
-      const body = (s.reasoning ?? s.detail ?? "").replace(/\s+/g, " ").slice(0, s.kind === "reasoning" ? 600 : 300);
-      return `- [${s.kind}] ${s.title}${body ? ` — ${body}` : ""}`;
-    })
-    .join("\n");
-  const vote = room.votes[mate.id];
-  return [
-    `Teammate: ${label(mate.model)} — ${mate.status}, ${mate.steps.length} steps so far.`,
-    mate.search ? `Their checklist: ${coverageText(mate.search)}.` : "",
-    mate.signature ? `Their target signature: ${mate.signature.clues.join("; ")}` : "",
-    vote ? `Their vote: ${vote.answer.address ?? vote.answer.parcel ?? "no match"} at ${vote.certainty}% — ${vote.answer.reasoning.slice(0, 600)}` : "Their vote: none yet.",
-    `\nTeam chat:\n${chat}`,
-    `\nTheir latest steps:\n${trace}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const mates = others(room, job.id);
+  // The trace budget is shared, so a crowd does not flood the context.
+  const each = Math.max(4, Math.floor(Math.max(1, Math.min(60, steps)) / Math.max(1, mates.length)));
+  const parts = mates.map((id) => {
+    const mate = getJob(id);
+    const name = memberName(room, id);
+    if (!mate) return `${name}: run not available.`;
+    const trace = mate.steps
+      .slice(-each)
+      .map((s) => {
+        const body = (s.reasoning ?? s.detail ?? "").replace(/\s+/g, " ").slice(0, s.kind === "reasoning" ? 500 : 250);
+        return `  - [${s.kind}] ${s.title}${body ? ` — ${body}` : ""}`;
+      })
+      .join("\n");
+    const vote = room.votes[id];
+    return [
+      `${name} — ${mate.status}, ${mate.steps.length} steps so far.`,
+      mate.search ? `  Checklist: ${coverageText(mate.search)}.` : "",
+      mate.signature ? `  Target signature: ${mate.signature.clues.join("; ")}` : "",
+      vote ? `  Vote: ${voteText(vote)} — ${vote.answer.reasoning.slice(0, 400)}` : "  Vote: none yet.",
+      `  Latest steps:\n${trace}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+  return [`You are ${memberName(room, job.id)}.`, `Team chat:\n${chat}`, ...parts].join("\n\n");
 }
 
 /** One building, however the two members wrote it. */
@@ -250,28 +284,31 @@ export async function vote(job: Job, answer: Answer, certainty: number): Promise
     const key = answerKey(answer);
     const sure = Math.max(0, Math.min(100, Math.round(certainty)));
     room.votes[job.id] = { key, certainty: sure, answer, at: new Date().toISOString() };
-    const mateId = room.members.find((m) => m !== job.id);
     const mine = answer.address ?? answer.parcel ?? "no match";
-    const theirs = mateId ? room.votes[mateId] : undefined;
-    const same = !!theirs && sameBuilding(theirs.answer, answer);
-    if (answer.found && sure >= AGREE_AT && theirs && same && theirs.certainty >= AGREE_AT) {
+    // Everyone still in the room — searching, or already voted — must name the
+    // same building at AGREE_AT or more. A member that stopped without a vote
+    // (error, limit) is not waited for.
+    const inPlay = others(room, job.id).filter((m) => room.votes[m] || getJob(m)?.status === "running");
+    const holdouts = inPlay.filter((m) => {
+      const v = room.votes[m];
+      return !v || !sameBuilding(v.answer, answer) || v.certainty < AGREE_AT;
+    });
+    if (answer.found && sure >= AGREE_AT && inPlay.length > 0 && holdouts.length === 0) {
       room.agreed = { key, answer, at: new Date().toISOString() };
       return { kind: "agreed" as const, answer };
     }
     const why = !answer.found
-      ? "A team only stops on a building you BOTH name"
+      ? "A team only stops on a building you ALL name"
       : sure < AGREE_AT
-        ? `You are at ${sure}% — the team stops only when you are both at ${AGREE_AT}% or more`
-        : !theirs
-          ? "Your teammate has not voted yet"
-          : !same
-            ? `Your teammate votes for ${theirs.answer.address ?? theirs.answer.parcel ?? "no match"} at ${theirs.certainty}%`
-            : `Your teammate names the same building but is only at ${theirs.certainty}%`;
+        ? `You are at ${sure}% — the team stops only when everyone is at ${AGREE_AT}% or more`
+        : `Not everyone agrees yet: ${holdouts
+            .map((m) => `${memberName(room, m)} ${room.votes[m] ? `votes ${voteText(room.votes[m])}` : "has not voted"}`)
+            .join("; ")}`;
     return {
       kind: "waiting" as const,
       message:
         `Vote recorded (${mine}, ${sure}%) — not finished: ${why}. ` +
-        `Share what you found in team_post, look at their finds with team_read for ideas, and keep searching your own way. ` +
+        `Share what you found in team_post, look at the others' finds with team_read for ideas, and keep searching your own way. ` +
         `Vote again with submit_answer whenever your view or certainty changes.`,
     };
   });
@@ -284,19 +321,19 @@ export async function agreed(job: Job): Promise<Answer | null> {
 }
 
 export const TEAM_BRIEF = `TEAM RUN
-You are not alone: a teammate (another model) is searching this same listing right now on its own computer, with its own checklist. You do not wait for each other. Run YOUR OWN search, your own way — do not copy theirs, and do not stop your plan to follow them. You share a group chat, like colleagues on a forum, so you can get inspired by what the other one finds:
-- Every turn you are shown what your teammate posted since you last looked.
+You are not alone: one or more teammates are searching this same listing right now, each on its own computer with its own checklist. Nobody waits for anybody. Run YOUR OWN search, your own way — do not copy theirs, and do not stop your plan to follow them. You share a group chat, like colleagues on a forum, so you can get inspired by what the others find:
+- Every turn you are shown what your teammates posted since you last looked, and your own name in the chat.
 - Talk like colleagues in a group chat: your first team_post comes right after record_signature (your read of the building and where you start); then post whenever you find, rule out or doubt something. Every message says where you stand: leading (your best candidate so far, or "none yet") and certainty.
-- team_post(message, leading, certainty, reply_to?, ask?) shares a find: a register value, a plot that matches the listing's area, a building ruled out and what you saw, a candidate (EGID/address) worth a look, an approach that worked. Reply to a specific message by its #. Set ask when you want your teammate to answer you directly — they answer it on their next turn. One or two short sentences, concrete, no "I agree" filler, never repeat what is already in the chat.
-- team_read() shows your teammate's recent steps, checklist coverage and current vote — look when you are stuck or want ideas, and to avoid doing work they already did.
-- A clear finding from your teammate is a shared fact: take it as given and build on it. Do not re-check it, judge it or debate whether it is worth something. Only speak up when your OWN evidence contradicts it.
-- submit_answer is a VOTE with a certainty (0–100). The team stops only when you BOTH vote for the same building at ${AGREE_AT}% or more. Until then a vote comes back and you keep searching your own way. Never raise your certainty just to finish.`;
+- team_post(message, leading, certainty, reply_to?, ask?, to?) shares a find: a register value, a plot that matches the listing's area, a building ruled out and what you saw, a candidate (EGID/address) worth a look, an approach that worked. Reply to a specific message by its #. Set ask (and to = a teammate's chat name, or leave to empty for everyone) when you want an answer — they answer it on their next turn. One or two short sentences, concrete, no "I agree" filler, never repeat what is already in the chat.
+- team_read() shows your teammates' recent steps, checklist coverage and current votes — look when you are stuck or want ideas, and to avoid doing work someone already did.
+- A clear finding from a teammate is a shared fact: take it as given and build on it. Do not re-check it, judge it or debate whether it is worth something. Only speak up when your OWN evidence contradicts it.
+- submit_answer is a VOTE with a certainty (0–100). The team stops only when you ALL vote for the same building at ${AGREE_AT}% or more. Until then a vote comes back and you keep searching your own way. Never raise your certainty just to finish.`;
 
 export const TEAM_TOOLS = [
   {
     name: "team_post",
     description:
-      "Share a find in the team chat your teammate sees on their next turn: a register value, a plot match, a building ruled out and why, a candidate (EGID/address), an approach that worked. reply_to answers a specific message by its #.",
+      "Share a find in the team chat your teammates see on their next turn: a register value, a plot match, a building ruled out and why, a candidate (EGID/address), an approach that worked. reply_to answers a specific message by its #.",
     input_schema: {
       type: "object",
       properties: {
@@ -304,7 +341,8 @@ export const TEAM_TOOLS = [
         leading: { type: "string", description: "your current best candidate (address or EGID), or 'none yet'" },
         certainty: { type: "integer", minimum: 0, maximum: 100, description: "how sure you are of that candidate, 0–100" },
         reply_to: { type: "integer", description: "the # of the message you are answering" },
-        ask: { type: "boolean", description: "true when you ask your teammate something directly; they answer next" },
+        ask: { type: "boolean", description: "true when you ask something directly; they answer next" },
+        to: { type: "string", description: "with ask: the teammate's chat name (e.g. 'haiku 4.5 #2'); empty asks everyone" },
       },
       required: ["message", "leading", "certainty"],
     },
@@ -312,7 +350,7 @@ export const TEAM_TOOLS = [
   {
     name: "team_read",
     description:
-      "See your teammate's work for ideas: the full team chat, their checklist coverage, their current vote, and their latest steps (commands, reasoning).",
+      "See your teammates' work for ideas: the full team chat, each one's checklist coverage, current vote, and latest steps (commands, reasoning).",
     input_schema: {
       type: "object",
       properties: { steps: { type: "integer", description: "how many of their latest steps to show (default 25, max 60)" } },
@@ -324,7 +362,7 @@ export const CERTAINTY_FIELD = {
   type: "integer",
   minimum: 0,
   maximum: 100,
-  description: `TEAM RUN: how sure you are, 0–100, that this is the property. The team stops when you both name the same building at ${AGREE_AT}+.`,
+  description: `TEAM RUN: how sure you are, 0–100, that this is the property. The team stops when you all name the same building at ${AGREE_AT}+.`,
 };
 
 /** The room as the Requests page shows it: the chat, each member's vote, and the agreement. */
@@ -338,7 +376,7 @@ export async function roomView(id: string) {
       const v = room.votes[m];
       return {
         jobId: m,
-        model: j ? label(j.model) : null,
+        model: j ? memberName(room, m) : null,
         status: j?.status ?? null,
         vote: v ? { place: v.answer.found ? (v.answer.address ?? v.answer.parcel ?? "found") : "no match", certainty: v.certainty, at: v.at } : null,
       };
