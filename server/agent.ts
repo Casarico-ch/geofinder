@@ -920,6 +920,7 @@ async function runLoop(
               text: String(inp.message ?? ""),
               replyTo: Number(inp.reply_to) || undefined,
               ask: inp.ask === true,
+              to: inp.to == null ? undefined : String(inp.to),
               leading: inp.leading == null ? undefined : String(inp.leading),
               certainty: inp.certainty == null ? undefined : Number(inp.certainty),
             },

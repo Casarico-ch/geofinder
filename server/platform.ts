@@ -45,10 +45,25 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-sonne
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-// Next to them, every listing request also runs a team (team.ts): Sonnet and
-// Opus searching together until they agree. GEOFINDER_TEAM=0 turns it off.
-const TEAM_MODELS: ModelId[] = ["claude-sonnet-5-5", "claude-opus-5-5"];
-const TEAM_ON = process.env.GEOFINDER_TEAM !== "0";
+// Next to them, every listing request also runs teams (team.ts): models that
+// search side by side in one chat until they all agree. GEOFINDER_TEAMS picks
+// which (comma list of the names below; "none" or GEOFINDER_TEAM=0 for none).
+const SONNET: ModelId = "claude-sonnet-5-5";
+const OPUS: ModelId = "claude-opus-5-5";
+const HAIKU: ModelId = "claude-haiku-4-5";
+const TEAMS: Record<string, ModelId[]> = {
+  mixed: [SONNET, OPUS],
+  haiku: [HAIKU, HAIKU, HAIKU, HAIKU, HAIKU],
+  sonnet: [SONNET, SONNET, SONNET],
+  opus: [OPUS, OPUS, OPUS],
+};
+const TEAMS_ON: string[] =
+  process.env.GEOFINDER_TEAM === "0"
+    ? []
+    : (process.env.GEOFINDER_TEAMS ?? Object.keys(TEAMS).join(","))
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t in TEAMS);
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
@@ -185,10 +200,12 @@ export async function startListingRequest(
   });
   record.source = source;
   record.results = [];
-  const team = TEAM_ON ? `t${randomUUID().replace(/-/g, "").slice(0, 12)}` : undefined;
   const runs = [
     ...models.map((model) => ({ model, team: undefined as string | undefined })),
-    ...(team ? TEAM_MODELS.map((model) => ({ model, team })) : []),
+    ...TEAMS_ON.flatMap((name) => {
+      const team = `t${name}${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+      return TEAMS[name].map((model) => ({ model, team }));
+    }),
   ];
   for (const { model, team } of runs) {
     const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model, team);
