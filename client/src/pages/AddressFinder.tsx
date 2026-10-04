@@ -106,6 +106,12 @@ const TEAMS: { name: string; models: RunModel[] }[] = [
   { name: "haiku", models: Array(5).fill("claude-haiku-4-5") },
   { name: "sonnet", models: Array(3).fill("claude-sonnet-5-5") },
   { name: "opus", models: Array(3).fill("claude-opus-5-5") },
+  { name: "fable-opus", models: ["claude-fable-5-1", "claude-opus-5-5"] },
+];
+// Solo variants run with the teams (server/platform.ts VARIANTS).
+const VARIANTS: { model: ModelId; effort?: "max" }[] = [
+  { model: "claude-fable-5-1" },
+  { model: "claude-opus-5-5", effort: "max" },
 ];
 // Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
@@ -735,8 +741,9 @@ export default function AddressFinder() {
     try {
       // 1) Create one job per selected model on tiny metadata requests — each
       //    returns in milliseconds.
-      const runs: { model: RunModel; team?: string }[] = [
+      const runs: { model: RunModel; team?: string; effort?: "max" }[] = [
         ...models.map((model) => ({ model })),
+        ...(teamRun ? VARIANTS.filter((v) => v.effort || !models.includes(v.model)) : []),
         ...(teamRun
           ? TEAMS.flatMap((t) => {
               const team = `t${t.name}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -745,7 +752,7 @@ export default function AddressFinder() {
           : []),
       ];
       const jobIds = await Promise.all(
-        runs.map(async ({ model, team }) => {
+        runs.map(async ({ model, team, effort }) => {
           const res = await fetch("/api/geo/investigate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -755,6 +762,7 @@ export default function AddressFinder() {
               municipality: municipality || undefined,
               model,
               team,
+              effort,
             }),
           });
           const body = await res.json().catch(() => null);
@@ -1074,9 +1082,9 @@ export default function AddressFinder() {
                 <div className="flex items-start gap-2">
                   <Checkbox id="team-run" checked={teamRun} onCheckedChange={(v) => setTeamRun(v === true)} className="mt-0.5" />
                   <Label htmlFor="team-run" className="text-sm font-normal leading-snug cursor-pointer">
-                    <span className="font-medium">Teams (experiment)</span>
+                    <span className="font-medium">Teams and variants (experiment)</span>
                     <span className="block text-muted-foreground">
-                      Also runs four teams next to the models above — Sonnet + Opus, 5 × Haiku, 3 × Sonnet, 3 × Opus. Each shares one chat and stops only when all its members agree on the same building at 95%+.
+                      Also runs Fable 5.1 and Opus 5.5 at max effort on their own, and five teams — Sonnet + Opus, 5 × Haiku, 3 × Sonnet, 3 × Opus, Fable + Opus. Each team shares one chat and stops only when all its members agree on the same building at 95%+.
                     </span>
                   </Label>
                 </div>
@@ -1088,7 +1096,7 @@ export default function AddressFinder() {
                       Starting…
                     </>
                   ) : models.length > 1 || teamRun ? (
-                    `Find address · ${models.length} model${models.length > 1 ? "s" : ""}${teamRun ? " + 4 teams" : ""}`
+                    `Find address · ${models.length} model${models.length > 1 ? "s" : ""}${teamRun ? " + variants + 5 teams" : ""}`
                   ) : (
                     "Find address"
                   )}

@@ -35,6 +35,7 @@ import {
   listJobs,
   requestCancel,
   requestPause,
+  EFFORTS,
 } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -57,6 +58,8 @@ const createSchema = z.object({
   model: z.enum(MODELS).optional(),
   // A team run: the jobs created with the same id share a chat room (team.ts).
   team: z.string().regex(/^[\w-]{6,40}$/).optional(),
+  // A variant: the same model at another thinking depth (e.g. Opus at "max").
+  effort: z.enum(EFFORTS).optional(),
 });
 
 const photosSchema = z.object({ images: imagesSchema });
@@ -140,6 +143,7 @@ export function registerApiRoutes(app: Express) {
         },
         parsed.data.model,
         parsed.data.team,
+        parsed.data.effort,
       );
 
       if (images && images.length > 0) {

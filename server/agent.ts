@@ -52,6 +52,8 @@ import {
   setPromptVersion,
   setSignature,
   DEFAULT_MODEL,
+  EFFORTS,
+  type Effort,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
 import * as team from "./team";
@@ -87,8 +89,7 @@ async function smallModelTurn(
 
 // Thinking depth per turn — the biggest single lever on how long a turn takes.
 // "medium" or "low" is faster but looks less carefully.
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-const EFFORT: (typeof EFFORTS)[number] = (EFFORTS as readonly string[]).includes(process.env.AGENT_EFFORT ?? "")
+const EFFORT: Effort = (EFFORTS as readonly string[]).includes(process.env.AGENT_EFFORT ?? "")
   ? (process.env.AGENT_EFFORT as (typeof EFFORTS)[number])
   : "high";
 // Tools that only read or fetch, and touch no search state: several of them in
@@ -765,7 +766,7 @@ async function runLoop(
         thinking: { type: "adaptive", display: "summarized" },
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
-        output_config: { effort: EFFORT },
+        output_config: { effort: job.effort ?? EFFORT },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],

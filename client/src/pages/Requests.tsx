@@ -101,6 +101,8 @@ interface ModelResult {
   aiCostUsd: number;
   check?: boolean; // a cross-check of another model's answer
   team?: string; // a member of a team run: Sonnet + Opus searching together until they agree
+  effort?: string; // a variant at another thinking depth ("max")
+  variant?: string; // a solo variant next to the listing models
   tokens?: number;
   startedAt?: string;
 }
@@ -397,7 +399,10 @@ function ModelColumn({ r }: { r: ModelResult }) {
     <Card className="gap-3 py-3.5 px-3.5 min-w-0 shadow-none">
       <div className="flex items-center gap-2">
         <StatusIcon status={r.status} />
-        <span className="text-sm font-semibold">{MODEL_LABEL[r.model] ?? r.model}</span>
+        <span className="text-sm font-semibold">
+          {MODEL_LABEL[r.model] ?? r.model}
+          {r.effort ? ` · ${r.effort} effort` : ""}
+        </span>
         {r.check && (
           <Badge variant="outline" className="font-normal" title="Checks another model's answer against the listing">
             Cross-check
@@ -731,7 +736,13 @@ function modelsOf(r: PlatformRequest): string {
   const all = r.results ?? [];
   const searches = all.filter((m) => !m.check);
   const solo = searches.filter((m) => !m.team);
-  const names = Array.from(new Set((solo.length ? solo : searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  const names = Array.from(
+    new Set(
+      (solo.length ? solo : searches.length ? searches : all).map(
+        (m) => `${MODEL_LABEL[m.model] ?? m.model}${m.effort ? ` ${m.effort}` : ""}`,
+      ),
+    ),
+  );
   const runs = attemptsOf(r).length;
   return (
     names.join(" + ") +
