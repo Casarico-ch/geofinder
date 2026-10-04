@@ -81,27 +81,26 @@ interface TokenUsage {
 }
 
 const MODEL_IDS = [
-  "claude-opus-4-8",
   "claude-opus-5-5",
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
 ] as const;
 type ModelId = (typeof MODEL_IDS)[number];
-const MODEL_LABEL: Record<ModelId, string> = {
+// Also labels past runs on models no longer offered.
+const MODEL_LABEL: Record<string, string> = {
   "claude-opus-4-8": "Opus 4.8",
   "claude-opus-5-5": "Opus 5.5",
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
 };
-// Price relative to the Opus 4.8 default ($5 in / $25 out per 1M tokens).
+// Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
-  "claude-opus-4-8": "default",
-  "claude-opus-5-5": "0.8×",
-  "claude-sonnet-5-5": "0.4×",
-  "claude-fable-5": "2×",
-  "claude-fable-5-1": "2×",
+  "claude-opus-5-5": "default",
+  "claude-sonnet-5-5": "0.5×",
+  "claude-fable-5": "2.5×",
+  "claude-fable-5-1": "2.5×",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -148,9 +147,23 @@ interface Job {
   potential?: BuildPotential | null;
   potentialStatus?: PotentialStatus;
   promptVersion?: string | null;
-  signature?: { clues: string[]; schematicSvg?: string } | null;
+  signature?: { clues: string[]; schematicSvg?: string; location?: LocationClues } | null;
   search?: SearchPlan | null;
   elapsedMs?: number;
+}
+
+// Where the photos place the house; it orders the shortlist (server/locate.ts).
+interface LocationClues {
+  slope?: { faces: string; confidence: string };
+  landmarks?: { kind: string; name?: string; direction: string; distanceM?: number; confidence: string }[];
+}
+
+function locationText(l: LocationClues): string {
+  const parts: string[] = [];
+  if (l.slope) parts.push(l.slope.faces === "flat" ? `flat ground (${l.slope.confidence})` : `slope falls ${l.slope.faces} (${l.slope.confidence})`);
+  for (const m of l.landmarks ?? [])
+    parts.push(`${m.name ?? m.kind} to the ${m.direction}${m.distanceM ? ` ~${m.distanceM} m` : ""} (${m.confidence})`);
+  return parts.join(" · ");
 }
 
 // Where the finder was told to look, and what it has checked (server/search.ts).
@@ -508,7 +521,7 @@ export default function AddressFinder() {
   const [description, setDescription] = useState("");
   // One investigation is started per selected model, all from the same inputs,
   // so several models can be compared on the first try.
-  const [models, setModels] = useState<ModelId[]>(["claude-opus-4-8"]);
+  const [models, setModels] = useState<ModelId[]>(["claude-opus-5-5"]);
   const toggleModel = useCallback((m: ModelId) => {
     setModels((cur) =>
       cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
@@ -1187,6 +1200,12 @@ export default function AddressFinder() {
                       </li>
                     ))}
                   </ol>
+                  {job.signature.location && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">Location clues:</span>{" "}
+                      {locationText(job.signature.location)}
+                    </p>
+                  )}
                   {job.signature.schematicSvg && (
                     <img
                       alt="Target schematic"

@@ -36,6 +36,7 @@ export interface GwrBuilding {
   dwellings: number | null; // ganzwhg
   footprintM2: number | null; // garea
   category: number | null; // gkat
+  klass: number | null; // gklas (1272 = church or other religious building)
   status: number | null; // gstat (1004 = existing)
   year: number | null; // gbauj
 }
@@ -244,6 +245,7 @@ function toBuilding(f: any): GwrBuilding | null {
     dwellings: num(p.ganzwhg),
     footprintM2: num(p.garea),
     category: num(p.gkat),
+    klass: num(p.gklas),
     status: num(p.gstat),
     year: num(p.gbauj),
   };

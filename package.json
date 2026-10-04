@@ -13,10 +13,11 @@
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "try:listing": "tsx scripts/try-listing.ts",
+    "try:locate": "tsx scripts/try-locate.ts",
     "try:popety": "tsx --env-file-if-exists=.env scripts/try-popety.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
-    "test": "tsx scripts/check-magic-feedback.ts && tsx scripts/check-proof.ts"
+    "test": "tsx scripts/check-magic-feedback.ts && tsx scripts/check-proof.ts && tsx scripts/check-shortlist.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

@@ -42,6 +42,7 @@ export interface LedgerEntry {
   fit?: string; // the fit line shown to the model
   plot?: { number: string; egrid: string | null; areaM2: number };
   closeLook?: boolean; // looked at on its own with inspect_candidate
+  loc?: { score: number; why: string }; // fit with the photos' location clues (locate.ts)
 }
 
 export interface SearchState {
@@ -199,6 +200,7 @@ export function addCandidates(
     strongFit?: boolean;
     fit?: string;
     plot?: LedgerEntry["plot"];
+    loc?: { score: number; why: string };
   }[],
 ): number {
   if (!s.shortlisted.includes(commune)) s.shortlisted.push(commune);
@@ -224,6 +226,7 @@ export function addCandidates(
       footprintM2: c.footprintM2,
       viewed: false,
       verdict: "unchecked",
+      ...(c.loc ? { loc: c.loc } : {}),
       ...(c.fit !== undefined ? { strongFit: c.strongFit, fit: c.fit, plot: c.plot } : {}),
     };
     added++;

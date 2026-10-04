@@ -51,14 +51,30 @@ import {
   saveSearch,
   setPromptVersion,
   setSignature,
+  DEFAULT_MODEL,
 } from "./jobs";
+import { cluesText, coerceLocation } from "./locate";
 
-export const MODEL = "claude-opus-4-8";
+export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
 // Wall-clock budget for one investigation. Checking every candidate takes longer
 // than giving up early, so the cap is what keeps a hopeless search bounded.
 const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
 export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
+// Speed. Fast mode runs the same model at up to 2.5x the output speed for 2x the
+// price; only some models offer it. AGENT_FAST=0 turns it off.
+const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]); // 4.8: resumed old runs
+const FAST_MODE = process.env.AGENT_FAST !== "0";
+// Thinking depth per turn — the biggest single lever on how long a turn takes.
+// "medium" or "low" is faster but looks less carefully.
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+const EFFORT: (typeof EFFORTS)[number] = (EFFORTS as readonly string[]).includes(process.env.AGENT_EFFORT ?? "")
+  ? (process.env.AGENT_EFFORT as (typeof EFFORTS)[number])
+  : "high";
+// Tools that only read or fetch, and touch no search state: several of them in
+// one turn run at the same time. write_file and the checklist tools run alone,
+// in order, so "write fetch.mjs, then run it" still works.
+const PARALLEL_TOOLS = new Set(["bash", "read_file", "render_roofs"]);
 
 export interface AgentImage {
   base64: string;
@@ -108,7 +124,7 @@ const TOOLS = [
   {
     name: "record_signature",
     description:
-      "Call this ONCE, first, before searching: from the listing photos, describe what this property looks like FROM ABOVE, as an ordered list of aerial-visible clues, biggest discriminator first. LEAD with the hard, cadastre-matchable STRUCTURE — number of floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda/conservatory, pool — because those are what filter the building register. Then topology/context ('bar of attached houses' / 'detached villa next to a forest' / 'next to a church'), then the plot (garden size, shape, roads on which sides), then fine roof detail (shape, dormers, solar). Rank vegetation (hedges, topiary, trees) LAST — it barely shows from above. This signature drives the enumerate-and-filter search.",
+      "Call this ONCE, first, before searching: from the listing photos, describe what this property looks like FROM ABOVE, as an ordered list of aerial-visible clues, biggest discriminator first. LEAD with the hard, cadastre-matchable STRUCTURE — number of floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda/conservatory, pool — because those are what filter the building register. Then topology/context ('bar of attached houses' / 'detached villa next to a forest' / 'next to a church'), then the plot (garden size, shape, roads on which sides), then fine roof detail (shape, dormers, solar). Rank vegetation (hedges, topiary, trees) LAST — it barely shows from above. This signature drives the enumerate-and-filter search. Also fill `location` with what the photos say about WHERE the house is (which way the slope falls, landmarks seen from it and in which direction): the shortlist puts the houses whose surroundings fit first.",
     input_schema: {
       type: "object",
       properties: {
@@ -120,6 +136,37 @@ const TOOLS = [
         schematic_svg: {
           type: ["string", "null"],
           description: "Optional: a small top-down SVG sketch of the target (house, row, garden outline, positions of tree/path/pool/dependency, which sides have roads).",
+        },
+        location: {
+          type: "object",
+          description:
+            "WHERE the photos place the house — read it from views through windows, from the terrace or garden, and from the slope. This ORDERS the shortlist (best fit first); it never removes a house, so give what the photos show, with an honest confidence, and omit what they don't.",
+          properties: {
+            slope: {
+              type: "object",
+              description: "The direction the ground falls away from the house (its view side), as on a map — read it from the photos (the view, shadows, the terrain). A listing's 'plein sud' / 'versant sud' / 'Südhang' usually means sunny, not where the slope falls (a chalet sold as 'versant sud' can stand on a slope that falls west), so text alone is a guess. Use 'flat' for level ground.",
+              properties: {
+                faces: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "flat"] },
+                confidence: { type: "string", enum: ["sure", "likely", "guess"] },
+              },
+              required: ["faces", "confidence"],
+            },
+            landmarks: {
+              type: "array",
+              description: "Distinctive things visible from the house: a church or chapel, a named peak, a lake, a village. Direction is where it lies SEEN FROM THE HOUSE (map compass: work it out from the sun, shadows, the slope or known geography). Omit name for an unnamed local church.",
+              items: {
+                type: "object",
+                properties: {
+                  kind: { type: "string", enum: ["church", "peak", "lake", "place", "other"] },
+                  name: { type: "string", description: "its proper name if you know it, e.g. 'Matterhorn', 'Lac Léman'" },
+                  direction: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] },
+                  distance_m: { type: "number", description: "rough distance from the house, if the photos allow it" },
+                  confidence: { type: "string", enum: ["sure", "likely", "guess"] },
+                },
+                required: ["kind", "direction", "confidence"],
+              },
+            },
+          },
         },
       },
       required: ["clues"],
@@ -323,11 +370,14 @@ SOURCES (starting points, not limits; set a User-Agent header)
 - Building register (GWR, nationwide): https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry={lon},{lat}&geometryType=esriGeometryPoint&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=15&sr=4326&geometryFormat=geojson&mapExtent={lon-0.002},{lat-0.0015},{lon+0.002},{lat+0.0015}&imageDisplay=800,600,96 — strname_deinr (street+no.), gbauj (year), gastw (floors), ganzwhg (dwellings), egid.
 - OSM amenities: Overpass POST https://overpass-api.de/api/interpreter (body 'data='+urlencoded QL). Geocoding: https://nominatim.openstreetmap.org/search?q=...&format=json. Compute haversine/bearing yourself.
 
+SPEED
+Several tool calls in one turn run at the same time (bash, read_file, render_roofs). When calls do not depend on each other — fetching several aerials or registers, reading several images — make them all in the same turn instead of one per turn.
+
 Reason explicitly about why you run each command — your thinking is the saved trace of the investigation.`;
 
 const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer.
 
-FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
+FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. Fill its location too: which way the ground falls away, and the church, peak, lake or village seen from the house and in which direction — the shortlist then checks the houses whose surroundings fit first. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
 
 Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors + footprint + dwellings — the plot area is checked for you afterwards), look at every candidate with view_candidates and record a verdict with mark_candidates, inspect every strong fit and every possible with inspect_candidate, then confirm the survivor by its built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when it meets the PROOF rules — otherwise submit your ranked shortlist honestly.`;
 
@@ -457,7 +507,7 @@ function coerceSignature(input: Record<string, unknown>): Signature {
   const svg = typeof input.schematic_svg === "string" && input.schematic_svg.trim()
     ? clip(input.schematic_svg, 20_000)
     : undefined;
-  return { clues, schematicSvg: svg };
+  return { clues, schematicSvg: svg, location: coerceLocation(input.location) };
 }
 
 function coerceAnswer(input: Record<string, unknown>): Answer {
@@ -610,6 +660,7 @@ async function runLoop(
     };
     const nearTimeLimit = () => elapsedMinutes() >= MAX_MINUTES * 0.85;
     const nearLimit = (step: number) => step >= MAX_STEPS - 15 || nearTimeLimit();
+    let fastUnavailable = false;
     for (let i = startTurn; i < MAX_STEPS; i++) {
       if (elapsedMinutes() >= MAX_MINUTES) {
         await finishJob(job, {
@@ -643,17 +694,18 @@ async function runLoop(
 
       await files.upload(messages);
       if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
-      const resp = await client.messages.create({
-        model: job.model ?? MODEL,
+      const model = job.model ?? MODEL;
+      const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
+        model,
         max_tokens: 16_000,
         // display: "summarized" so the model's reasoning is actually returned
-        // (Opus 4.8 / Fable 5 omit thinking text by default) — that's the trace.
+        // (Opus 5.5 / Fable 5 omit thinking text by default) — that's the trace.
         // adaptive thinking is valid on both models (Fable rejects only
         // disabled/budget_tokens, which we never send).
         thinking: { type: "adaptive", display: "summarized" },
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
-        output_config: { effort: "high" },
+        output_config: { effort: EFFORT },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
@@ -663,7 +715,26 @@ async function runLoop(
         // model has already downloaded are read from cache, not reprocessed.
         cache_control: { type: "ephemeral" },
         messages: files.wire(messages),
-      });
+      };
+      let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable;
+      let resp: Anthropic.Messages.Message;
+      try {
+        resp = fast
+          ? ((await client.beta.messages.create({
+              ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+              speed: "fast",
+              betas: ["fast-mode-2026-02-01"],
+            })) as unknown as Anthropic.Messages.Message)
+          : await client.messages.create(params);
+      } catch (err) {
+        // Fast mode has its own rate limit: when it is exhausted (or refused),
+        // finish the run at standard speed instead of failing it.
+        if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError)) throw err;
+        fastUnavailable = true;
+        fast = false;
+        await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
+        resp = await client.messages.create(params);
+      }
 
       // Record token usage for this turn (input includes cache traffic so the
       // total reflects what actually moved through the model).
@@ -672,7 +743,7 @@ async function runLoop(
         const cacheRead = u.cache_read_input_tokens ?? 0;
         const cacheWrite = u.cache_creation_input_tokens ?? 0;
         const inTok = (u.input_tokens ?? 0) + cacheRead + cacheWrite;
-        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead, cacheWrite);
+        await addUsage(job, inTok, u.output_tokens ?? 0, cacheRead, cacheWrite, fast);
       }
 
       if (resp.stop_reason === "refusal") {
@@ -697,8 +768,25 @@ async function runLoop(
         return;
       }
 
+      // A run of consecutive read/fetch-only calls is started together when the
+      // loop reaches its first call — after every call before it has finished —
+      // and its outputs are then used in order, as if run one by one.
+      const early = new Map<string, Promise<Anthropic.Messages.ToolResultBlockParam["content"]>>();
+      const startGroup = (from: number) => {
+        for (let k = from; k < toolUses.length && PARALLEL_TOOLS.has(toolUses[k].name); k++) {
+          const tu = toolUses[k];
+          const out = dispatchTool(job, tu.name, tu.input as Record<string, unknown>);
+          // Awaited in order below; if an earlier one throws, the run ends and
+          // a later failure must not surface as an unhandled rejection.
+          out.catch(() => {});
+          early.set(tu.id, out);
+        }
+      };
+
       const results: Anthropic.Messages.ToolResultBlockParam[] = [];
-      for (const tu of toolUses) {
+      for (let idx = 0; idx < toolUses.length; idx++) {
+        const tu = toolUses[idx];
+        if (PARALLEL_TOOLS.has(tu.name) && !early.has(tu.id)) startGroup(idx);
         if (tu.name === "submit_answer") {
           const answer = coerceAnswer(tu.input as Record<string, unknown>);
           // A "not found" while the plan still has unchecked candidates (or
@@ -734,6 +822,8 @@ async function runLoop(
             final = pr.blocking.length ? unprovenAsShortlist(answer, pr.blocking) : answer;
             if (pr.proof) final = { ...final, proof: pr.proof };
           }
+          const rankNote = job.search ? answerRank(job.search, final) : null;
+          if (rankNote) await addStep(job, { kind: "note", title: "Checking order", detail: rankNote });
           await addStep(job, {
             kind: "answer",
             title: final.found ? (final.address ?? final.parcel ?? "Answer") : "No proven match",
@@ -749,12 +839,14 @@ async function runLoop(
           await addStep(job, {
             kind: "note",
             title: "Target signature",
-            detail: sig.clues.map((c, i) => `${i + 1}. ${c}`).join("\n"),
+            detail:
+              sig.clues.map((c, i) => `${i + 1}. ${c}`).join("\n") +
+              (sig.location ? `\nLocation clues: ${cluesText(sig.location)}` : ""),
           });
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
           continue;
         }
-        const out = await dispatchTool(job, tu.name, tu.input as Record<string, unknown>);
+        const out = await (early.get(tu.id) ?? dispatchTool(job, tu.name, tu.input as Record<string, unknown>));
         results.push({ type: "tool_result", tool_use_id: tu.id, content: out });
       }
       const content: Anthropic.Messages.ContentBlockParam[] = [...results];
@@ -940,6 +1032,7 @@ export async function dispatchTool(
         // every other run keeps exactly the prompt it had.
         near: nearOf(input.near),
         known: new Set(Object.keys(search.candidates)),
+        location: job.signature?.location,
       });
       // HIGH commune confidence: the stated commune is exhausted before any other.
       const blocked = r.supported ? leavePrimaryBlocked(search, r.commune) : null;
@@ -948,7 +1041,11 @@ export async function dispatchTool(
         return `refused: ${blocked}`;
       }
       const facts = listingFacts(job.input.listingText);
-      const cands = r.supported ? await annotateFit(facts, r.candidates) : [];
+      // Strong fits (every register fact fits the listing) are checked first;
+      // otherwise the shortlist's own order (location, then footprint) stands.
+      const cands = (r.supported ? await annotateFit(facts, r.candidates) : []).sort(
+        (a, b) => Number(b.strongFit) - Number(a.strongFit),
+      );
       const added = r.supported ? addCandidates(search, r.commune, cands) : 0;
       await saveSearch(job, search);
       await addStep(job, {
@@ -961,7 +1058,8 @@ export async function dispatchTool(
         (c) =>
           `${c.egid} | ${c.address ?? "?"} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
           `${c.attached == null ? "" : c.attached ? " | attached" : " | detached"} | ${c.lat.toFixed(6)},${c.lon.toFixed(6)}` +
-          (c.strongFit ? ` | STRONG FIT: ${c.fit}` : ""),
+          (c.strongFit ? ` | STRONG FIT: ${c.fit}` : "") +
+          (c.loc ? ` | location ${c.loc.score.toFixed(2)}: ${c.loc.why}` : ""),
       );
       const strongNote = strong
         ? `\n\n${strong} candidate(s) are STRONG FIT: every fact the register holds fits the listing's own numbers. Reject one only after inspect_candidate.`
@@ -1012,7 +1110,8 @@ export async function dispatchTool(
         .map(
           (c, k) =>
             `${k + 1}: ${c.egid} | ${c.address ?? "?"}, ${c.commune} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
-            (c.strongFit ? ` | STRONG FIT (${c.fit}) — inspect before rejecting` : ""),
+            (c.strongFit ? ` | STRONG FIT (${c.fit}) — inspect before rejecting` : "") +
+            (c.loc ? ` | location ${c.loc.score.toFixed(2)}: ${c.loc.why}` : ""),
         )
         .join("\n");
       await addStep(job, {
@@ -1329,6 +1428,22 @@ function searchOf(job: Job): SearchState {
     };
   }
   return job.search;
+}
+
+// Where the answer stood in the checking order of its commune — the measure of
+// whether the shortlist's ordering (location clues, footprint) put it early.
+function answerRank(search: SearchState, answer: Answer): string | null {
+  const claim = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
+  if (!claim) return null;
+  const line = Object.values(search.candidates)
+    .filter((c) => c.commune === claim.commune)
+    .sort((a, b) => a.order - b.order);
+  const k = line.indexOf(claim) + 1;
+  return (
+    `The answer (${claim.address ?? claim.egid}) was #${k} of ${line.length} in ${claim.commune}'s checking order` +
+    ` (contact sheet ${Math.ceil(k / 16)})` +
+    (claim.loc ? `; location fit ${claim.loc.score.toFixed(2)}: ${claim.loc.why}.` : "; no location score.")
+  );
 }
 
 // shortlist_buildings' `near`: {lat, lon} or "lat,lon"; anything else is ignored.

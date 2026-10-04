@@ -7,6 +7,7 @@
 // finished job at any time. Jobs are mirrored to disk (RUNS_ROOT/<id>/job.json)
 // so a process restart or a reopened window recovers the full trace.
 // =============================================================================
+import type { LocationClues } from "./locate";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -89,21 +90,31 @@ export interface TokenUsage {
   cached: number; // subset of input served from the prompt cache (cheap reads)
   cacheWrite: number; // input tokens written to the cache (1.25x price)
   total: number;
+  fastTurns?: number; // model turns served in fast mode (2x price)
+  fastPremiumUsd?: number; // what fast mode added on top of the standard price
 }
 
 // Per-model pricing, USD per 1M tokens: [fresh input, cache read (~0.1x),
-// cache write (1.25x, 5-min TTL), output]. Fable is ~2x Opus 4.8.
+// cache write (1.25x, 5-min TTL), output]. Fable is ~2.5x Opus 5.5.
+// MODELS are the ones a new run can pick.
 export const MODELS = [
-  "claude-opus-4-8",
   "claude-opus-5-5",
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
-export const DEFAULT_MODEL: ModelId = "claude-opus-4-8";
+export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
+// Models no longer offered, kept so past runs still show and price correctly.
+const RETIRED_MODELS = ["claude-opus-4-8"] as const;
+export type KnownModel = ModelId | (typeof RETIRED_MODELS)[number];
+const KNOWN_MODELS: readonly string[] = [...MODELS, ...RETIRED_MODELS];
+// A re-run of a past run uses the same model, or the default if it is retired.
+export function runnableModel(m: KnownModel): ModelId {
+  return (MODELS as readonly string[]).includes(m) ? (m as ModelId) : DEFAULT_MODEL;
+}
 
-const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: number; out: number }> = {
+const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: number; out: number }> = {
   "claude-opus-4-8": { in: 5, cacheRead: 0.5, cacheWrite: 6.25, out: 25 },
   "claude-opus-5-5": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
   "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
@@ -112,9 +123,10 @@ const PRICING: Record<ModelId, { in: number; cacheRead: number; cacheWrite: numb
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {
-  const p = PRICING[(model as ModelId) in PRICING ? (model as ModelId) : DEFAULT_MODEL];
+  const p = PRICING[(model as KnownModel) in PRICING ? (model as KnownModel) : DEFAULT_MODEL];
   const fresh = Math.max(0, t.input - t.cached - t.cacheWrite);
-  return (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
+  const base = (fresh * p.in + t.cached * p.cacheRead + t.cacheWrite * p.cacheWrite + t.output * p.out) / 1_000_000;
+  return base + (t.fastPremiumUsd ?? 0);
 }
 
 // The target's "visual signature" — what the property should look like from
@@ -125,6 +137,7 @@ export function costUsd(t: TokenUsage, model?: string): number {
 export interface Signature {
   clues: string[]; // ordered, biggest filter first
   schematicSvg?: string; // optional top-down sketch of the target
+  location?: LocationClues; // where the photos place it: slope side, landmarks — orders the shortlist
 }
 
 export interface Job {
@@ -135,7 +148,7 @@ export interface Job {
   activeMs?: number; // time the agent loop has actually been running (pauses excluded)
   finishedAt?: string; // when it reached a terminal state (done/error/cancelled)
   updatedAt: string;
-  model: ModelId; // which Claude model runs this investigation
+  model: KnownModel; // which Claude model runs this investigation
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
   // Where to look (commune confidence + neighbour ring) and the candidate ledger:
@@ -230,7 +243,15 @@ export async function addUsage(
   output: number,
   cached: number,
   cacheWrite: number,
+  fast = false,
 ): Promise<void> {
+  if (fast) {
+    // Fast mode bills every token class at 2x, so the premium equals this
+    // turn's standard price.
+    const turn = { input, output, cached, cacheWrite, total: input + output };
+    job.tokens.fastTurns = (job.tokens.fastTurns ?? 0) + 1;
+    job.tokens.fastPremiumUsd = (job.tokens.fastPremiumUsd ?? 0) + costUsd(turn, job.model);
+  }
   job.tokens.input += input;
   job.tokens.output += output;
   job.tokens.cached += cached;
@@ -324,14 +345,26 @@ function serialize(job: Job): string {
   return JSON.stringify(rest, null, 2);
 }
 
-async function persist(job: Job): Promise<void> {
-  if (job.deleted) return;
-  try {
-    await mkdir(job.runDir, { recursive: true });
-    await writeFile(path.join(job.runDir, "job.json"), serialize(job), "utf8");
-  } catch (err) {
-    console.error(`[jobs] failed to persist ${job.id}:`, err);
-  }
+// Writes of one job are chained: tools run in parallel each add steps, and two
+// overlapping writeFile calls on job.json could interleave into a corrupt file.
+const persistQueue = new Map<string, Promise<void>>();
+
+function persist(job: Job): Promise<void> {
+  const prev = persistQueue.get(job.id) ?? Promise.resolve();
+  const next = prev.then(async () => {
+    if (job.deleted) return;
+    try {
+      await mkdir(job.runDir, { recursive: true });
+      await writeFile(path.join(job.runDir, "job.json"), serialize(job), "utf8");
+    } catch (err) {
+      console.error(`[jobs] failed to persist ${job.id}:`, err);
+    }
+  });
+  persistQueue.set(job.id, next);
+  void next.then(() => {
+    if (persistQueue.get(job.id) === next) persistQueue.delete(job.id);
+  });
+  return next;
 }
 
 // On boot, reload persisted jobs so reopened windows see history. Any job left
@@ -353,7 +386,7 @@ export async function loadPersistedJobs(): Promise<Job[]> {
       const job: Job = {
         ...parsed,
         answer: withParcels(parsed.answer),
-        model: (MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
+        model: KNOWN_MODELS.includes(parsed.model) ? parsed.model : DEFAULT_MODEL,
         tokens: {
           input: parsed.tokens?.input ?? 0,
           output: parsed.tokens?.output ?? 0,

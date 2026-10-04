@@ -12,7 +12,7 @@
 // "Found" means street or building confidence with a house number, or the
 // cadastral plot number(s).
 // =============================================================================
-import type { Answer, ModelId } from "./jobs";
+import { runnableModel, type Answer, type KnownModel, type ModelId } from "./jobs";
 
 export interface Candidate {
   /** Street address, or the commune when only the plot is known. */
@@ -125,11 +125,11 @@ export function sameAddress(a: Candidate, b: Candidate): boolean {
 export interface Check {
   verifier: ModelId;
   candidate: Candidate;
-  candidateFrom: ModelId;
+  candidateFrom: KnownModel;
 }
 
 /** After the searches finished: the checks to run (none when they agree or nobody found it). */
-export function planChecks(searches: { model: ModelId; answer: Answer | null }[]): Check[] {
+export function planChecks(searches: { model: KnownModel; answer: Answer | null }[]): Check[] {
   const found = searches.map((s) => ({ ...s, at: exactAddressOf(s.answer) }));
   const checks: Check[] = [];
   for (const claim of found) {
@@ -137,7 +137,7 @@ export function planChecks(searches: { model: ModelId; answer: Answer | null }[]
     for (const other of found) {
       if (other === claim || other.model === claim.model) continue;
       if (other.at && sameAddress(other.at, claim.at)) continue;
-      checks.push({ verifier: other.model, candidate: claim.at, candidateFrom: claim.model });
+      checks.push({ verifier: runnableModel(other.model), candidate: claim.at, candidateFrom: claim.model });
     }
   }
   return checks;
