@@ -317,6 +317,14 @@ function overallStatus(results: ModelResult[]): RequestStatus {
 const TERMINAL: JobStatus[] = ["done", "error", "cancelled"];
 const POLL_MS = 5_000;
 
+// Called once every run of a listing request has settled. Returns true when it
+// added a run (a cross-check), so the request keeps running until that settles.
+type SettleHook = (req: PlatformRequest) => Promise<boolean>;
+let settleHook: SettleHook | null = null;
+export function onListingSettled(fn: SettleHook): void {
+  settleHook = fn;
+}
+
 // Follow each model's job until it settles and record its answer.
 export function watchListingRequest(req: PlatformRequest): void {
   // Returns true once every model has settled.
@@ -338,6 +346,10 @@ export function watchListingRequest(req: PlatformRequest): void {
     }
     const all = req.results ?? [];
     if (all.every((r) => TERMINAL.includes(r.status))) {
+      if (settleHook && (await settleHook(req))) {
+        await saveRequest(req);
+        return false;
+      }
       req.status = all.some((r) => r.status === "done") ? "done" : "error";
       if (req.status === "error") req.error = "No model finished the investigation.";
       await saveRequest(req);

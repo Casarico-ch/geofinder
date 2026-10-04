@@ -12,6 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { type Candidate, planChecks } from "./consensus";
 import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import {
   PROFILE_COST_CHF,
@@ -32,6 +33,7 @@ import {
   isCheckText,
   listRequests,
   listRequestsWithLooseJobs,
+  onListingSettled,
   saveRequest,
   watchListingRequest,
 } from "./requests";
@@ -143,6 +145,7 @@ function publicView(r: PlatformRequest) {
             model: m.model,
             status: m.status,
             answer: m.answer,
+            ...(m.check ? { check: true } : {}),
           })),
         }),
     popetyCostChf: r.popetyCostChf,
@@ -158,6 +161,7 @@ export async function startListingRequest(
   input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string },
   images: AgentImage[],
   models: ModelId[],
+  source: PlatformRequest["source"] = "platform",
 ) {
   const { municipality, listingId, listingUrl, radarUrl } = input;
   const listingText =
@@ -172,6 +176,7 @@ export async function startListingRequest(
     listingUrl,
     radarUrl,
   });
+  record.source = source;
   record.results = [];
   for (const model of models) {
     const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model);
@@ -186,7 +191,52 @@ export async function startListingRequest(
   return record;
 }
 
+const modelLabel = (m: ModelId) =>
+  m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
+
+/** The listing text with a check-this-address task appended — Radar's wording, word for word. */
+export function verifyText(listing: string, candidate: Candidate, from: ModelId): string {
+  const pin =
+    candidate.latitude != null && candidate.longitude != null ? ` (around ${candidate.latitude}, ${candidate.longitude})` : "";
+  return [
+    listing,
+    "",
+    "--- VERIFICATION TASK ---",
+    `Another investigator (${modelLabel(from)}) concluded that this property is at: ${candidate.address}${candidate.parcel ? `, plot ${candidate.parcel}` : ""}${pin}.`,
+    "Do NOT take that on trust. Check it against the photos, the listing text and the map evidence yourself.",
+    "If, and only if, you are highly confident that this exact location (street AND house number, or the cadastral plot number) is the property, report found=true with that address and/or plot at street or building confidence.",
+    "If it is wrong, or you cannot confirm it with high confidence, report found=false — or the address you are highly confident is correct instead.",
+  ].join("\n");
+}
+
+// A search started here (the website's New search, Run again) gets the
+// cross-checks Radar runs on its own searches: when the models disagree, the
+// other model checks each address (consensus.ts). Radar's searches come in
+// through /v1 and Radar sends those checks itself, so they are left alone.
+async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
+  const results = req.results ?? [];
+  if (req.kind !== "listing" || req.source === "platform" || results.some((m) => m.check)) return false;
+  const searches = results.filter((m) => m.status === "done");
+  const checks = planChecks(searches);
+  if (checks.length === 0) return false;
+  const src = getJob(searches[0].jobId);
+  const images = src ? await loadListingPhotos(src.runDir) : [];
+  if (!src || images.length === 0) return false;
+  for (const c of checks) {
+    const listingText = verifyText(src.input.listingText ?? "", c.candidate, c.candidateFrom);
+    const job = await createJob({ ...src.input, listingText }, c.verifier);
+    results.push({ model: c.verifier, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
+    void (async () => {
+      await saveListingPhotos(job.runDir, images);
+      await runInvestigation(job, images, listingText);
+    })().catch((err) => console.error(`[platform] cross-check ${job.id} crashed:`, err));
+  }
+  req.status = "running";
+  return true;
+}
+
 export function registerPlatformRoutes(app: Express) {
+  onListingSettled(crossCheckIfSplit);
   app.use("/v1", requireApiKey);
 
   app.post("/v1/property", async (req: Request, res: Response) => {
@@ -331,6 +381,7 @@ export function registerPlatformRoutes(app: Express) {
         },
         images,
         models,
+        "website",
       );
       res.status(202).json({ requestId: record.id });
     } catch (err) {

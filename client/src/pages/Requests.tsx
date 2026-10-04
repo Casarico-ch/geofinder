@@ -494,7 +494,9 @@ function outcomeOf(r: PlatformRequest): Outcome {
       : { label: "Not found", tone: "bg-muted text-muted-foreground" };
   }
   const results = r.results ?? [];
-  const hit = results.find((m) => m.status === "done" && m.answer?.found);
+  // A finished cross-check that confirmed a place decides between the models.
+  const done = (m: ModelResult) => m.status === "done" && m.answer?.found;
+  const hit = [...results].reverse().find((m) => m.check && done(m)) ?? results.find((m) => !m.check && done(m));
   if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
   if (results.some((m) => m.status === "running"))
     return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
