@@ -368,6 +368,43 @@ export function pruneOldSheets(messages: Anthropic.Messages.MessageParam[]): voi
   }
 }
 
+// Every other image a tool returns — aerials the model fetched and read, roof
+// renders, re-read listing photos — stays in the conversation too, and run
+// 2d54b5be died with 413 after reading 32 aerials (~0.5 MB each). Once the
+// tool-result images pass IMAGES_MAX_BYTES, the oldest are replaced by a note
+// until they are back under IMAGES_KEEP_BYTES — in one go, rarely, so the
+// prompt cache survives between prunes. The listing photos in the first
+// message are never touched.
+const IMAGES_MAX_BYTES = 14_000_000; // base64 characters
+const IMAGES_KEEP_BYTES = 5_000_000;
+
+export function pruneOldImages(messages: Anthropic.Messages.MessageParam[]): void {
+  const images: { blocks: unknown[]; at: number; size: number; sheet: boolean }[] = [];
+  for (const m of messages) {
+    if (m.role !== "user" || !Array.isArray(m.content)) continue;
+    for (const b of m.content) {
+      if (b.type !== "tool_result" || !Array.isArray(b.content)) continue;
+      const sheet = b.content.some((c) => c.type === "text" && c.text.startsWith(SHEET_NOTE));
+      b.content.forEach((c, at) => {
+        if (c.type === "image" && c.source.type === "base64")
+          images.push({ blocks: b.content as unknown[], at, size: c.source.data.length, sheet });
+      });
+    }
+  }
+  let total = images.reduce((n, i) => n + i.size, 0);
+  if (total <= IMAGES_MAX_BYTES) return;
+  for (const img of images) {
+    if (total <= IMAGES_KEEP_BYTES) break;
+    total -= img.size;
+    img.blocks[img.at] = {
+      type: "text",
+      text: img.sheet
+        ? "[contact sheet image removed to keep the request small — your verdicts on it are in the checklist]"
+        : "[image removed to keep the request small — read the file again if you need to see it]",
+    };
+  }
+}
+
 export function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
 }
@@ -595,6 +632,7 @@ async function runLoop(
       }
 
       pruneOldSheets(messages);
+      pruneOldImages(messages);
       const resp = await client.messages.create({
         model: job.model ?? MODEL,
         max_tokens: 16_000,
