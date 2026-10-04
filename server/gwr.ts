@@ -310,3 +310,15 @@ export function builtCentre(buildings: GwrBuilding[]): { lat: number; lon: numbe
     lon: use.reduce((s, b) => s + b.lon, 0) / use.length,
   };
 }
+
+// The register building at a point (an answer's pin), or null.
+export async function buildingAt(lat: number, lon: number): Promise<GwrBuilding | null> {
+  const d = 0.002;
+  const j = await getJson(
+    `${API}/identify?geometry=${lon},${lat}&geometryType=esriGeometryPoint&layers=all:ch.bfs.gebaeude_wohnungs_register` +
+      `&tolerance=10&sr=4326&geometryFormat=geojson&returnGeometry=true&mapExtent=${lon - d},${lat - d},${lon + d},${lat + d}&imageDisplay=800,600,96`,
+  );
+  const all = (j.results ?? []).map(toBuilding).filter((b: GwrBuilding | null): b is GwrBuilding => !!b);
+  const dist = (b: GwrBuilding) => Math.hypot((b.lon - lon) * 111_320 * Math.cos((lat * Math.PI) / 180), (b.lat - lat) * 111_320);
+  return all.sort((a: GwrBuilding, b: GwrBuilding) => dist(a) - dist(b))[0] ?? null;
+}
