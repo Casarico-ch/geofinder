@@ -251,17 +251,37 @@ function toBuilding(f: any): GwrBuilding | null {
   };
 }
 
+const PAGE = 200; // the most one identify call returns
+
+function identifyPage(env: number[], offset = 0): Promise<any> {
+  return getJson(
+    `${API}/identify?geometry=${env.map((v) => v.toFixed(5)).join(",")}&geometryType=esriGeometryEnvelope` +
+      `&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=0&sr=4326&geometryFormat=geojson&returnGeometry=true` +
+      `&limit=${PAGE}&offset=${offset}`,
+  );
+}
+
+// Every register feature in one tile. Paging with offset is NOT reliable: the
+// service returns the pages of a full tile in a different order on each call,
+// so they overlap and some buildings never come back (Zermatt's busiest tile,
+// 925 features: 822, 900 and 865 distinct buildings on three calls). So a tile
+// whose first page is full is split in four, down to single pages. Only a tile
+// under ~50 m that still overflows is paged, and reported.
 async function identifyAll(env: number[]): Promise<any[]> {
-  const out: any[] = [];
-  for (let offset = 0; offset < 5_000; offset += 200) {
-    const j = await getJson(
-      `${API}/identify?geometry=${env.map((v) => v.toFixed(5)).join(",")}&geometryType=esriGeometryEnvelope` +
-        `&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=0&sr=4326&geometryFormat=geojson&returnGeometry=true` +
-        `&limit=200&offset=${offset}`,
-    );
-    const page = j.results ?? [];
+  const first = (await identifyPage(env)).results ?? [];
+  if (first.length < PAGE) return first;
+  const [x0, y0, x1, y1] = env;
+  if (x1 - x0 > 0.0005 || y1 - y0 > 0.0005) {
+    const xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+    const quads = [[x0, y0, xm, ym], [xm, y0, x1, ym], [x0, ym, xm, y1], [xm, ym, x1, y1]];
+    return (await Promise.all(quads.map(identifyAll))).flat();
+  }
+  console.warn(`[gwr] ${PAGE}+ features in a ~50 m tile at ${env.join(",")}: paged, may be incomplete`);
+  const out = [...first];
+  for (let offset = PAGE; offset < 5_000; offset += PAGE) {
+    const page = (await identifyPage(env, offset)).results ?? [];
     out.push(...page);
-    if (page.length < 200) break;
+    if (page.length < PAGE) break;
   }
   return out;
 }
@@ -269,8 +289,8 @@ async function identifyAll(env: number[]): Promise<any[]> {
 const buildingCache = new Map<number, { at: number; p: Promise<GwrBuilding[]> }>();
 const BUILDING_TTL_MS = 30 * 60_000;
 
-// Every GWR building of a commune: the commune's bbox is tiled (0.01°), each
-// tile paged until exhausted, then kept to the commune's own BFS number.
+// Every GWR building of a commune: the commune's bbox is tiled (0.01°), a full
+// tile split until each fits one page, then kept to the commune's own BFS number.
 export function fetchCommuneBuildings(c: Commune): Promise<GwrBuilding[]> {
   const hit = buildingCache.get(c.bfs);
   if (hit && Date.now() - hit.at < BUILDING_TTL_MS) return hit.p;
