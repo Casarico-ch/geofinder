@@ -29,30 +29,33 @@ const MEDIA: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", p
 // result), so each distinct image is embedded once and every <img> points at it.
 class Images {
   private index = new Map<string, number>();
-  private data: string[] = [];
-  tag(uri: string): string {
-    const key = createHash("sha1").update(uri).digest("hex");
+  private data: { media: string; base64: string }[] = [];
+  // Keyed on the bytes alone: a step reads its file by extension, the tool
+  // result may have sniffed it, and the same picture must still match.
+  tag(media: string, base64: string): string {
+    const key = createHash("sha1").update(base64).digest("hex");
     let i = this.index.get(key);
     if (i === undefined) {
-      i = this.data.push(uri) - 1;
+      i = this.data.push({ media, base64 }) - 1;
       this.index.set(key, i);
     }
     return `<img data-i="${i}" alt="">`;
   }
   script(): string {
-    return `<script>const I=${JSON.stringify(this.data)};document.querySelectorAll("img[data-i]").forEach(e=>{e.src=I[+e.dataset.i]})</script>`;
+    const uris = this.data.map((d) => `data:${d.media};base64,${d.base64}`);
+    return `<script>const I=${JSON.stringify(uris)};document.querySelectorAll("img[data-i]").forEach(e=>{e.src=I[+e.dataset.i]})</script>`;
   }
 }
 
 // A step's image lives under /runs/<id>/…; embed it so the file stands alone.
-async function stepImage(src: string): Promise<string | null> {
+async function stepImage(src: string): Promise<{ media: string; base64: string } | null> {
   const rel = src.replace(/^\/runs\//, "");
   const abs = path.resolve(RUNS_ROOT, rel);
   if (!abs.startsWith(path.resolve(RUNS_ROOT) + path.sep)) return null;
   try {
     const buf = await readFile(abs);
     const ext = path.extname(abs).slice(1).toLowerCase();
-    return `data:${MEDIA[ext] ?? "image/png"};base64,${buf.toString("base64")}`;
+    return { media: MEDIA[ext] ?? "image/png", base64: buf.toString("base64") };
   } catch {
     return null;
   }
@@ -62,7 +65,7 @@ type Block = Record<string, unknown> & { type?: string };
 
 function imageBlock(b: Block, images: Images): string {
   const src = b.source as { type?: string; media_type?: string; data?: string; url?: string } | undefined;
-  if (src?.type === "base64" && src.data) return images.tag(`data:${esc(src.media_type)};base64,${src.data}`);
+  if (src?.type === "base64" && src.data) return images.tag(esc(src.media_type), src.data);
   if (src?.type === "url" && src.url) return `<img src="${esc(src.url)}" alt="">`;
   return `<p class="muted">[image]</p>`;
 }
@@ -111,7 +114,7 @@ export async function exportJobHtml(job: Job): Promise<string> {
   <p><b>${esc(s.title)}</b></p>
   ${s.reasoning ? `<details open><summary>Reasoning</summary>${pre(s.reasoning)}</details>` : ""}
   ${s.detail ? pre(s.detail) : ""}
-  ${img ? images.tag(img) : ""}
+  ${img ? images.tag(img.media, img.base64) : ""}
 </div>`);
   }
 
@@ -153,7 +156,7 @@ ${a ? `<p><b>${esc(a.address ?? a.parcel ?? (a.found ? "Found" : "Not found"))}<
 ${job.error ? `<p><b>Error</b></p>${pre(job.error)}` : ""}
 
 <h2>What we sent: photos (${photos.length})</h2>
-<div class="photos">${photos.map((p) => images.tag(`data:${p.mediaType};base64,${p.base64}`)).join("")}</div>
+<div class="photos">${photos.map((p) => images.tag(p.mediaType, p.base64)).join("")}</div>
 
 <h2>What we sent: listing text</h2>
 ${pre(job.input.listingText ?? "(none)")}
