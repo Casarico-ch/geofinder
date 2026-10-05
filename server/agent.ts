@@ -1170,6 +1170,7 @@ export async function dispatchTool(
           survivors: r.survivors,
           returned: r.candidates.length,
           ranked: true,
+          ...(r.ranking ? { order: r.ranking } : {}),
         });
       await saveSearch(job, search);
       await addStep(job, {

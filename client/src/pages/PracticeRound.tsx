@@ -276,7 +276,7 @@ export default function PracticeRound() {
           </Button>
         </div>
 
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-8">
           <Kpi
             label="Accuracy"
             value={round.accuracy != null ? `${round.accuracy}%` : "—"}
@@ -293,6 +293,11 @@ export default function PracticeRound() {
             value={round.agreed ? `${round.agreedRight ?? 0} right · ${round.agreedWrong ?? 0} wrong` : "—"}
             hint={`${round.agreed ?? 0} houses two runs named alike${round.noProof ? " · no register proof" : ""}`}
             tone={!round.agreed ? undefined : round.agreedWrong ? "bad" : "good"}
+          />
+          <Kpi
+            label="Right house's rank"
+            value={round.ranks?.measured ? (round.ranks.median != null ? `#${round.ranks.median}` : "off list") : "—"}
+            hint={round.ranks?.measured ? `median · ${round.ranks.top10} top 10 · ${round.ranks.top120} top 120 of ${round.ranks.measured}` : "measured from new rounds on"}
           />
           <Kpi label="Runs that found it" value={pct(round.right, round.total)} hint={`${round.right} of ${round.total} runs`} />
           <Kpi label="Average time" value={round.avgMinutes != null ? `${round.avgMinutes} min` : "—"} hint="per run · limit 5 min" />
