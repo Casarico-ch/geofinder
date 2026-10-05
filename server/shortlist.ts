@@ -17,6 +17,7 @@
 // `attached` is unknown, but floors/dwellings/footprint follow the same rules.
 // =============================================================================
 import { plotAt, plotGroupFor, type ListingFacts } from "./proof";
+import { neighbourFit, neighbourhoodAt } from "./neighbours";
 import { fetchCommuneBuildings, flatsOf, resolveCommune, type Commune, type GwrBuilding } from "./gwr";
 import {
   cluesText,
@@ -297,6 +298,8 @@ function buildingNote(b: GwrBuilding, why: string | undefined): string | undefin
 // when the listing names its village, and 400 took ~100 s of a 5-minute run.
 const DEEP = Number(process.env.SHORTLIST_DEEP ?? 150);
 const PLOT_FIT = 0.05, FLAT_FIT_M2 = 3;
+// Neighbour checks are local arithmetic once a 3D tile (~4×3 km) is cached.
+const NEIGHBOUR_DEEP = Number(process.env.SHORTLIST_NEIGHBOUR_DEEP ?? 400);
 
 /**
  * The listing's own facts, in order of strength: a plot of the listed land
@@ -381,6 +384,25 @@ async function rankByListing(
       }
     };
     await Promise.all(Array.from({ length: 16 }, worker));
+  }
+  // The neighbours in the photos against each candidate's real surroundings
+  // (swissBUILDINGS3D): the best NEIGHBOUR_DEEP by everything above get the check.
+  const clues = opts.location?.neighbours ?? [];
+  if (clues.length) {
+    used.push(`${clues.length} neighbour${clues.length === 1 ? "" : "s"} from the photos`);
+    const top = [...homes].sort(byScore).slice(0, NEIGHBOUR_DEEP);
+    let next = 0;
+    const worker = async () => {
+      while (next < top.length) {
+        const b = top[next++];
+        const nb = await neighbourhoodAt(b.lat, b.lon).catch(() => null);
+        const fit = nb ? neighbourFit(clues, nb) : null;
+        if (!fit) continue;
+        score.set(b, score.get(b)! + (fit.score >= 0.85 ? -3 : fit.score >= 0.6 ? -1.5 : fit.score < 0.3 ? 1 : 0));
+        if (fit.score >= 0.6) why.set(b, [why.get(b), fit.why].filter(Boolean).join(", "));
+      }
+    };
+    await Promise.all(Array.from({ length: 8 }, worker));
   }
   const all = [...homes].sort(byScore);
   return { strong: all.filter((b) => strong.has(b)), rest: all.filter((b) => !strong.has(b)), why, used };

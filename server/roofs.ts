@@ -17,7 +17,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 
-interface Building {
+export interface Building {
   faces: number[][][]; // each face: array of [x,y,z] in LV95 metres
   cx: number;
   cy: number;
@@ -30,7 +30,7 @@ export interface RoofRender {
 }
 
 // WGS84 -> Swiss LV95 (E,N), swisstopo approximate formula (sub-metre in CH).
-function wgs84ToLv95(lat: number, lon: number): { E: number; N: number } {
+export function wgs84ToLv95(lat: number, lon: number): { E: number; N: number } {
   const p = (lat * 3600 - 169028.66) / 10000;
   const l = (lon * 3600 - 26782.5) / 10000;
   const E = 2600072.37 + 211455.93 * l - 10938.51 * l * p - 0.36 * l * p * p - 44.54 * l ** 3;
@@ -49,7 +49,7 @@ async function fetchWithTimeout(url: string, ms = 40_000): Promise<Response> {
 }
 
 // Find the swissBUILDINGS3D 2.0 DXF tile covering a point (latest year).
-async function findDxfHref(lat: number, lon: number): Promise<string | null> {
+export async function findDxfHref(lat: number, lon: number): Promise<string | null> {
   const d = 0.0004;
   const bbox = `${lon - d},${lat - d},${lon + d},${lat + d}`;
   const url =
@@ -127,7 +127,7 @@ function parseDxf(text: string): Building[] {
 
 // Process-lifetime cache: a run renders many candidates from the same tile.
 const tileCache = new Map<string, Promise<Building[]>>();
-function getTileBuildings(href: string): Promise<Building[]> {
+export function getTileBuildings(href: string): Promise<Building[]> {
   let p = tileCache.get(href);
   if (!p) {
     p = (async () => {

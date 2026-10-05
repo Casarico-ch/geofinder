@@ -185,6 +185,25 @@ const TOOLS = [
                 required: ["kind", "direction", "confidence"],
               },
             },
+            neighbours: {
+              type: "array",
+              description:
+                "The buildings the photos show NEXT TO the house (up to 6), and open sides — the strongest way to tell look-alike houses apart, because swissBUILDINGS3D has every neighbour's outline, height and roof and each candidate's surroundings are compared with these. Side: a compass point if you can tell it (sun, shadows, slope), otherwise where it stands as seen in the photo of the house's front: left, right, behind, front — the pattern is then tried in every orientation. Fill only what you can see; one sure neighbour beats three guesses.",
+              items: {
+                type: "object",
+                properties: {
+                  side: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "left", "right", "behind", "front"] },
+                  distance_m: { type: "number", description: "the gap between the two buildings, roughly" },
+                  size: { type: "string", enum: ["smaller", "similar", "bigger"], description: "its footprint against the house's" },
+                  height: { type: "string", enum: ["lower", "similar", "taller"] },
+                  roof: { type: "string", enum: ["flat", "pitched"] },
+                  ridge: { type: "string", enum: ["parallel", "perpendicular"], description: "its ridge against the house's ridge, both pitched" },
+                  none: { type: "boolean", description: "true: NO building on that side within ~40 m (field, road, lake, garden)" },
+                  confidence: { type: "string", enum: ["sure", "likely", "guess"] },
+                },
+                required: ["confidence"],
+              },
+            },
           },
         },
       },
@@ -396,7 +415,7 @@ Reason explicitly about why you run each command — your thinking is the saved 
 
 const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer.
 
-FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. Fill its location too: which way the ground falls away, and the church, peak, lake or village seen from the house and in which direction — the shortlist then checks the houses whose surroundings fit first. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
+FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. Fill its location too: which way the ground falls away, the church, peak, lake or village seen from the house and in which direction, and the NEIGHBOURS — every building the photos show next to the house (its side, the gap, bigger or smaller, taller or lower, flat or pitched roof, ridge parallel or across) and every open side. A house alone looks like hundreds of others; the houses around it are what single it out, and the shortlist checks every candidate's real surroundings against them first. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
 
 Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors + footprint + dwellings — the plot area is checked for you afterwards), look at every candidate with view_candidates and record a verdict with mark_candidates, inspect every strong fit and every possible with inspect_candidate, then confirm the survivor by its built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when it meets the PROOF rules — otherwise submit your ranked shortlist honestly.`;
 
