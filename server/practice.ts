@@ -50,7 +50,7 @@ export interface TruthKeys {
   address: string | null; // street + house number
 }
 
-function fingerprint(kind: string, value: string): string {
+export function fingerprint(kind: string, value: string): string {
   return createHmac("sha256", radar().secret).update(`${kind}:${value}`).digest("hex").slice(0, 32);
 }
 

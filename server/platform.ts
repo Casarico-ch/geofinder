@@ -14,7 +14,8 @@ import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, setLesson } from "./lessons";
-import { type RoundSummary, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import { missReasonNow } from "./miss";
+import { type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
@@ -472,7 +473,13 @@ export function registerPlatformRoutes(app: Express) {
           price: line("Price"),
         };
       }
-      res.json({ summary: await roundView(summarize(round), await listRounds()), results: round.results, listings });
+      // Why each miss never had the right house on its checklist — withheld while
+      // any practice run is still searching that listing (it names the house's facts).
+      const searching = new Set(
+        (await allRounds()).flatMap((x) => x.results.filter((r) => r.outcome === "running").map((r) => r.propertyId)),
+      );
+      const results = round.results.map((r) => ({ ...r, why: searching.has(r.propertyId) ? null : missReasonNow(r) }));
+      res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings });
     });
     app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
       const round = await pauseRound(req.params.id);
