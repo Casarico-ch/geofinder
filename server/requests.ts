@@ -193,7 +193,8 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const all = listRequests();
   const claimed = new Set(all.flatMap((r) => (r.results ?? []).map((m) => m.jobId)));
   const loose = listJobs()
-    .filter((j) => !claimed.has(j.id))
+    // Practice searches (practice.ts) are shown on the Practice page only.
+    .filter((j) => !claimed.has(j.id) && !j.input.listingId?.startsWith("practice-"))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   const groups: Job[][] = [];
