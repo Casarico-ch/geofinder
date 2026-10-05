@@ -11,6 +11,7 @@ import {
   LessonsPanel,
   when,
   type Lesson,
+  isBusy,
   type ListingInfo,
   type Result,
   type Round,
@@ -233,7 +234,7 @@ export default function PracticeRound() {
               <Play className="mr-1.5 h-3.5 w-3.5" />
               Resume
             </Button>
-          ) : round.running > 0 ? (
+          ) : isBusy(round) ? (
             <Button variant="outline" size="sm" disabled={!!busy} onClick={() => call("round", `/api/practice/rounds/${id}/pause`, "POST", "Round paused")}>
               <Pause className="mr-1.5 h-3.5 w-3.5" />
               Pause

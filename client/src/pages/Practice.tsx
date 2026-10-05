@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
-import { LEARNING_HELP, LearningBadge, when, type Lesson, type Round } from "@/components/practice";
+import { LEARNING_HELP, LearningBadge, isBusy, when, type Lesson, type Round } from "@/components/practice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -203,7 +203,7 @@ export default function Practice() {
                           <Play className="mr-1.5 h-3.5 w-3.5" />
                           Resume
                         </Button>
-                      ) : r.running > 0 ? (
+                      ) : isBusy(r) ? (
                         <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "pause")}>
                           <Pause className="mr-1.5 h-3.5 w-3.5" />
                           Pause

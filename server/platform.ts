@@ -13,7 +13,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
-import { forgetRound, learningOf, setLesson } from "./lessons";
+import { forgetRound, learningOf, pauseLearning, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
 import { type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
@@ -517,12 +517,14 @@ export function registerPlatformRoutes(app: Express) {
     });
     app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
       const round = await pauseRound(req.params.id);
+      if (round) await pauseLearning(round.id, true);
       if (!round) res.status(404).json({ error: "No such round" });
       else res.json(summarize(round));
     });
     app.post(`${base}/rounds/:id/resume`, async (req: Request, res: Response) => {
       try {
         const round = await resumeRound(req.params.id);
+        if (round) await pauseLearning(round.id, false);
         if (!round) res.status(404).json({ error: "No such round" });
         else res.json(summarize(round));
       } catch (err) {
