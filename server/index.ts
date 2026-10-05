@@ -6,6 +6,7 @@ import { resumeInvestigation } from "./agent";
 import { registerApiRoutes } from "./api";
 import { loadPersistedJobs } from "./jobs";
 import { resumeRounds } from "./practice";
+import { startLessonsLoop } from "./lessons";
 import { registerMagicFeedbackRoutes } from "./magic-feedback";
 import { registerPlatformRoutes } from "./platform";
 import { loadPersistedRequests } from "./requests";
@@ -66,6 +67,8 @@ async function startServer() {
 
   // Carry on any practice round a restart interrupted (practice.ts).
   void resumeRounds().catch((err) => console.error("[practice] resume failed:", err));
+  // Learn from finished rounds and test what was learned (lessons.ts).
+  startLessonsLoop();
 
   // Serve run artifacts — the aerials and crops the agent actually looked at,
   // referenced by the documented trace. The internal resume state (the full

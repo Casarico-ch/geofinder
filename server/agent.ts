@@ -57,6 +57,7 @@ import {
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
 import { GEMINI_LABEL, onLogin, poolOn } from "./claude-pool";
+import { keptLessons, lessonsBlock } from "./lessons-store";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -552,6 +553,8 @@ export async function runInvestigation(
   // Attribute this run to the exact prompt it will use: stamp the version and
   // save the full prompt text next to the trace. This is what lets a later
   // post-mortem know which prompt produced these costs and this reasoning.
+  // The lessons are fixed at the start, so a resumed run keeps reading the same ones.
+  job.lessons ??= job.input.lessons ?? (await keptLessons());
   await stampPrompt(job);
   await seedGeoHelper(job.runDir); // drop the tested geo.mjs into the working dir
   await markStarted(job); // start the elapsed-time clock
@@ -578,7 +581,7 @@ async function stampPrompt(job: Job): Promise<void> {
   try {
     await writeFile(
       path.join(job.runDir, "prompt.txt"),
-      `# SYSTEM (version ${PROMPT_VERSION})\n\n${SYSTEM}\n\n# TASK\n\n${TASK}\n`,
+      `# SYSTEM (version ${PROMPT_VERSION})\n\n${SYSTEM}${lessonsBlock(job.lessons ?? [])}\n\n# TASK\n\n${TASK}\n`,
       "utf8",
     );
   } catch (err) {
@@ -735,7 +738,7 @@ async function runLoop(
         output_config: { effort: EFFORT },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
-        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: SYSTEM + lessonsBlock(job.lessons ?? []), cache_control: { type: "ephemeral" } }],
         tools: TOOLS,
         // Top-level auto-caching rolls a second breakpoint over the growing
         // conversation — so the re-sent listing photos and the aerials the

@@ -186,7 +186,10 @@ export interface Job {
     budgetUsd?: number;
     // Time cap in minutes, in place of AGENT_MAX_MINUTES; reaching it counts as over budget.
     maxMinutes?: number;
+    // The practice lessons this run reads, in place of the kept ones (a lesson's test).
+    lessons?: string[];
   };
+  lessons?: string[]; // the practice lessons in its system prompt, fixed at start
   overBudget?: boolean; // stopped by input.budgetUsd or input.maxMinutes
   steps: Step[];
   answer: Answer | null;
