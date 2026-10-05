@@ -37,6 +37,7 @@ export interface Shape {
   heightM: number;
   flat: boolean; // roof slopes under ~10°
   axisDeg: number; // the long axis (0-180, from north): the ridge of a pitched roof
+  hull: number[][]; // the outline from above (convex), LV95 metres
 }
 
 const WEIGHT: Record<ClueConfidence, number> = { sure: 1, likely: 0.6, guess: 0.3 };
@@ -101,7 +102,7 @@ export function shapeOf(b: Building): Shape | null {
     if (nz < 0.2 || zAvg < zmin + 2) continue; // walls, ground
     steepest = Math.max(steepest, (Math.acos(Math.min(1, nz)) * 180) / Math.PI);
   }
-  return { x: b.cx, y: b.cy, areaM2: area, heightM: zmax - zmin, flat: steepest < 10, axisDeg };
+  return { x: b.cx, y: b.cy, areaM2: area, heightM: zmax - zmin, flat: steepest < 10, axisDeg, hull: h };
 }
 
 // Tiles cover ~4×3 km; each is fetched once per process (roofs.ts caches it).
@@ -125,6 +126,44 @@ function shapesOf(href: string): Promise<Shape[]> {
     shapeCache.set(href, p);
   }
   return p;
+}
+
+/** The 3D building nearest a point (within 25 m), or null. */
+export async function shapeAt(lat: number, lon: number): Promise<Shape | null> {
+  const href = await tileFor(lat, lon);
+  if (!href) return null;
+  const { E, N } = wgs84ToLv95(lat, lon);
+  let best: Shape | null = null, d0 = 25;
+  for (const s of await shapesOf(href)) {
+    const d = Math.hypot(s.x - E, s.y - N);
+    if (d < d0) {
+      d0 = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/** The gap between two outlines in metres (0 when they touch or overlap). */
+export function outlineGap(a: Shape, b: Shape): number {
+  const inside = (p: number[], poly: number[][]) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  const segDist = (p: number[], a1: number[], a2: number[]) => {
+    const dx = a2[0] - a1[0], dy = a2[1] - a1[1];
+    const t = Math.max(0, Math.min(1, ((p[0] - a1[0]) * dx + (p[1] - a1[1]) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(p[0] - (a1[0] + t * dx), p[1] - (a1[1] + t * dy));
+  };
+  if (a.hull.some((p) => inside(p, b.hull)) || b.hull.some((p) => inside(p, a.hull))) return 0;
+  let d = Infinity;
+  for (const [P, Q] of [[a.hull, b.hull], [b.hull, a.hull]])
+    for (const p of P) for (let i = 0; i < Q.length; i++) d = Math.min(d, segDist(p, Q[i], Q[(i + 1) % Q.length]));
+  return d;
 }
 
 /** The house at a point and the buildings within RADIUS of it (null when the 3D data has no building there). */
