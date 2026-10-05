@@ -57,9 +57,9 @@ const LISTING_MODELS: ModelId[] = (
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
 const listingModels = (): ModelId[] => LISTING_MODELS.filter((m) => !isGemini(m) || geminiConfigured());
-// Practice rounds (Daniel, 05.10): two Sonnet 5.5 at low effort, and Sonnet 5.5
-// at max effort in plain mode (jobs.ts VARIANTS). Real requests keep LISTING_MODELS.
-const PRACTICE_MODELS: ModelId[] = (process.env.PRACTICE_MODELS ?? "sonnet-5-5-low,sonnet-5-5-low-2,sonnet-5-5-max-plain")
+// Practice rounds (Daniel, 05.10): two Sonnet 5.5 at low effort and Gemini 3.8
+// Flash at its fastest thinking level (jobs.ts VARIANTS). Real requests keep LISTING_MODELS.
+const PRACTICE_MODELS: ModelId[] = (process.env.PRACTICE_MODELS ?? "sonnet-5-5-low,sonnet-5-5-low-2,gemini-3-8-flash-low")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
@@ -432,7 +432,12 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       try {
-        const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models ?? PRACTICE_MODELS);
+        const models = parsed.data.models ?? PRACTICE_MODELS;
+        if (models.some(isGemini) && !geminiConfigured()) {
+          res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
+          return;
+        }
+        const round = await startRound(parsed.data.split, parsed.data.limit, models);
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
