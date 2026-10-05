@@ -481,6 +481,22 @@ export function registerPlatformRoutes(app: Express) {
       const results = round.results.map((r) => ({ ...r, why: searching.has(r.propertyId) ? null : missReasonNow(r) }));
       res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings });
     });
+    // The same listings and models again, under today's code and lessons: a
+    // before/after on exactly the same houses.
+    app.post(`${base}/rounds/:id/rerun`, async (req: Request, res: Response) => {
+      const src = await getRound(req.params.id);
+      if (!src) {
+        res.status(404).json({ error: "No such round" });
+        return;
+      }
+      try {
+        const ids = Array.from(new Set(src.results.map((r) => r.propertyId)));
+        const round = await startRound(src.split, ids.length, src.models, { propertyIds: ids, rerunOf: src.id });
+        res.status(202).json(summarize(round));
+      } catch (err) {
+        res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    });
     app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
       const round = await pauseRound(req.params.id);
       if (!round) res.status(404).json({ error: "No such round" });

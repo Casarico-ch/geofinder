@@ -16,7 +16,8 @@
 // federal building register (gwr.ts) — no footprint geometry there, so
 // `attached` is unknown, but floors/dwellings/footprint follow the same rules.
 // =============================================================================
-import { fetchCommuneBuildings, resolveCommune, type Commune, type GwrBuilding } from "./gwr";
+import { plotAt, plotGroupFor, type ListingFacts } from "./proof";
+import { fetchCommuneBuildings, flatsOf, resolveCommune, type Commune, type GwrBuilding } from "./gwr";
 import {
   cluesText,
   hasClues,
@@ -46,6 +47,7 @@ export interface Candidate {
   dwellings?: number | null;
   address?: string | null;
   loc?: LocationScore; // how well its surroundings fit the photos' location clues
+  note?: string; // register status and the listing facts it fits ("planned or being built, plot 1324: 436 m² ✓")
 }
 export interface ShortlistResult {
   commune: string;
@@ -146,6 +148,9 @@ export interface ShortlistOptions {
   // The photos' location clues (record_signature): survivors whose slope and
   // landmarks fit come first. Ordering only; `near`, when given, wins.
   location?: LocationClues;
+  // What the listing itself states (proof.ts listingFacts): year built, units,
+  // land and living area. These rank the commune; the model's guesses only nudge.
+  listing?: ListingFacts;
 }
 
 // Floors and dwellings are matched as a ±1 RANGE (unknown passes); the
@@ -217,30 +222,36 @@ export async function shortlistBuildings(opts: ShortlistOptions): Promise<Shortl
 }
 
 // Every canton but Geneva: the federal building register.
+//
+// RANKED, NOT FILTERED (05.10, replayed on 131 missed practice runs): the
+// model's floors / homes / footprint guesses removed the right house in 45 of
+// them — a flat's footprint guessed as the whole block (250 m² for 102), a
+// detached house guessed at 1 home where the register counts 3 — and in big
+// communes (1,000+ survivors) the 120 shown never held it. So every home of the
+// commune stays in, ordered by what the LISTING states (year built, homes in
+// the building, the plot's area for a house, a flat of the listed size for a
+// flat), and the guesses only nudge. Simulated on the practice listings: the
+// right house came first to 14th for 11 of the 17 that state a land or living
+// area, against "never on the list" before.
 async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promise<ShortlistResult> {
-  const max = Math.min(150, Math.max(5, opts.maxResults ?? 120));
+  // At least 80 a page: runs asked for 40-60 and never came back for more.
+  const max = Math.min(150, Math.max(80, opts.maxResults ?? 120));
   const all = await fetchCommuneBuildings(c);
-  const residential = all.filter(
-    (b) => (b.status == null || b.status === 1004) && (b.category == null || (b.category >= 1020 && b.category < 1060)),
-  );
-  const survivors = residential
-    .filter((b) => inRange(b.floors, opts.floors, 1, 1))
-    .filter((b) => inRange(b.dwellings, opts.dwellings, 1, 1))
-    .filter((b) => inBand(b.footprintM2, opts.footprintM2))
-    .sort((x, y) => {
-      if (opts.near) return metresBetween(x, opts.near) - metresBetween(y, opts.near);
-      return footprintKey(x.footprintM2, opts.footprintM2) - footprintKey(y.footprintM2, opts.footprintM2);
-    });
-  const located = await orderByLocation(survivors, (b) => b, opts, all);
-  const { page: top, again, unseenLeft } = pickPage(located.ranked, max, (b) => String(Number(b.egid)), opts.known);
+  const homes = all.filter((b) => homeStatus(b) !== null);
+  const ranked = await rankByListing(homes, opts);
+  const located = await orderByLocation(ranked.rest, (b) => b, opts, all);
+  const order = [...ranked.strong, ...located.ranked];
+  const { page: top, again, unseenLeft } = pickPage(order, max, (b) => String(Number(b.egid)), opts.known);
+  const newBuilds = homes.filter((b) => homeStatus(b) === "new").length;
+  const mixed = homes.filter((b) => b.category === 1060).length;
   return {
     commune: c.name,
     bfs: c.bfs,
     supported: true,
     enumerated: all.length,
-    residential: residential.length,
-    survivors: survivors.length,
-    truncatedTo: survivors.length > max ? max : undefined,
+    residential: homes.length,
+    survivors: homes.length,
+    truncatedTo: homes.length > max ? max : undefined,
     candidates: top.map((b) => ({
       egid: Number(b.egid),
       lat: b.lat,
@@ -251,21 +262,125 @@ async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promis
       dwellings: b.dwellings,
       address: b.address,
       loc: located.scores.get(b),
+      note: buildingNote(b, ranked.why.get(b)),
     })),
     note:
-      `${c.name}: enumerated ${all.length} buildings from the federal register, ${residential.length} residential, ${survivors.length} passed the recall-first filters` +
-      (survivors.length > max ? capNote(max, again, unseenLeft, opts.near) : "") +
+      `${c.name}: ${all.length} buildings in the federal register, ${homes.length} homes (${newBuilds} planned or being built, ${mixed} with shops or offices too) — ALL of them are ranked, none removed. ` +
+      `Order: what the listing itself states first (${ranked.used.join(", ") || "it states nothing the register holds"}), ${ranked.strong.length} fit it on every fact checked and come first; then your location clues and your estimates (floors, homes, footprint), which only reorder` +
+      (homes.length > max ? capNote(max, again, unseenLeft, opts.near) : "") +
       located.note +
-      `. Floors${typeof opts.dwellings === "number" ? " and dwellings" : ""} matched as a ±1 range, footprint as a wide band, era NOT filtered.` +
-      (typeof opts.attached === "boolean" ? " attached/detached is not in the register here — ignored; judge it on the aerial." : "") +
-      ` Now look at them with view_candidates and record each verdict with mark_candidates — do NOT re-filter them by era or exact floors.`,
+      `. Now look at them with view_candidates and record each verdict with mark_candidates.`,
   };
+}
+
+/** "existing", "new" (planned, approved or being built), or null when it is not a home. */
+export function homeStatus(b: GwrBuilding): "existing" | "new" | null {
+  // 1020-1060: residential, with or without other use (1060: mainly not
+  // residential, e.g. shops below flats). A listed flat can sit in any of them.
+  if (b.category != null && (b.category < 1020 || b.category > 1060)) return null;
+  if (b.status == null || b.status === 1004) return "existing";
+  return b.status >= 1001 && b.status <= 1003 ? "new" : null;
+}
+
+function buildingNote(b: GwrBuilding, why: string | undefined): string | undefined {
+  const tags = [
+    homeStatus(b) === "new" ? "planned or being built" : null,
+    b.category === 1060 ? "shops or offices too" : null,
+    b.year ? `built ${b.year}` : null,
+    why ?? null,
+  ].filter(Boolean);
+  return tags.length ? tags.join(", ") : undefined;
+}
+
+// How many of the best-ranked homes get the slow checks (their plot, their flats).
+const DEEP = Number(process.env.SHORTLIST_DEEP ?? 400);
+const PLOT_FIT = 0.05, FLAT_FIT_M2 = 3;
+
+/**
+ * The listing's own facts, in order of strength: a plot of the listed land
+ * area (a house), a flat of the listed living area (a flat), the year built,
+ * the homes in the building. Cheap facts rank the whole commune; the slow ones
+ * (one cadastre or register call each) the best DEEP of it. The model's
+ * estimates add a small penalty when far off, never a removal.
+ */
+async function rankByListing(
+  homes: GwrBuilding[],
+  opts: ShortlistOptions,
+): Promise<{ strong: GwrBuilding[]; rest: GwrBuilding[]; why: Map<GwrBuilding, string>; used: string[] }> {
+  const l = opts.listing;
+  const used: string[] = [];
+  if (l?.year) used.push(`built ${l.year}`);
+  if (l?.kind === "house") used.push("a single house");
+  if (l?.kind === "flat") used.push("a flat in a block");
+  if (l?.units) used.push(`${l.units} homes in the building`);
+  const plot = l?.landM2 != null && !l.sharedLand && l.kind !== "flat";
+  const flat = l?.livingM2 != null && l.kind === "flat";
+  if (plot) used.push(`plot ${l!.landM2} m²`);
+  if (flat) used.push(`a flat of ${l!.livingM2} m²`);
+
+  const thisYear = new Date().getFullYear();
+  const cheap = (b: GwrBuilding): number => {
+    let s = 0;
+    if (b.category === 1060) s += 1;
+    if (homeStatus(b) === "new") s += l?.year && l.year >= thisYear - 1 ? -3 : 1;
+    if (l?.year && b.year) s += Math.abs(b.year - l.year) <= 2 ? -3 : Math.abs(b.year - l.year) > 10 ? 1 : 0;
+    if (l?.kind === "house" && b.dwellings != null) s += b.dwellings <= 2 ? 0 : b.dwellings === 3 ? 0.5 : 2;
+    if (l?.kind === "flat" && b.dwellings != null && b.dwellings < 2) s += 2;
+    if (l?.units && b.dwellings != null) s += Math.abs(b.dwellings - l.units) <= 1 ? -2 : 1;
+    // The model's estimates: a nudge, so a wrong guess costs places, not the house.
+    if (!inRange(b.floors, opts.floors, 1, 1)) s += 0.5;
+    if (!inRange(b.dwellings, opts.dwellings, 1, 1)) s += 0.5;
+    if (!inBand(b.footprintM2, opts.footprintM2)) s += 0.5;
+    return s;
+  };
+  const score = new Map(homes.map((b) => [b, cheap(b)]));
+  const byScore = (x: GwrBuilding, y: GwrBuilding) =>
+    score.get(x)! - score.get(y)! || footprintKey(x.footprintM2, opts.footprintM2) - footprintKey(y.footprintM2, opts.footprintM2);
+  const ranked = [...homes].sort(byScore);
+
+  const why = new Map<GwrBuilding, string>();
+  const strong = new Set<GwrBuilding>();
+  if (plot || flat) {
+    const deep = ranked.slice(0, DEEP);
+    let next = 0;
+    const worker = async () => {
+      while (next < deep.length) {
+        const b = deep[next++];
+        if (plot) {
+          const p = await plotAt(b.lat, b.lon).catch(() => null);
+          if (!p) continue;
+          // Several plots can make one property, but looking a plot's neighbours
+          // up costs a call: only for a plot of 40-95% of the listed land.
+          const ratio = p.areaM2 / l!.landM2!;
+          const group =
+            Math.abs(ratio - 1) <= PLOT_FIT ? [p] : ratio >= 0.4 && ratio < 1 ? await plotGroupFor(p, l!.landM2!).catch(() => null) : null;
+          if (group) {
+            const total = Math.round(group.reduce((t, x) => t + x.areaM2, 0));
+            score.set(b, score.get(b)! - 4);
+            strong.add(b);
+            why.set(b, `plot ${group.map((x) => x.number).join(" + ")}: ${total} m² ✓`);
+          } else if (Math.abs(p.areaM2 - l!.landM2!) / l!.landM2! > 0.15) score.set(b, score.get(b)! + 1);
+        } else {
+          const flats = await flatsOf(b.egid).catch(() => []);
+          const fit = flats.find((f) => f.areaM2 != null && Math.abs(f.areaM2 - l!.livingM2!) <= FLAT_FIT_M2);
+          if (fit) {
+            score.set(b, score.get(b)! - 4);
+            strong.add(b);
+            why.set(b, `a flat of ${fit.areaM2} m² ✓`);
+          } else if (flats.length) score.set(b, score.get(b)! + 1);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 12 }, worker));
+  }
+  const all = [...homes].sort(byScore);
+  return { strong: all.filter((b) => strong.has(b)), rest: all.filter((b) => !strong.has(b)), why, used };
 }
 
 // Geneva: SITG footprints (with attached/detached from shared walls).
 async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult> {
   const commune = opts.commune.trim();
-  const max = Math.min(60, Math.max(5, opts.maxResults ?? 40));
+  const max = Math.min(60, Math.max(40, opts.maxResults ?? 40));
   const all = await fetchGenevaBuildings(commune);
   if (all.length === 0) {
     return {
@@ -279,15 +394,9 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     };
   }
   const residential = all.filter((b) => b.dest.startsWith("Habitation"));
-  // Soft, recall-first filters. Floors are a RANGE; era is never touched.
-  let survivors = residential;
-  if (typeof opts.floors === "number") {
-    survivors = survivors.filter((b) => b.niv == null || (b.niv >= opts.floors! - 1 && b.niv <= opts.floors! + 1));
-  }
-  if (typeof opts.footprintM2 === "number" && opts.footprintM2 > 0) {
-    const lo = opts.footprintM2 * 0.55, hi = opts.footprintM2 * 1.7;
-    survivors = survivors.filter((b) => b.surf == null || (b.surf >= lo && b.surf <= hi));
-  }
+  // Ranked, not filtered (see shortlistFromRegister): every home stays in and
+  // the estimates only reorder.
+  const survivors = residential;
   // Attached test needs neighbours; compute against the full residential set.
   const withAttach = survivors.map((b) => {
     let attached = false;
@@ -298,15 +407,13 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     }
     return { b, attached };
   });
-  let filtered = withAttach;
-  if (typeof opts.attached === "boolean") {
-    filtered = withAttach.filter((x) => x.attached === opts.attached);
-  }
-  // Rank by footprint closeness (the most reliable signal) so the best matches
-  // come first, but do NOT hard-drop — recall over precision.
-  const sorted = filtered.sort((x, y) => {
+  const miss = (x: (typeof withAttach)[number]) =>
+    (inRange(x.b.niv, opts.floors, 1, 1) ? 0 : 1) +
+    (inBand(x.b.surf, opts.footprintM2) ? 0 : 1) +
+    (typeof opts.attached === "boolean" && x.attached !== opts.attached ? 1 : 0);
+  const sorted = withAttach.sort((x, y) => {
     if (opts.near) return metresBetween(x.b, opts.near) - metresBetween(y.b, opts.near);
-    return footprintKey(x.b.surf, opts.footprintM2) - footprintKey(y.b.surf, opts.footprintM2);
+    return miss(x) - miss(y) || footprintKey(x.b.surf, opts.footprintM2) - footprintKey(y.b.surf, opts.footprintM2);
   });
   // Churches for the location clues come from the federal register (SITG has no building class).
   const register = async () => {
@@ -335,10 +442,10 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     truncatedTo: survivorsCount > max ? max : undefined,
     candidates,
     note:
-      `Enumerated ${all.length} buildings, ${residential.length} residential, ${survivorsCount} passed the recall-first filters` +
+      `Enumerated ${all.length} buildings, ${residential.length} residential — ALL ranked, none removed; your estimates (floors, footprint, attached) only reorder` +
       (survivorsCount > max ? capNote(max, again, unseenLeft, opts.near) : "") +
       located.note +
-      `. Floors matched as a ±1 range; era was NOT filtered. Now look at them with view_candidates (and render_roofs for roof shape), record each verdict with mark_candidates — do NOT re-filter these by era or exact floors.`,
+      `. Now look at them with view_candidates (and render_roofs for roof shape), record each verdict with mark_candidates — do NOT re-filter these by era or exact floors.`,
   };
 }
 

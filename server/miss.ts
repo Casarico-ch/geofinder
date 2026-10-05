@@ -14,7 +14,7 @@
 import { fetchCommuneBuildings, normalizeCommune, resolveCommune, type GwrBuilding } from "./gwr";
 import { getJob } from "./jobs";
 import { fingerprint, type PracticeResult } from "./practice";
-import { inBand, inRange } from "./shortlist";
+import { homeStatus, inBand, inRange } from "./shortlist";
 
 export type MissCode = "wrong_commune" | "not_residential" | "floors" | "dwellings" | "footprint" | "cut_off" | "not_found";
 
@@ -26,7 +26,8 @@ export interface MissReason {
 const cache = new Map<string, Promise<MissReason | null>>();
 const known = new Map<string, MissReason>(); // finished diagnoses, by job id
 
-const residential = (b: GwrBuilding) =>
+// Runs before the ranked shortlist saw existing homes only (category 1020-1059).
+const oldResidential = (b: GwrBuilding) =>
   (b.status == null || b.status === 1004) && (b.category == null || (b.category >= 1020 && b.category < 1060));
 
 async function findIn(commune: string, egidKey: string): Promise<GwrBuilding | null> {
@@ -62,13 +63,23 @@ async function diagnose(r: PracticeResult): Promise<MissReason | null> {
     return { code: "not_found", text: "The house is not in the register of the communes it searched or the ones next to the listing's." };
   }
 
-  if (!residential(house))
+  const calls = (s.calls ?? []).filter((c) => normalizeCommune(c.commune) === normalizeCommune(house!.commune));
+  if (calls.some((c) => c.ranked)) {
+    if (homeStatus(house) === null)
+      return { code: "not_residential", text: `The register does not list the house as a home (category ${house.category ?? "?"}, status ${house.status ?? "?"}), so the shortlist never offers it.` };
+    const c = calls.filter((x) => x.ranked).sort((a, b) => b.returned - a.returned)[0];
+    const seen = calls.filter((x) => x.ranked).reduce((t, x) => t + x.returned, 0);
+    return {
+      code: "cut_off",
+      text: `It is one of the ${c.survivors} homes of ${house.commune}, ranked beyond the ${seen} the run looked at.`,
+    };
+  }
+  if (!oldResidential(house))
     return {
       code: "not_residential",
       text: `The register does not list the house as an existing residential building (category ${house.category ?? "?"}, status ${house.status ?? "?"}), so the shortlist never offers it.`,
     };
 
-  const calls = (s.calls ?? []).filter((c) => normalizeCommune(c.commune) === normalizeCommune(house!.commune));
   if (!calls.length)
     return { code: "cut_off", text: `It was in ${house.commune}, but the run's shortlist filters were not recorded (an older run).` };
 

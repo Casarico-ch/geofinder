@@ -251,6 +251,15 @@ function toBuilding(f: any): GwrBuilding | null {
   };
 }
 
+/** One register building by its EGID (null when the register has no such building). */
+export async function buildingByEgid(egid: string | number): Promise<GwrBuilding | null> {
+  const j = await getJson(
+    `${API}/find?layer=ch.bfs.gebaeude_wohnungs_register&searchText=${Number(egid)}&searchField=egid&returnGeometry=true&geometryFormat=geojson&sr=4326&contains=false`,
+    20_000,
+  );
+  return toBuilding((j.results ?? [])[0]);
+}
+
 const PAGE = 200; // the most one identify call returns
 
 function identifyPage(env: number[], offset = 0): Promise<any> {
@@ -376,7 +385,10 @@ async function loadFlats(egid: string): Promise<Flat[]> {
     const a = r.attributes ?? {};
     const ewid: unknown[] = Array.isArray(a.ewid) ? a.ewid : [];
     ewid.forEach((id, i) => {
-      if (seen.has(String(id)) || (a.wstat?.[i] != null && Number(a.wstat[i]) !== 3004)) return; // 3004 = existing
+      // 3004 = existing; 3001-3003 = planned, approved, being built: a new
+      // development's flats are for sale before they exist.
+      const st = a.wstat?.[i] != null ? Number(a.wstat[i]) : null;
+      if (seen.has(String(id)) || (st != null && (st < 3001 || st > 3004))) return;
       seen.add(String(id));
       out.push({ floor: floorOf(a.wstwk?.[i]), rooms: num(a.wazim?.[i]), areaM2: num(a.warea?.[i]) });
     });

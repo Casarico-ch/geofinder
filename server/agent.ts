@@ -194,14 +194,14 @@ const TOOLS = [
   {
     name: "shortlist_buildings",
     description:
-      "Enumerate EVERY building in a Swiss commune and get back a RECALL-FIRST shortlist that still contains the target — any canton (Geneva from the SITG cadastre, everywhere else from the federal building register GWR). You pass your best estimates and this filters SAFELY so the right house can't be dropped: floors and dwellings as ±1 ranges (never exact — the register counts a semi-basement and a habitable attic as levels), footprint a wide band, existing residential buildings only. It deliberately has NO era filter — the register's construction date routinely disagrees with how old a house looks. Every candidate returned goes into your checklist; look at them with view_candidates and record a verdict with mark_candidates. Do NOT then re-filter the result by era or exact floors — that is exactly how the right house gets discarded.",
+      "Enumerate EVERY home in a Swiss commune — any canton (Geneva from the SITG cadastre, everywhere else from the federal building register GWR), new builds (planned or being built) and buildings with shops or offices included — RANKED, nothing removed. The ranking uses what the LISTING states (the plot of its land area for a house, a flat of its living area for a flat, year built, homes in the building); candidates that fit on every checked fact come first and say so. Your estimates (floors, footprint, dwellings) only reorder, so a wrong guess costs places, not the house. Every candidate returned goes into your checklist; look at them with view_candidates and record a verdict with mark_candidates. Call again with the same commune for the next page. Do NOT re-filter the result by era or exact floors.",
     input_schema: {
       type: "object",
       properties: {
         commune: { type: "string", description: "the commune, e.g. 'Denges' or 'Saint-Sulpice (VD)'" },
-        floors: { type: "number", description: "your estimate of the levels the register counts (matched ±1): a semi-basement + 2 storeys + attic is 4" },
-        footprintM2: { type: "number", description: "your estimate of the MAIN building's ground footprint in m² (NOT the listing's living area). Matched as a wide band." },
-        dwellings: { type: "number", description: "number of dwellings in the building if the listing says (\"PPE de deux logements\" = 2); matched ±1" },
+        floors: { type: "number", description: "your estimate of the levels the register counts: a semi-basement + 2 storeys + attic is 4. Orders only." },
+        footprintM2: { type: "number", description: "your estimate of THIS building's ground footprint in m² — for a flat, semi-detached or terraced house the register's entry is often just its own part of the block, not the whole block. NOT the listing's living area. Orders only." },
+        dwellings: { type: "number", description: "homes in the building if the listing says (\"PPE de deux logements\" = 2). Orders only." },
         attached: { type: "boolean", description: "Geneva only: true for an attached/row house, false if free-standing; omit if unsure" },
         maxResults: { type: "number" },
       },
@@ -370,7 +370,7 @@ METHOD — enumerate, don't scan
 Your first message carries a SEARCH PLAN: the commune confidence and the ring of neighbouring communes, nearest first. Follow it. HIGH confidence: the property is in the stated commune — exhaust that commune before looking anywhere else (the tools enforce this). LOW confidence: the listing only places the property NEAR the stated commune ("à 5 minutes de …") — search outward commune by commune, nearest first, finishing each before the next.
 Treat each commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
 1. Read the building's HARD structural attributes off the photos: the levels the register counts (a two-storey block + single-storey wing reads as ~3; a semi-basement "rez inférieur" + two storeys + attic is 4), the number of dwellings when the listing says it ("PPE de deux logements" = 2), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
-2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It enumerates every building in the commune and filters SAFELY so the target cannot be dropped (floors and dwellings matched ±1, footprint wide, and NO era filter). Never hand-write this filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. Two things to get right when you pass estimates: (a) footprintM2 is the MAIN building's GROUND footprint, NOT the listing's living area — a "262 m² house" over ~3 levels is only ~90–130 m² on the ground; (b) estimate floors generously — a two-storey block with a habitable attic is registered as 3. Then treat the returned list as your candidate set and do NOT re-filter it by era or exact floors — that is exactly how the right house gets discarded.
+2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It ranks EVERY home in the commune (new builds and buildings with shops included) by what the listing states — the plot of its land area, a flat of its living area, year built, homes in the building — and removes none; your estimates only reorder. Candidates marked as fitting on every checked fact come first: look at those first. Never hand-write a filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. When you pass estimates: footprintM2 is THIS building's GROUND footprint (for a flat or a semi-detached house the register often holds only its own part of the block), NOT the listing's living area; and estimate floors generously. If the house is not in the first page, call again for the next one before leaving the commune.
 3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer. For a FLAT, the register lists every flat in a building with its storey, rooms and m², and inspect_candidate checks the listing's flat against them: in a row of look-alike blocks or entrances, inspect every one — the entrances without a flat of that size on that floor are out, and that is often what names the address.
 4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
 5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
@@ -695,6 +695,7 @@ async function runLoop(
     let stalls = 0; // turns that ended with no tool call and no answer
     for (let i = startTurn; i < MAX_STEPS; i++) {
       if (elapsedMinutes() >= maxMinutes) {
+        if (await answerAtLimit(job, `the ${maxMinutes}-minute limit`)) return;
         if (job.input.maxMinutes != null) job.overBudget = true;
         await finishJob(job, {
           status: "done",
@@ -709,6 +710,7 @@ async function runLoop(
       }
       const budget = job.input.budgetUsd;
       if (budget != null && costUsd(job.tokens, job.model) >= budget) {
+        if (await answerAtLimit(job, `its $${budget.toFixed(2)} budget`)) return;
         job.overBudget = true;
         await addStep(job, { kind: "note", title: `Stopped at its $${budget.toFixed(2)} budget` });
         await finishJob(job, {
@@ -1112,6 +1114,7 @@ export async function dispatchTool(
         near: nearOf(input.near),
         known: new Set(Object.keys(search.candidates)),
         location: job.signature?.location,
+        listing: listingFacts(job.input.listingText),
       });
       // HIGH commune confidence: the stated commune is exhausted before any other.
       const blocked = r.supported ? leavePrimaryBlocked(search, r.commune) : null;
@@ -1134,6 +1137,7 @@ export async function dispatchTool(
           dwellings: num(input.dwellings),
           survivors: r.survivors,
           returned: r.candidates.length,
+          ranked: true,
         });
       await saveSearch(job, search);
       await addStep(job, {
@@ -1147,6 +1151,7 @@ export async function dispatchTool(
           `${c.egid} | ${c.address ?? "?"} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
           `${c.attached == null ? "" : c.attached ? " | attached" : " | detached"} | ${c.lat.toFixed(6)},${c.lon.toFixed(6)}` +
           (c.strongFit ? ` | STRONG FIT: ${c.fit}` : "") +
+          (c.note ? ` | ${c.note}` : "") +
           (c.loc ? ` | location ${c.loc.score.toFixed(2)}: ${c.loc.why}` : ""),
       );
       const strongNote = strong
@@ -1382,6 +1387,34 @@ export interface ProofResult {
   proof: AnswerProof | null;
   blocking: string[]; // must be fixed before the address is recorded
   soft: string[]; // mismatches to explain or reconsider (sent back once)
+}
+
+/**
+ * At a time or spend limit: if the run already marked exactly one candidate as
+ * its match and that match passes the proof (PROOF: decisive, or everything
+ * settled), record it instead of "not found". In the first practice rounds 7
+ * runs ended over the limit holding the right house as their match.
+ */
+async function answerAtLimit(job: Job, limit: string): Promise<boolean> {
+  const search = job.search;
+  if (!search) return false;
+  const matches = Object.values(search.candidates).filter((c) => c.verdict === "match");
+  if (matches.length !== 1) return false;
+  const m = matches[0];
+  const answer = coerceAnswer({
+    found: true,
+    confidence: "building",
+    address: m.address ?? undefined,
+    latitude: m.lat,
+    longitude: m.lon,
+    reasoning: `Recorded at ${limit}: the one candidate marked match, ${m.address ?? m.egid}, passes the proof.`,
+  });
+  const pr = await proveAnswer(job, answer).catch(() => null);
+  if (!pr || pr.blocking.length || !pr.proof) return false;
+  const final = { ...answer, proof: pr.proof };
+  await addStep(job, { kind: "answer", title: final.address ?? "Answer", detail: final.reasoning });
+  await finishJob(job, { status: "done", answer: final });
+  return true;
 }
 
 // Is this exact answer proven? See the PROOF section of the prompt.
