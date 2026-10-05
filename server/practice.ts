@@ -95,6 +95,7 @@ export interface PracticeRound {
   lessons?: string[]; // the practice lessons every search of the round reads
   trialOf?: string; // the lesson this round tests (lessons.ts)
   reviewed?: boolean; // the reviewer has read it (lessons.ts)
+  learnRequested?: boolean; // "Find lessons" was pressed: learning runs only when asked
   skipped?: { propertyId: number; reason: string }[]; // listings left out: their answer key contradicts them
   rerunOf?: string; // the round whose listings it searches again
   noProof?: boolean; // answers recorded without the register proof; agreement is the check
@@ -267,6 +268,7 @@ async function save(round: PracticeRound): Promise<void> {
   await writeFile(tmp, JSON.stringify(round, null, 2));
   await rename(tmp, f);
 }
+export const saveRound = save;
 
 function refresh(round: PracticeRound): boolean {
   let open = false;

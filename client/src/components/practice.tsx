@@ -589,7 +589,7 @@ export function LearningBadge({ l }: { l: Learning | null }) {
     testing: `Testing lessons ${tested + 1} of ${total}`,
     done: total ? `Done · ${l.kept} kept, ${l.dropped} dropped` : "Done · nothing to learn",
     failed: "Review failed",
-    off: "Automatic learning is off",
+    off: "No lessons yet",
   };
   const tone =
     l.state === "done"
@@ -615,5 +615,5 @@ export function LearningBadge({ l }: { l: Learning | null }) {
 }
 
 export const LEARNING_HELP =
-  "After a round, a reviewer reads its failed and slow runs and proposes rules. Each rule is tested on a small batch of that round's runs: the ones it should fix and a few that were right. It is kept only if no answer turns wrong and the search finds more, or the same faster and cheaper. Kept lessons are read by every search.";
+  "Learning runs only when you press Find lessons on a round: a reviewer reads its failed and slow runs and proposes rules. Each rule is tested on a small batch of that round's runs: the ones it should fix and a few that were right. It is kept only if no answer turns wrong and the search finds more, or the same faster and cheaper. Kept lessons are read by every search.";
 
