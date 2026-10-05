@@ -12,7 +12,6 @@ import {
   type ListingInfo,
   type Result,
   type Round,
-  MODEL_LABEL,
 } from "@/components/practice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,9 +98,13 @@ export default function PracticeRound() {
       total: ids.length,
       finished: finished.length,
       foundByAny: finished.filter((pid) => of(pid).some((r) => r.outcome === "right")).length,
-      foundByAll: finished.filter((pid) => of(pid).every((r) => r.outcome === "right")).length,
-      foundByNone: finished.filter((pid) => !of(pid).some((r) => r.outcome === "right")).length,
       withWrong: finished.filter((pid) => of(pid).some((r) => r.outcome === "wrong")).length,
+      // Found by the first search, or only by the recheck that followed it.
+      firstFound: finished.filter((pid) => of(pid).some((r) => !r.recheck && r.outcome === "right")).length,
+      secondFound: finished.filter((pid) => !of(pid).some((r) => !r.recheck && r.outcome === "right") && of(pid).some((r) => r.recheck && r.outcome === "right")).length,
+      // Every run of a listing together: its first search plus any recheck.
+      minutes: finished.reduce((a, pid) => a + of(pid).reduce((b, r) => b + (r.minutes ?? 0), 0), 0),
+      cost: finished.reduce((a, pid) => a + of(pid).reduce((b, r) => b + (r.costUsd ?? 0), 0), 0),
     };
   }, [results]);
 
@@ -213,45 +216,24 @@ export default function PracticeRound() {
           </Button>
         </div>
 
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-9">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+          <Kpi label="All listings" value={String(listings.total)} hint={`${listings.finished} finished`} />
+          <Kpi label="Found 1st trial" value={String(listings.firstFound)} hint="by the first search" />
+          <Kpi label="Found 2nd trial" value={String(listings.secondFound)} hint="only by the recheck" />
           <Kpi
-            label="Accuracy"
-            value={round.accuracy != null ? `${round.accuracy}%` : "—"}
-            hint={`${round.right} found, ${round.wrong} wrong · goal 100%`}
-            tone={round.accuracy == null ? undefined : round.accuracy < 100 ? "bad" : "good"}
+            label="Success rate"
+            value={pct(listings.firstFound + listings.secondFound, listings.finished)}
+            hint={`${listings.firstFound + listings.secondFound} found of ${listings.finished} · ${listings.withWrong} with a wrong answer`}
+            tone={!listings.finished ? undefined : listings.withWrong ? "bad" : "good"}
           />
           <Kpi
-            label="Houses found"
-            value={`${listings.foundByAny} of ${listings.finished}`}
-            hint={`by at least one model · ${listings.foundByAll} by all`}
+            label="Avg time per listing"
+            value={listings.finished ? `${Math.round((listings.minutes / listings.finished) * 10) / 10} min` : "—"}
+            hint="first search and recheck together"
           />
+          <Kpi label="Cost per listing" value={listings.finished ? usd(listings.cost / listings.finished) : "—"} hint="first search and recheck together" />
           <Kpi
-            label="Confirmed by 2"
-            value={round.agreed ? `${round.agreedRight ?? 0} right · ${round.agreedWrong ?? 0} wrong` : "—"}
-            hint={`${round.agreed ?? 0} houses two runs named alike${round.noProof ? " · no register proof" : ""}`}
-            tone={!round.agreed ? undefined : round.agreedWrong ? "bad" : "good"}
-          />
-          <Kpi
-            label="Right house's rank"
-            value={round.ranks?.measured ? (round.ranks.median != null ? `#${round.ranks.median}` : "off list") : "—"}
-            hint={round.ranks?.measured ? `median · ${round.ranks.top10} top 10 · ${round.ranks.top120} top 120 of ${round.ranks.measured}` : "measured from new rounds on"}
-          />
-          <Kpi
-            label="Rechecked"
-            value={round.rechecks?.done ? `${round.rechecks.fixed + round.rechecks.caught} saved · ${round.rechecks.broke} lost` : "—"}
-            hint={
-              round.rechecks?.done
-                ? `${round.rechecks.done} listings · ${round.rechecks.fixed} turned right, ${round.rechecks.caught} wrong to not sure` +
-                  (round.rechecks.byModel ?? []).map((m) => ` · ${MODEL_LABEL[m.model]?.replace(" · recheck", "") ?? m.model}: ${m.fixed} fixed, ${m.broke} lost, ${usd(m.costUsd)}`).join("")
-                : "doubtful and not-sure answers, searched again"
-            }
-            tone={!round.rechecks?.done ? undefined : round.rechecks.broke ? "bad" : "good"}
-          />
-          <Kpi label="Runs that found it" value={pct(round.right, round.total)} hint={`${round.right} of ${round.total} runs`} />
-          <Kpi label="Average time" value={round.avgMinutes != null ? `${round.avgMinutes} min` : "—"} hint="per run · limit 15 min" />
-          <Kpi label="Cost per house found" value={round.right ? usd(searchesCost / round.right) : "—"} hint={`average run ${usd(round.avgCostUsd)}`} />
-          <Kpi
-            label="Total cost"
+            label="Total costs"
             value={usd(round.totalCostUsd)}
             hint={`searches ${usd(searchesCost)} · lesson tests ${usd(round.testsCostUsd)}`}
           />
