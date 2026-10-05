@@ -305,8 +305,13 @@ export async function startRound(
   else {
     cases = [];
     // Houses only (Daniel, 05.10): a flat's building is found, then the flat
-    // inside it is a different question.
-    for (const c of sampleCases(all.filter((c) => listingFacts(c.listingText).kind === "house"), Infinity)) {
+    // inside it is a different question. And only houses whose listing states
+    // a land area: the plot match is the search's strongest clue.
+    const usable = (c: PracticeCase) => {
+      const f = listingFacts(c.listingText);
+      return f.kind === "house" && f.landM2 != null && !f.sharedLand;
+    };
+    for (const c of sampleCases(all.filter(usable), Infinity)) {
       if (cases.length >= limit) break;
       const trouble = await keyTrouble(c, all);
       if (trouble) skipped.push({ propertyId: c.propertyId, reason: trouble });
