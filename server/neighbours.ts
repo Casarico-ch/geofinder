@@ -176,16 +176,20 @@ function fitOne(c: NeighbourClue, house: Shape, around: Shape[], front: number):
     if (c.size) {
       of++;
       const r = n.areaM2 / house.areaM2;
-      // Near a class boundary a misjudged size still earns half.
-      const lr = Math.log(r);
-      const want = c.size === "smaller" ? -0.7 : c.size === "bigger" ? 0.7 : 0;
-      got += Math.abs(lr - want) <= 0.45 ? 1 : Math.abs(lr - want) <= 0.9 ? 0.5 : 0;
+      // One-sided: "smaller" is anything clearly smaller, however much; near
+      // the boundary a misjudged size still earns half.
+      got +=
+        c.size === "smaller" ? (r < 0.8 ? 1 : r < 1.05 ? 0.5 : 0)
+        : c.size === "bigger" ? (r > 1.25 ? 1 : r > 0.95 ? 0.5 : 0)
+        : r >= 0.7 && r <= 1.4 ? 1 : r >= 0.5 && r <= 2 ? 0.5 : 0;
     }
     if (c.height) {
       of++;
       const d = n.heightM - house.heightM;
-      const want = c.height === "lower" ? -4 : c.height === "taller" ? 4 : 0;
-      got += Math.abs(d - want) <= 3 ? 1 : Math.abs(d - want) <= 6 ? 0.5 : 0;
+      got +=
+        c.height === "lower" ? (d < -1.5 ? 1 : d < 0.5 ? 0.5 : 0)
+        : c.height === "taller" ? (d > 1.5 ? 1 : d > -0.5 ? 0.5 : 0)
+        : Math.abs(d) <= 2.5 ? 1 : Math.abs(d) <= 5 ? 0.5 : 0;
     }
     if (c.roof) { of++; if ((c.roof === "flat") === n.flat) got++; }
     if (c.ridge && !house.flat && !n.flat) {
