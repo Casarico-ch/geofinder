@@ -9,6 +9,9 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -323,8 +326,11 @@ export function ListingsPanel({
 }) {
   const [filter, setFilter] = useState<ListingFilter>("all");
   const [open, setOpen] = useState<number | null>(null);
+  // Order by cost: none → most expensive first → cheapest first.
+  const [sort, setSort] = useState<"none" | "desc" | "asc">("none");
   const ids = Array.from(new Set(results.map((r) => r.propertyId)));
   const runsOf = (pid: number) => results.filter((r) => r.propertyId === pid);
+  const costOf = (pid: number) => runsOf(pid).reduce((a, r) => a + (r.costUsd ?? 0), 0);
   const has = (pid: number, o: Result["outcome"]) => runsOf(pid).some((r) => r.outcome === o);
   const done = (pid: number) => runsOf(pid).every((r) => r.outcome !== "running");
   const count = {
@@ -336,6 +342,8 @@ export function ListingsPanel({
   const shown = ids.filter((p) =>
     filter === "all" ? true : filter === "found" ? has(p, "right") : filter === "missed" ? done(p) && !has(p, "right") : has(p, "wrong"),
   );
+  if (sort !== "none") shown.sort((a, b) => (sort === "desc" ? costOf(b) - costOf(a) : costOf(a) - costOf(b)));
+  const SortIcon = sort === "desc" ? ArrowDown : sort === "asc" ? ArrowUp : ArrowUpDown;
   return (
     <div className="space-y-3">
       <Tabs value={filter} onValueChange={(v) => setFilter(v as ListingFilter)}>
@@ -357,9 +365,19 @@ export function ListingsPanel({
                   {SHORT[m] ?? MODEL_LABEL[m] ?? m}
                 </TableHead>
               ))}
-              <TableHead className="text-right whitespace-nowrap">Rank</TableHead>
               <TableHead className="text-right">Found by</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Rank</TableHead>
+              <TableHead className="text-right">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-mr-3 h-8 px-3"
+                  onClick={() => setSort(sort === "none" ? "desc" : sort === "desc" ? "asc" : "none")}
+                >
+                  Cost
+                  <SortIcon className="ml-1 h-3.5 w-3.5" />
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -396,9 +414,6 @@ export function ListingsPanel({
                         <RunCell r={runs.find((r) => r.model === m)} />
                       </TableCell>
                     ))}
-                    <TableCell className="text-right tabular-nums text-sm whitespace-nowrap">
-                      <Rank runs={runs} />
-                    </TableCell>
                     <TableCell className="text-right">
                       <Badge
                         variant="outline"
@@ -406,6 +421,9 @@ export function ListingsPanel({
                       >
                         {found}/{runs.length}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-sm whitespace-nowrap">
+                      <Rank runs={runs} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm">${cost.toFixed(2)}</TableCell>
                   </TableRow>
