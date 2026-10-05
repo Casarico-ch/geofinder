@@ -432,10 +432,18 @@ export function registerPlatformRoutes(app: Express) {
     });
     app.get(`${base}/rounds`, async (_req: Request, res: Response) => {
       // Each round with where its learning stands; lesson tests ride inside their round.
+      // A round's total cost counts its own runs and the tests of its lessons.
+      const summaries = await listRounds();
+      const lessons = await loadLessons();
+      const testCost = (id: string) =>
+        summaries
+          .filter((t) => t.trialOf && lessons.some((l) => l.id === t.trialOf && l.fromRound === id))
+          .reduce((a, t) => a + t.costUsd, 0);
       const rounds = await Promise.all(
-        (await listRounds()).map(async (r) => {
+        summaries.map(async (r) => {
           const round = await getRound(r.id);
-          return { ...r, learning: round ? await learningOf(round) : null };
+          const tests = Math.round(testCost(r.id) * 100) / 100;
+          return { ...r, testsCostUsd: tests, totalCostUsd: Math.round((r.costUsd + tests) * 100) / 100, learning: round ? await learningOf(round) : null };
         }),
       );
       res.json({ rounds });
