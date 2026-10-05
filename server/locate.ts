@@ -14,6 +14,8 @@
 // =============================================================================
 import type { GwrBuilding } from "./gwr";
 
+import { coerceNeighbours, type NeighbourClue } from "./neighbours";
+
 const SEARCH = "https://api3.geo.admin.ch/rest/services/api/SearchServer";
 const PROFILE = "https://api3.geo.admin.ch/rest/services/profile.json";
 const UA = { "User-Agent": "geofinder" };
@@ -33,6 +35,7 @@ export interface LandmarkClue {
 export interface LocationClues {
   slope?: { faces: Direction | "flat"; confidence: ClueConfidence }; // the way the ground falls away
   landmarks?: LandmarkClue[];
+  neighbours?: NeighbourClue[]; // the buildings next to the house in the photos (neighbours.ts)
 }
 
 export interface LocationScore {
@@ -349,7 +352,9 @@ export function coerceLocation(v: unknown): LocationClues | undefined {
       .slice(0, 6);
     if (!out.landmarks.length) delete out.landmarks;
   }
-  return hasClues(out) ? out : undefined;
+  const nb = coerceNeighbours(o.neighbours);
+  if (nb.length) out.neighbours = nb;
+  return out.slope || out.landmarks?.length || out.neighbours?.length ? out : undefined;
 }
 
 export function cluesText(c: LocationClues): string {
