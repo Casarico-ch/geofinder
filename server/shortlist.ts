@@ -299,6 +299,13 @@ function buildingNote(b: GwrBuilding, why: string | undefined): string | undefin
 // 150: a commune's best 150 by the cheap facts (postcode first) hold the house
 // when the listing names its village, and 400 took ~100 s of a 5-minute run.
 const DEEP = Number(process.env.SHORTLIST_DEEP ?? 150);
+// The plot check alone (one cadastre call, no neighbours) reaches every home:
+// 1,200 plots take ~4 s with 48 workers. Before, it saw only the best DEEP by
+// the cheap score, and on 05.10 six right houses whose plot matched the listed
+// land to the m² ranked 122nd-510th: the register had no year for them, so
+// every house with a matching year came first and the plot was never looked up.
+const PLOT_DEEP = Number(process.env.SHORTLIST_PLOT_DEEP ?? 6000);
+const PLOT_WORKERS = 48;
 const PLOT_FIT = 0.05, FLAT_FIT_M2 = 3;
 // Neighbour checks are local arithmetic once a 3D tile (~4×3 km) is cached.
 const NEIGHBOUR_DEEP = Number(process.env.SHORTLIST_NEIGHBOUR_DEEP ?? 400);
@@ -355,10 +362,13 @@ async function rankByListing(
   const why = new Map<GwrBuilding, string>();
   const strong = new Set<GwrBuilding>();
   if (plot || flat) {
-    const deep = ranked.slice(0, DEEP);
+    // Every home gets the plot check; only the best DEEP get the slower looks
+    // (a plot's neighbours for a two-plot group, a building's flats).
+    const deep = ranked.slice(0, plot ? PLOT_DEEP : DEEP);
     let next = 0;
     const worker = async () => {
       while (next < deep.length) {
+        const at = next;
         const b = deep[next++];
         if (plot) {
           const p = await plotAt(b.lat, b.lon).catch(() => null);
@@ -367,7 +377,11 @@ async function rankByListing(
           // up costs a call: only for a plot of 40-95% of the listed land.
           const ratio = p.areaM2 / l!.landM2!;
           const group =
-            Math.abs(ratio - 1) <= PLOT_FIT ? [p] : ratio >= 0.4 && ratio < 1 ? await plotGroupFor(p, l!.landM2!).catch(() => null) : null;
+            Math.abs(ratio - 1) <= PLOT_FIT
+              ? [p]
+              : at < DEEP && ratio >= 0.4 && ratio < 1
+                ? await plotGroupFor(p, l!.landM2!).catch(() => null)
+                : null;
           if (group) {
             const total = Math.round(group.reduce((t, x) => t + x.areaM2, 0));
             // Two plots that add up to the listed land only lift a house: in a
@@ -393,7 +407,7 @@ async function rankByListing(
         }
       }
     };
-    await Promise.all(Array.from({ length: 16 }, worker));
+    await Promise.all(Array.from({ length: plot ? PLOT_WORKERS : 16 }, worker));
   }
   // The neighbours in the photos against each candidate's real surroundings
   // (swissBUILDINGS3D): the best NEIGHBOUR_DEEP by everything above get the check.
