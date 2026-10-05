@@ -52,8 +52,11 @@ import {
   setPromptVersion,
   setSignature,
   DEFAULT_MODEL,
+  EFFORTS,
+  type Effort,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
+import * as team from "./team";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -65,10 +68,28 @@ export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the 
 // price; only some models offer it. AGENT_FAST=0 turns it off.
 const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]); // 4.8: resumed old runs
 const FAST_MODE = process.env.AGENT_FAST !== "0";
+// Haiku 4.5 takes a fixed thinking budget (no adaptive thinking, no effort)
+// and has a 200K context, so its old tool results are cleared as the
+// investigation grows instead of overflowing it.
+const SMALL_MODELS = new Set(["claude-haiku-4-5"]);
+async function smallModelTurn(
+  client: Anthropic,
+  params: Anthropic.Messages.MessageCreateParamsNonStreaming,
+): Promise<Anthropic.Messages.Message> {
+  const { thinking: _thinking, output_config: _effort, ...rest } = params;
+  return (await client.beta.messages.create({
+    ...(rest as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+    thinking: { type: "enabled", budget_tokens: 8_000 },
+    betas: ["context-management-2025-06-27"],
+    context_management: {
+      edits: [{ type: "clear_tool_uses_20250919", trigger: { type: "input_tokens", value: 120_000 }, keep: { type: "tool_uses", value: 6 } }],
+    },
+  })) as unknown as Anthropic.Messages.Message;
+}
+
 // Thinking depth per turn — the biggest single lever on how long a turn takes.
 // "medium" or "low" is faster but looks less carefully.
-const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-const EFFORT: (typeof EFFORTS)[number] = (EFFORTS as readonly string[]).includes(process.env.AGENT_EFFORT ?? "")
+const EFFORT: Effort = (EFFORTS as readonly string[]).includes(process.env.AGENT_EFFORT ?? "")
   ? (process.env.AGENT_EFFORT as (typeof EFFORTS)[number])
   : "high";
 // Tools that only read or fetch, and touch no search state: several of them in
@@ -330,6 +351,23 @@ const TOOLS = [
   },
 ] as unknown as Anthropic.Messages.ToolUnion[];
 
+// A team run gets the chat tools and a certainty on its votes (team.ts).
+const TEAM_RUN_TOOLS = [
+  ...TOOLS.map((t) => {
+    const tool = t as unknown as { name: string; input_schema: { properties: Record<string, unknown>; required: string[] } };
+    if (tool.name !== "submit_answer") return t;
+    return {
+      ...tool,
+      input_schema: {
+        ...tool.input_schema,
+        properties: { ...tool.input_schema.properties, certainty: team.CERTAINTY_FIELD },
+        required: [...tool.input_schema.required, "certainty"],
+      },
+    } as unknown as Anthropic.Messages.ToolUnion;
+  }),
+  ...(team.TEAM_TOOLS as unknown as Anthropic.Messages.ToolUnion[]),
+];
+
 const SYSTEM = `You are GeoFinder — an autonomous investigator that finds the exact street address and cadastral parcel of a Swiss property from its listing (photos + text + municipality).
 
 You have no geo tools. You have a real Linux computer (Node ≥18 with global fetch, network access) and you build your own access to public data by writing and running code, like a human analyst. The method is entirely yours — reason it out, invent and switch approaches freely, and verify however you see fit.
@@ -396,6 +434,7 @@ function initialContent(
   images: AgentImage[],
   listingText: string | undefined,
   searchPlan: string,
+  teamRun = false,
 ): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
   images.forEach((img, i) => {
@@ -407,7 +446,8 @@ function initialContent(
     text:
       `${TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
       `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}` +
-      `\n\n${searchPlan}`,
+      `\n\n${searchPlan}` +
+      (teamRun ? `\n\n${team.TEAM_BRIEF}` : ""),
   });
   return blocks;
 }
@@ -560,10 +600,11 @@ export async function runInvestigation(
     search.candidates = structuredClone(seed.candidates);
   }
   await saveSearch(job, search);
+  if (job.team) await team.joinTeam(job.team, job.id);
   const plan = searchPlanText(search);
   await addStep(job, { kind: "note", title: `Search plan: commune confidence ${search.confidence}`, detail: plan });
   const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: initialContent(images, listingText, plan) },
+    { role: "user", content: initialContent(images, listingText, plan, !!job.team) },
   ];
   await saveState(job, 0, messages);
   await runLoop(job, messages, 0);
@@ -692,6 +733,26 @@ async function runLoop(
         return;
       }
 
+      if (job.team) {
+        // The teammate's vote may have settled it while this member was busy.
+        const settled = await team.agreed(job);
+        if (settled) {
+          await addStep(job, { kind: "answer", title: `Team agreed: ${settled.address ?? settled.parcel ?? "Answer"}`, detail: settled.reasoning });
+          await finishJob(job, { status: "done", answer: settled });
+          return;
+        }
+        // Show what the teammate posted since this member last looked.
+        const news = await team.unseen(job, i);
+        const last = messages[messages.length - 1];
+        if (news && last.role === "user") {
+          if (typeof last.content === "string") last.content = [{ type: "text", text: last.content }];
+          last.content.push({ type: "text", text: news.text });
+          for (const p of news.posts)
+            await addStep(job, { kind: "note", title: `Team chat — ${p.model} #${p.id}`, detail: p.text });
+          await saveState(job, i, messages);
+        }
+      }
+
       await files.upload(messages);
       if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
       const model = job.model ?? MODEL;
@@ -705,11 +766,11 @@ async function runLoop(
         thinking: { type: "adaptive", display: "summarized" },
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
-        output_config: { effort: EFFORT },
+        output_config: { effort: job.effort ?? EFFORT },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-        tools: TOOLS,
+        tools: job.team ? TEAM_RUN_TOOLS : TOOLS,
         // Top-level auto-caching rolls a second breakpoint over the growing
         // conversation — so the re-sent listing photos and the aerials the
         // model has already downloaded are read from cache, not reprocessed.
@@ -719,7 +780,9 @@ async function runLoop(
       let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable;
       let resp: Anthropic.Messages.Message;
       try {
-        resp = fast
+        resp = SMALL_MODELS.has(model)
+          ? await smallModelTurn(client, params)
+          : fast
           ? ((await client.beta.messages.create({
               ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
               speed: "fast",
@@ -822,6 +885,23 @@ async function runLoop(
             final = pr.blocking.length ? unprovenAsShortlist(answer, pr.blocking) : answer;
             if (pr.proof) final = { ...final, proof: pr.proof };
           }
+          // A team run stops only when both members name the same building at
+          // team.AGREE_AT or more; until then the answer is a vote. Once the
+          // teammate has stopped (or near the limit) the solo rules apply.
+          if (job.team && !nearLimit(i + 1) && (await team.hasLiveMate(job))) {
+            const certainty = Number((tu.input as Record<string, unknown>).certainty ?? 0);
+            const outcome = await team.vote(job, final, certainty);
+            if (outcome.kind === "waiting") {
+              await addStep(job, {
+                kind: "note",
+                title: `Vote: ${final.found ? (final.address ?? final.parcel ?? "Answer") : "no match"} · ${Math.round(certainty)}%`,
+                detail: outcome.message,
+              });
+              results.push({ type: "tool_result", tool_use_id: tu.id, content: outcome.message, is_error: true });
+              continue;
+            }
+            await addStep(job, { kind: "note", title: `Team agreed at ${team.AGREE_AT}%+`, detail: "Both members voted for this building." });
+          }
           const rankNote = job.search ? answerRank(job.search, final) : null;
           if (rankNote) await addStep(job, { kind: "note", title: "Checking order", detail: rankNote });
           await addStep(job, {
@@ -832,6 +912,33 @@ async function runLoop(
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
           await finishJob(job, { status: "done", answer: final });
           return;
+        }
+        if (job.team && tu.name === "team_post") {
+          const inp = tu.input as Record<string, unknown>;
+          const p = await team.post(
+            job,
+            {
+              text: String(inp.message ?? ""),
+              replyTo: Number(inp.reply_to) || undefined,
+              ask: inp.ask === true,
+              to: inp.to == null ? undefined : String(inp.to),
+              leading: inp.leading == null ? undefined : String(inp.leading),
+              certainty: inp.certainty == null ? undefined : Number(inp.certainty),
+            },
+            i + 1,
+          );
+          await addStep(job, {
+            kind: "note",
+            title: `Team chat — ${p.model} #${p.id}${p.replyTo ? ` (re #${p.replyTo})` : ""}`,
+            detail: p.text + (p.leading ? `\nLeading: ${p.leading}${p.certainty !== undefined ? ` · ${p.certainty}%` : ""}` : ""),
+          });
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: `posted as #${p.id}` });
+          continue;
+        }
+        if (job.team && tu.name === "team_read") {
+          const out = await team.readMate(job, Number((tu.input as Record<string, unknown>).steps) || 25);
+          results.push({ type: "tool_result", tool_use_id: tu.id, content: clip(out, MAX_TOOL_TEXT) });
+          continue;
         }
         if (tu.name === "record_signature") {
           const sig = coerceSignature(tu.input as Record<string, unknown>);

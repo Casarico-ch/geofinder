@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, CornerDownRight, ExternalLink, Loader2, MessageCircleQuestion, Pause, RefreshCw, Trash2, Users } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -100,6 +100,9 @@ interface ModelResult {
   } | null;
   aiCostUsd: number;
   check?: boolean; // a cross-check of another model's answer
+  team?: string; // a member of a team run: Sonnet + Opus searching together until they agree
+  effort?: string; // a variant at another thinking depth ("max")
+  variant?: string; // a solo variant next to the listing models
   tokens?: number;
   startedAt?: string;
 }
@@ -150,7 +153,12 @@ const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
+  "claude-haiku-4-5": "Haiku 4.5",
 };
+// Runs on these models are shown but do not count toward a listing's
+// Found / Conflicting status until they have proven themselves.
+const UNCOUNTED = new Set(["claude-haiku-4-5"]);
+const counted = (results: ModelResult[]) => results.filter((m) => !UNCOUNTED.has(m.model));
 
 const SCORE_INFO: Record<string, string> = {
   development: "Room to build more",
@@ -391,7 +399,10 @@ function ModelColumn({ r }: { r: ModelResult }) {
     <Card className="gap-3 py-3.5 px-3.5 min-w-0 shadow-none">
       <div className="flex items-center gap-2">
         <StatusIcon status={r.status} />
-        <span className="text-sm font-semibold">{MODEL_LABEL[r.model] ?? r.model}</span>
+        <span className="text-sm font-semibold">
+          {MODEL_LABEL[r.model] ?? r.model}
+          {r.effort ? ` · ${r.effort} effort` : ""}
+        </span>
         {r.check && (
           <Badge variant="outline" className="font-normal" title="Checks another model's answer against the listing">
             Cross-check
@@ -413,6 +424,130 @@ function ModelColumn({ r }: { r: ModelResult }) {
         </div>
       )}
       {r.answer?.proof && <ProofTable proof={r.answer.proof} />}
+    </Card>
+  );
+}
+
+// A team run's shared room, as GET /api/teams/:id returns it (server/team.ts).
+interface TeamRoomView {
+  posts: { id: number; at: string; from: string; model: string; text: string; replyTo?: number; ask?: boolean; leading?: string; certainty?: number }[];
+  members: { jobId: string; model: string | null; status: JobStatus | null; vote: { place: string; certainty: number } | null }[];
+  agreed: { place: string } | null;
+}
+
+const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// The Sonnet + Opus team as ONE chat, like the doctors' panel: every message
+// with who it answers and where its author stands, then each one's vote and
+// the building they agreed on.
+function TeamChat({ members }: { members: ModelResult[] }) {
+  const team = members[0].team!;
+  const running = members.some((m) => m.status === "running");
+  const [room, setRoom] = useState<TeamRoomView | null>(null);
+  useEffect(() => {
+    let stop = false;
+    const load = () =>
+      fetch(`/api/teams/${team}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((v) => !stop && v && setRoom(v))
+        .catch(() => {});
+    void load();
+    const t = running ? setInterval(load, 5_000) : undefined;
+    return () => {
+      stop = true;
+      if (t) clearInterval(t);
+    };
+  }, [team, running]);
+
+  const cost = members.reduce((n, m) => n + m.aiCostUsd, 0);
+  const byModel = new Map<string, number>();
+  for (const m of members) byModel.set(m.model, (byModel.get(m.model) ?? 0) + 1);
+  const names = Array.from(byModel.entries())
+    .map(([model, n]) => `${n > 1 ? `${n} × ` : ""}${MODEL_LABEL[model] ?? model}`)
+    .join(" + ");
+  const uncounted = members.every((m) => UNCOUNTED.has(m.model));
+  const answer = members.find((m) => m.answer?.found)?.answer ?? members.find((m) => m.answer)?.answer;
+  const status = room?.agreed
+    ? { label: "Agreed", tone: "bg-emerald-500/10 text-emerald-700" }
+    : running
+      ? { label: "Talking", tone: "bg-primary/10 text-primary" }
+      : { label: "No agreement", tone: "bg-amber-500/10 text-amber-700" };
+  // One theme tone per member, so a crowd of the same model stays readable.
+  const TONES = ["bg-muted", "bg-primary/10", "bg-secondary", "bg-accent", "bg-card border border-border"];
+  const tone = (from: string) => TONES[Math.max(0, (room?.members ?? members).findIndex((m) => m.jobId === from)) % TONES.length];
+
+  return (
+    <Card className="gap-3 py-3.5 px-3.5 min-w-0 shadow-none lg:col-span-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {running ? <StatusIcon status="running" /> : <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+        <span className="text-sm font-semibold">Team · {names}</span>
+        <Badge variant="outline" className={`border-transparent font-normal ${status.tone}`}>{status.label}</Badge>
+        {uncounted && (
+          <Badge variant="outline" className="font-normal" title="Shown for comparison; it does not change the listing's Found / Conflicting status">
+            Not counted
+          </Badge>
+        )}
+        <span className="text-xs text-muted-foreground tabular-nums">${cost.toFixed(2)}</span>
+        <div className="flex-1" />
+        <span className="text-xs text-muted-foreground">Traces</span>
+        {members.map((m, i) => (
+          <Link key={m.jobId} href={`/i/${m.jobId}`} className="text-xs text-primary inline-flex items-center gap-0.5 hover:underline">
+            {byModel.size > 1 ? (MODEL_LABEL[m.model] ?? m.model) : i + 1} <ExternalLink className="h-3 w-3" />
+          </Link>
+        ))}
+      </div>
+
+      <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
+        {!room?.posts.length && (
+          <p className="text-sm text-muted-foreground">{running ? "They are studying the listing — the chat starts with their first finds." : "No messages."}</p>
+        )}
+        {room?.posts.map((p) => {
+          const re = p.replyTo ? room.posts[p.replyTo - 1] : undefined;
+          return (
+            <div key={p.id} className={`rounded-lg px-3 py-2 text-sm ${tone(p.from)}`}>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{p.model.replace(/^./, (c) => c.toUpperCase())}</span>
+                <span className="tabular-nums">{fmtTime(p.at)}</span>
+                {p.ask && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <MessageCircleQuestion className="h-3 w-3" /> asks
+                  </span>
+                )}
+              </div>
+              {re && (
+                <div className="mt-1 flex gap-1 border-l-2 border-border pl-2 text-xs text-muted-foreground">
+                  <CornerDownRight className="h-3 w-3 mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">
+                    {re.model.replace(/^./, (c) => c.toUpperCase())}: {re.text}
+                  </span>
+                </div>
+              )}
+              <p className="mt-1 whitespace-pre-wrap">{p.text}</p>
+              {p.leading && (
+                <Badge variant="outline" className="mt-1.5 font-normal">
+                  {p.leading}
+                  {p.certainty !== undefined ? ` · ${p.certainty}%` : ""}
+                </Badge>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-border pt-2 space-y-1 text-sm">
+        {room?.members.map((m) => (
+          <p key={m.jobId} className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{m.model ? m.model.replace(/^./, (c) => c.toUpperCase()) : "Member"}</span>{" "}
+            {m.vote ? `votes ${m.vote.place} · ${m.vote.certainty}%` : m.status === "running" ? "has not voted yet" : "did not vote"}
+          </p>
+        ))}
+        {!running && answer && (
+          <p className="font-medium">
+            {room?.agreed ? "Agreed: " : "Last answer: "}
+            {foundLabel(answer, "Area only").replace(/^not found$/, "Not found")}
+          </p>
+        )}
+      </div>
     </Card>
   );
 }
@@ -474,21 +609,62 @@ const rankOf = (m: ModelResult) => {
 // place decides between the models; otherwise the surest model wins, not
 // whichever happens to be listed first.
 function bestOf(results: ModelResult[]): ModelResult | undefined {
-  const done = results.filter((m) => m.status === "done" && m.answer?.found);
+  const done = counted(results).filter((m) => m.status === "done" && m.answer?.found);
   const check = done.filter((m) => m.check).at(-1);
   if (check) return check;
   return done.filter((m) => !m.check).sort((a, b) => rankOf(a) - rankOf(b))[0];
 }
 
-// The different exact places the runs of a listing stand for — more than one
-// means re-runs disagree, and none of them can be taken as the answer.
-function conflictsOf(r: PlatformRequest): string[] {
+// One exact place, however a model wrote it: "Chemin de la Croix 4 / 4a, 1233
+// Bernex" and "Chemin de la Croix 4 (and 4a)" are both "chemin de la croix 4".
+function placeKey(m: ModelResult): string | null {
+  if (!m.answer?.found || rankOf(m) > 0) return null;
+  const fold = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const street = fold((m.answer.address ?? "").split(",")[0]);
+  const at = street.match(/^(.*?[a-z].*?)\s+(\d{1,4}[a-z]?)\b/);
+  if (at) return `${at[1].replace(/[^a-z0-9]+/g, " ").trim()} ${at[2]}`;
+  const plots = (m.answer.parcels ?? []).map((p) => fold(`${p.commune} ${p.plot}`)).sort();
+  return plots.length ? plots.join("+") : fold(foundLabel(m.answer)).replace(/\s+/g, " ").trim();
+}
+
+// What one attempt's room settled on. A single model finding an address is not
+// enough: "found" means every voice agrees on one exact place.
+//   * no cross-check: every finished model names the same exact place
+//   * cross-checks ran: exactly one place survived them — a check that tries
+//     to prove an answer wrong and still confirms it settles the split
+// Anything else (two places, or a find the others did not reach or could not
+// confirm) is still doubt in the room: conflicting.
+type Consensus = { kind: "found"; hit: ModelResult } | { kind: "none" } | { kind: "conflict"; places: string[] };
+
+function consensusOf(results: ModelResult[]): Consensus {
+  const done = counted(results).filter((m) => m.status === "done");
+  const searches = done.filter((m) => !m.check);
+  const checks = done.filter((m) => m.check);
+  const labels = new Map<string, string>();
+  for (const m of done) {
+    const k = placeKey(m);
+    if (k && m.answer && !labels.has(k)) labels.set(k, foundLabel(m.answer));
+  }
+  if (labels.size === 0) return { kind: "none" };
+  const voices = checks.length ? checks : searches;
+  const named = new Set(voices.map(placeKey).filter((k): k is string => !!k));
+  const agreed = checks.length ? named.size === 1 : named.size === 1 && voices.every((m) => placeKey(m));
+  if (agreed) {
+    const key = Array.from(named)[0];
+    return { kind: "found", hit: voices.find((m) => placeKey(m) === key)! };
+  }
+  const places = Array.from(labels.values());
+  if (places.length === 1) places.push("not confirmed");
+  return { kind: "conflict", places };
+}
+
+// The places a listing's attempts agreed on — more than one means re-runs
+// disagree, and none of them can be taken as the answer.
+function attemptPlaces(r: PlatformRequest): string[] {
   const out = new Map<string, string>();
   for (const a of attemptsOf(r)) {
-    const best = bestOf(a.results);
-    if (!best?.answer || rankOf(best) > 0) continue;
-    const label = foundLabel(best.answer);
-    out.set(label.split(",")[0].trim().toLowerCase(), label);
+    const c = consensusOf(a.results);
+    if (c.kind === "found" && c.hit.answer) out.set(placeKey(c.hit)!, foundLabel(c.hit.answer));
   }
   return Array.from(out.values());
 }
@@ -552,15 +728,25 @@ function attemptsOf(r: PlatformRequest): Attempt[] {
   return out;
 }
 
+const teamCount = (rs: ModelResult[]) => new Set(rs.map((m) => m.team).filter(Boolean)).size;
+
 // "Sonnet 5.5 + Opus 5.5", which run this is when the listing was re-run, and
 // whether an answer was cross-checked by another model.
 function modelsOf(r: PlatformRequest): string {
   const all = r.results ?? [];
   const searches = all.filter((m) => !m.check);
-  const names = Array.from(new Set((searches.length ? searches : all).map((m) => MODEL_LABEL[m.model] ?? m.model)));
+  const solo = searches.filter((m) => !m.team);
+  const names = Array.from(
+    new Set(
+      (solo.length ? solo : searches.length ? searches : all).map(
+        (m) => `${MODEL_LABEL[m.model] ?? m.model}${m.effort ? ` ${m.effort}` : ""}`,
+      ),
+    ),
+  );
   const runs = attemptsOf(r).length;
   return (
     names.join(" + ") +
+    (solo.length && teamCount(searches) ? ` + ${teamCount(searches)} team${teamCount(searches) > 1 ? "s" : ""}` : "") +
     (runs > 1 ? ` · Run ${runs} of ${runs}` : "") +
     (all.some((m) => m.check) ? " · cross-checked" : "")
   );
@@ -581,14 +767,17 @@ function outcomeOf(r: PlatformRequest): Outcome {
   }
   const results = r.results ?? [];
   const running = results.some((m) => m.status === "running");
-  const split = running ? [] : conflictsOf(r);
-  if (split.length > 1)
-    return { label: "Conflicting", tone: "bg-amber-500/10 text-amber-700", detail: split.join(" vs ") };
-  const hit = bestOf(results);
-  if (hit?.answer) return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(hit.answer) };
   if (running)
     return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
   if (results.some((m) => m.status === "paused")) return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
+  const conflicting = { label: "Conflicting", tone: "bg-amber-500/10 text-amber-700" };
+  const across = attemptPlaces(r);
+  if (across.length > 1) return { ...conflicting, detail: across.join(" vs ") };
+  const latest = attemptsOf(r).at(-1);
+  const c = latest ? consensusOf(latest.results) : ({ kind: "none" } as const);
+  if (c.kind === "conflict") return { ...conflicting, detail: c.places.join(" vs ") };
+  if (c.kind === "found" && c.hit.answer)
+    return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(c.hit.answer) };
   return { label: "Not found", tone: "bg-muted text-muted-foreground" };
 }
 
@@ -677,13 +866,21 @@ function PauseRunning({ rows, onDone }: { rows: PlatformRequest[]; onDone: () =>
 function Attempts({ r }: { r: PlatformRequest }) {
   const attempts = attemptsOf(r).reverse();
   const [hidden, setHidden] = useState<Set<number>>(new Set());
-  const cards = (a: Attempt) => (
-    <div className="grid gap-3 lg:grid-cols-2">
-      {a.results.map((m) => (
-        <ModelColumn key={m.jobId} r={m} />
-      ))}
-    </div>
-  );
+  // Solo runs get a card each; the members of a team share one chat card.
+  const cards = (a: Attempt) => {
+    const teams = new Map<string, ModelResult[]>();
+    for (const m of a.results) if (m.team) teams.set(m.team, [...(teams.get(m.team) ?? []), m]);
+    return (
+      <div className="grid gap-3 lg:grid-cols-2">
+        {a.results.filter((m) => !m.team).map((m) => (
+          <ModelColumn key={m.jobId} r={m} />
+        ))}
+        {Array.from(teams.entries()).map(([id, members]) => (
+          <TeamChat key={id} members={members} />
+        ))}
+      </div>
+    );
+  };
   if (attempts.length <= 1) return attempts[0] ? cards(attempts[0]) : null;
   return (
     <div className="space-y-4">

@@ -21,6 +21,7 @@ import {
   type AgentImage,
 } from "./agent";
 import { exportJobHtml } from "./export";
+import { roomView } from "./team";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -34,6 +35,7 @@ import {
   listJobs,
   requestCancel,
   requestPause,
+  EFFORTS,
 } from "./jobs";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -54,6 +56,10 @@ const createSchema = z.object({
   radarUrl: z.string().trim().url().max(2000).optional(),
   municipality: z.string().max(200).optional(),
   model: z.enum(MODELS).optional(),
+  // A team run: the jobs created with the same id share a chat room (team.ts).
+  team: z.string().regex(/^[\w-]{6,40}$/).optional(),
+  // A variant: the same model at another thinking depth (e.g. Opus at "max").
+  effort: z.enum(EFFORTS).optional(),
 });
 
 const photosSchema = z.object({ images: imagesSchema });
@@ -136,6 +142,8 @@ export function registerApiRoutes(app: Express) {
           radarUrl: parsed.data.radarUrl,
         },
         parsed.data.model,
+        parsed.data.team,
+        parsed.data.effort,
       );
 
       if (images && images.length > 0) {
@@ -207,6 +215,20 @@ export function registerApiRoutes(app: Express) {
   });
 
   // List recent investigations (for reopening after the window was closed).
+  // A team run's shared room: the chat, each member's vote and the agreement.
+  app.get("/api/teams/:id", async (req: Request, res: Response) => {
+    if (!/^[\w-]{6,40}$/.test(req.params.id)) {
+      res.status(400).json({ error: "Bad team id" });
+      return;
+    }
+    const room = await roomView(req.params.id);
+    if (!room.members.length) {
+      res.status(404).json({ error: "No such team" });
+      return;
+    }
+    res.json(room);
+  });
+
   app.get("/api/geo/investigations", (_req: Request, res: Response) => {
     res.json({ jobs: listJobs().slice(0, 50).map(jobSummary) });
   });

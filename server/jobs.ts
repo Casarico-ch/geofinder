@@ -102,6 +102,7 @@ export const MODELS = [
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
+  "claude-haiku-4-5", // runs the five-member Haiku team
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
@@ -120,6 +121,7 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },
+  "claude-haiku-4-5": { in: 1, cacheRead: 0.1, cacheWrite: 1.25, out: 5 },
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {
@@ -149,6 +151,8 @@ export interface Job {
   finishedAt?: string; // when it reached a terminal state (done/error/cancelled)
   updatedAt: string;
   model: KnownModel; // which Claude model runs this investigation
+  team?: string; // a team run: the room it shares with its teammate (team.ts)
+  effort?: Effort; // thinking depth for this run, when it differs from the default (a variant)
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
   // Where to look (commune confidence + neighbour ring) and the candidate ledger:
@@ -215,7 +219,15 @@ export function getJob(id: string): Job | undefined {
   return jobs.get(id);
 }
 
-export async function createJob(input: Job["input"], model: ModelId = DEFAULT_MODEL): Promise<Job> {
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+export async function createJob(
+  input: Job["input"],
+  model: ModelId = DEFAULT_MODEL,
+  team?: string,
+  effort?: Effort,
+): Promise<Job> {
   const id = cryptoRandomId();
   const runDir = await ensureRunDir(id);
   const job: Job = {
@@ -224,6 +236,8 @@ export async function createJob(input: Job["input"], model: ModelId = DEFAULT_MO
     createdAt: nowIso(),
     updatedAt: nowIso(),
     model,
+    ...(team ? { team } : {}),
+    ...(effort ? { effort } : {}),
     input,
     steps: [],
     answer: null,

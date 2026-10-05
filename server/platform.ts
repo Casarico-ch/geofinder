@@ -8,12 +8,12 @@
 //                      or { plots: [ ...2-10 of those ] } → each plot + the plots combined (CHF 3.80 per plot)
 // The admin website reads the same records through /api/requests.
 // =============================================================================
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
-import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
+import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type Effort, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import {
   PROFILE_COST_CHF,
@@ -45,6 +45,37 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "claude-sonne
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+// Next to them, every listing request also runs teams (team.ts): models that
+// search side by side in one chat until they all agree. GEOFINDER_TEAMS picks
+// which (comma list of the names below; "none" or GEOFINDER_TEAM=0 for none).
+const SONNET: ModelId = "claude-sonnet-5-5";
+const OPUS: ModelId = "claude-opus-5-5";
+const HAIKU: ModelId = "claude-haiku-4-5";
+const FABLE: ModelId = "claude-fable-5-1";
+// Solo variants next to the listing models: other Claude models or depths.
+// GEOFINDER_VARIANTS picks which (comma list of the names; "none" for none).
+const VARIANTS: Record<string, { model: ModelId; effort?: Effort }> = {
+  fable: { model: FABLE }, // Fable 5.1, Anthropic's most capable model (~2.5x Opus)
+  "opus-max": { model: OPUS, effort: "max" }, // Opus 5.5 thinking as long as it needs
+};
+const VARIANTS_ON: string[] = (process.env.GEOFINDER_VARIANTS ?? Object.keys(VARIANTS).join(","))
+  .split(",")
+  .map((v) => v.trim())
+  .filter((v) => v in VARIANTS);
+const TEAMS: Record<string, ModelId[]> = {
+  mixed: [SONNET, OPUS],
+  haiku: [HAIKU, HAIKU, HAIKU, HAIKU, HAIKU],
+  sonnet: [SONNET, SONNET, SONNET],
+  opus: [OPUS, OPUS, OPUS],
+  "fable-opus": [FABLE, OPUS],
+};
+const TEAMS_ON: string[] =
+  process.env.GEOFINDER_TEAM === "0"
+    ? []
+    : (process.env.GEOFINDER_TEAMS ?? Object.keys(TEAMS).join(","))
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t in TEAMS);
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
@@ -148,6 +179,7 @@ function publicView(r: PlatformRequest) {
             status: m.status,
             answer: m.answer,
             ...(m.check ? { check: true } : {}),
+            ...(m.team ? { team: true } : {}),
           })),
         }),
     popetyCostChf: r.popetyCostChf,
@@ -180,9 +212,31 @@ export async function startListingRequest(
   });
   record.source = source;
   record.results = [];
-  for (const model of models) {
-    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model);
-    record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
+  type Run = { model: ModelId; team?: string; effort?: Effort; variant?: string };
+  // A re-run lists the variants' models among its models (Fable); they run once,
+  // as the variant, so they stay out of the cross-checks like the first time.
+  const variants = VARIANTS_ON.map((variant) => ({ ...VARIANTS[variant], variant }));
+  const plain = models.filter((m) => !variants.some((v) => !v.effort && v.model === m));
+  const runs: Run[] = [
+    ...(plain.length ? plain : models).map((model) => ({ model })),
+    ...variants.filter((v) => v.effort || plain.length),
+    ...TEAMS_ON.flatMap((name) => {
+      const team = `t${name}${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+      return TEAMS[name].map((model) => ({ model, team }));
+    }),
+  ];
+  for (const { model, team, effort, variant } of runs) {
+    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model, team, effort);
+    record.results.push({
+      model,
+      jobId: job.id,
+      status: "running",
+      answer: null,
+      aiCostUsd: 0,
+      ...(team ? { team } : {}),
+      ...(effort ? { effort } : {}),
+      ...(variant ? { variant } : {}),
+    });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
       await runInvestigation(job, images, listingText);
@@ -271,7 +325,10 @@ const CHECKS_ACROSS_RUNS = 2;
 async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
   if (req.kind !== "listing" || results.some((m) => m.check)) return false;
-  const searches = results.filter((m) => m.status === "done");
+  // A team already settled its own split; checks are planned between the solo searches.
+  // Variants are compared, not cross-checked, so they add no checks of their own.
+  const searches = results.filter((m) => m.status === "done" && !m.team && !m.variant);
+  if (searches.length === 0) return false;
   const checks: (Check & { fromJob?: string })[] = planChecks(searches).map((c) => ({
     ...c,
     fromJob: searches.find((m) => m.model === c.candidateFrom)?.jobId,
@@ -448,7 +505,7 @@ export function registerPlatformRoutes(app: Express) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
       return;
     }
-    const searches = jobs.filter((j) => !isCheckText(j.input.listingText));
+    const searches = jobs.filter((j) => !isCheckText(j.input.listingText) && !j.team);
     const src = (searches.length ? searches : jobs).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
     const images = await loadListingPhotos(src.runDir);
     if (images.length === 0) {
