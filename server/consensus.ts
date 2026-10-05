@@ -35,7 +35,8 @@ export function exactAddressOf(answer: Answer | null): Candidate | null {
   if (!EXACT_CONFIDENCE.has(answer.confidence)) return null;
   const address = answer.address?.trim() || null;
   const parcel = parcelOf(answer);
-  const numbered = !!address && !!houseNumberOf(address);
+  // A street and a number: "2036" alone (a run answered a postcode) is no address.
+  const numbered = !!address && !!houseNumberOf(address) && /[a-z]{3}/.test(streetOf(address));
   if (!numbered && !(parcel && plotNumbersOf(parcel).length)) return null;
   return {
     address: address ?? answer.commune?.trim() ?? parcel!,

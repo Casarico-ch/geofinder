@@ -109,6 +109,7 @@ export interface Result {
   costUsd: number | null;
   error?: string;
   why?: { code: string; text: string } | null; // why the right house was never on its checklist
+  twin?: boolean; // answered the attached twin of the right house: counted as found
   rank?: number | null; // where the right house sat on the run's ranked list
   rankOf?: number | null;
 }
@@ -245,7 +246,10 @@ function RunCell({ r }: { r?: Result }) {
     <div className="flex items-center gap-2">
       <Icon className={`h-4 w-4 shrink-0 ${className}`} />
       <div className="leading-tight">
-        <p className="text-xs font-medium">{OUTCOME[r.outcome].label}</p>
+        <p className="text-xs font-medium">
+          {OUTCOME[r.outcome].label}
+          {r.twin && <span className="font-normal text-muted-foreground"> · twin</span>}
+        </p>
         <p className="text-[11px] text-muted-foreground tabular-nums">
           {r.minutes != null ? `${r.minutes}m` : "—"} · {r.costUsd != null ? `$${r.costUsd.toFixed(2)}` : "—"}
         </p>
@@ -277,6 +281,9 @@ function RunCard({ model, r }: { model: string; r?: Result }) {
             <span className="text-muted-foreground">Answered: </span>
             {r.answer ?? "nothing"}
           </p>
+          {r.twin && (
+            <p className="text-xs text-emerald-700">Counted as found: the attached twin of the right house.</p>
+          )}
           {r.rankOf != null && (
             <p className="text-xs">
               <span className="text-muted-foreground">Right house ranked: </span>
@@ -309,7 +316,7 @@ function RunCard({ model, r }: { model: string; r?: Result }) {
   );
 }
 
-type ListingFilter = "all" | "found" | "missed" | "wrong";
+type ListingFilter = "all" | "found" | "unsure" | "wrong";
 
 /**
  * Every listing of a round: one compact row each, what every model did as an
@@ -336,11 +343,11 @@ export function ListingsPanel({
   const count = {
     all: ids.length,
     found: ids.filter((p) => has(p, "right")).length,
-    missed: ids.filter((p) => done(p) && !has(p, "right")).length,
+    unsure: ids.filter((p) => has(p, "unsure") && !has(p, "right")).length,
     wrong: ids.filter((p) => has(p, "wrong")).length,
   };
   const shown = ids.filter((p) =>
-    filter === "all" ? true : filter === "found" ? has(p, "right") : filter === "missed" ? done(p) && !has(p, "right") : has(p, "wrong"),
+    filter === "all" ? true : filter === "found" ? has(p, "right") : filter === "unsure" ? has(p, "unsure") && !has(p, "right") : has(p, "wrong"),
   );
   if (sort !== "none") shown.sort((a, b) => (sort === "desc" ? costOf(b) - costOf(a) : costOf(a) - costOf(b)));
   const SortIcon = sort === "desc" ? ArrowDown : sort === "asc" ? ArrowUp : ArrowUpDown;
@@ -350,7 +357,7 @@ export function ListingsPanel({
         <TabsList>
           <TabsTrigger value="all">All {count.all}</TabsTrigger>
           <TabsTrigger value="found">Found {count.found}</TabsTrigger>
-          <TabsTrigger value="missed">Missed by all {count.missed}</TabsTrigger>
+          <TabsTrigger value="unsure">Not sure {count.unsure}</TabsTrigger>
           <TabsTrigger value="wrong">Wrong answer {count.wrong}</TabsTrigger>
         </TabsList>
       </Tabs>

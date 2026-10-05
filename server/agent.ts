@@ -918,6 +918,18 @@ async function runLoop(
             // No proof gate: recorded as given, with the register facts beside it for the reader.
             const pr = await proveAnswer(job, answer).catch(() => null);
             if (pr?.proof) final = { ...answer, proof: pr.proof };
+            // Two sanity checks, each answer turned back at most twice in all (05.10:
+            // a run answered "2036"; two answered houses whose plot was 3x and 8x
+            // the listed land, and said so themselves).
+            const search = searchOf(job);
+            const problem = sanityProblem(job, answer, pr?.proof?.egid ?? undefined);
+            if (problem && !nearLimit(i + 1) && (search.sanityGates ?? 0) < 2) {
+              search.sanityGates = (search.sanityGates ?? 0) + 1;
+              await saveSearch(job, search);
+              await addStep(job, { kind: "note", title: "Answer sent back", detail: problem });
+              results.push({ type: "tool_result", tool_use_id: tu.id, content: problem, is_error: true });
+              continue;
+            }
           } else if (answer.found && EXACT.has(answer.confidence)) {
             const search = searchOf(job);
             const pr = await proveAnswer(job, answer);
@@ -1415,6 +1427,19 @@ async function addFromRegister(search: SearchState, lat: number, lon: number): P
 }
 
 const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"]);
+
+/** Practice: why an exact answer cannot stand as given, or null. */
+function sanityProblem(job: Job, a: Answer, egid: string | number | undefined): string | null {
+  const first = (a.address ?? "").split(",")[0];
+  if (!/[A-Za-zÀ-ÿ]{3}/.test(first) || !/\d/.test(first))
+    return "Not recorded — an answer must be a street address with a house number (\"Steinweg 21, Aesch\"). Give the building's address, or submit found=false with your ranked candidates.";
+  const land = listingFacts(job.input.listingText).landM2;
+  const e = egid != null ? searchOf(job).candidates[String(Number(egid))] : undefined;
+  const plot = e?.plotGroup?.length ? e.plotGroup.reduce((t, p) => t + p.areaM2, 0) : e?.plot?.areaM2;
+  if (land && plot && (plot > 2 * land || plot < land / 2))
+    return `Not recorded — this house's plot is ${Math.round(plot)} m² and the listing states ${land} m² of land: that is not the same property. Keep looking (the next candidates on your list), or submit found=false with your ranked candidates.`;
+  return null;
+}
 
 export interface ProofResult {
   proof: AnswerProof | null;

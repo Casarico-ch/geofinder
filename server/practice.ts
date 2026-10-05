@@ -33,6 +33,7 @@ import { RUNS_ROOT } from "./sandbox";
 import { keptLessons, type Kpis } from "./lessons-store";
 import { buildingByEgid } from "./gwr";
 import { listingFacts } from "./proof";
+import { twinsOf } from "./twins";
 
 export interface PracticeCase {
   propertyId: number;
@@ -88,6 +89,9 @@ export interface PracticeResult {
   // long that list was; null when it was not on any list the run asked for.
   rank?: number | null;
   rankOf?: number | null;
+  // The answer was the attached twin of the right house (twins.ts): counted as found.
+  twin?: boolean;
+  twinChecked?: boolean;
 }
 
 export interface PracticeRound {
@@ -299,7 +303,29 @@ function refresh(round: PracticeRound): boolean {
     });
     if (r.outcome === "running") open = true;
   }
+  for (const r of round.results) if (r.outcome === "wrong" && !r.twinChecked && r.jobId) void checkTwin(round, r);
   return open;
+}
+
+// A wrong answer that is the right house's attached twin counts as found
+// (Daniel, 05.10): the two halves are the same house for every later use.
+const twinChecks = new Set<PracticeResult>();
+async function checkTwin(round: PracticeRound, r: PracticeResult): Promise<void> {
+  if (twinChecks.has(r)) return;
+  twinChecks.add(r);
+  try {
+    const egid = r.jobId ? getJob(r.jobId)?.answer?.proof?.egid : null;
+    if (egid != null) {
+      const twins = await twinsOf(egid);
+      if (twins.some((t) => fingerprint("egid", t) === r.truth.egid)) Object.assign(r, { outcome: "right", twin: true, lostAt: null });
+    }
+    r.twinChecked = true;
+    await save(round);
+  } catch (err) {
+    console.error(`[practice] twin check of ${r.jobId} failed:`, err);
+  } finally {
+    twinChecks.delete(r);
+  }
 }
 
 /** Start a round: `limit` cases of one split, each searched once by every model given. */
