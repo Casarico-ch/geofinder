@@ -45,6 +45,8 @@ export interface ListingFacts {
   newBuild: boolean;
 }
 
+const DETACHED_MIN_LAND = 150; // m²
+
 const num = (s: string | undefined): number | null => {
   if (!s) return null;
   const n = Number(s.replace(/['’\s]/g, "").replace(",", "."));
@@ -73,6 +75,7 @@ export function listingFacts(text: string | undefined): ListingFacts {
   const building = /\bbuilding\b|multi[ -]family|immeuble|mehrfamilien|rendite|investment|plurifamiliale/.test(type);
   const flat = /apartment|appartement|wohnung|duplex|attique|attika|penthouse|loft|maisonette/.test(type);
   const kind = building ? "building" : house && !multi ? "house" : flat ? "flat" : null;
+  const detached = kind === "house" && /\bdetached\b|\bvilla\b|\bchalet\b|freistehend|individuelle/.test(type) && !/semi|terrace|row|mitoyen|reihen|doppel/.test(type);
   const year = num(line(/^Year built:\s*(\d{4})/im));
   const units = num(line(/^Units in (?:the )?building:\s*(\d+)/im));
   const postcode = num(line(/^Postcode:\s*(\d{4})\b/im));
@@ -83,8 +86,11 @@ export function listingFacts(text: string | undefined): ListingFacts {
     // Phrases, not words: "un coup de neuf" (a fresh coat) is not a new build.
     /\b(?:neubau|neubauprojekt|erstbezug|im bau|ab plan|bezug (?:ab|per|im)|bezugsbereit|construction neuve|nouvelle construction|projet résidentiel|en construction|sur plan|livraison prévue|new[- ]build|under construction|off[- ]plan|renderings?|visualisierungen?|nuova costruzione)\b/i.test(t);
   return {
-    landM2,
-    landAltM2: Array.from(new Set(landAltM2)),
+    // A detached house on less than 150 m² of land is a data error (LAKE10,
+    // Rüschlikon: "81 m²" for a detached 6.5-room house with a garden drew
+    // every run to 80 m² village plots). Such a figure is ignored.
+    landM2: detached && landM2 != null && landM2 < DETACHED_MIN_LAND ? null : landM2,
+    landAltM2: Array.from(new Set(landAltM2)).filter((a) => !detached || a >= DETACHED_MIN_LAND),
     livingM2,
     dwellings: house && !multi ? 1 : null,
     sharedLand,
