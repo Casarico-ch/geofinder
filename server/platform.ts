@@ -12,6 +12,8 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
+import { loadLessons } from "./lessons-store";
+import { setLesson } from "./lessons";
 import { deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
@@ -456,6 +458,23 @@ export function registerPlatformRoutes(app: Express) {
     app.delete(`${base}/rounds/:id`, async (req: Request, res: Response) => {
       if (await deleteRound(req.params.id)) res.json({ ok: true });
       else res.status(404).json({ error: "No such round" });
+    });
+    // The lessons the test track has proposed, tested, kept or dropped (lessons.ts).
+    app.get(`${base}/lessons`, async (_req: Request, res: Response) => {
+      res.json({ lessons: [...(await loadLessons())].reverse() });
+    });
+    app.post(`${base}/lessons/:id/:action`, async (req: Request, res: Response) => {
+      if (!["keep", "drop", "test", "delete"].includes(req.params.action)) {
+        res.status(404).json({ error: "Unknown action" });
+        return;
+      }
+      try {
+        const l = await setLesson(req.params.id, req.params.action as "keep" | "drop" | "test" | "delete");
+        if (!l) res.status(404).json({ error: "No such lesson" });
+        else res.json(l);
+      } catch (err) {
+        res.status(409).json({ error: err instanceof Error ? err.message : String(err) });
+      }
     });
   }
 

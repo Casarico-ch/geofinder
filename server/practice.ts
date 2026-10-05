@@ -30,6 +30,7 @@ import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentIma
 import { exactAddressOf, houseNumberOf, streetOf } from "./consensus";
 import { createJob, deleteJob, elapsedMs, costUsd, getJob, requestPause, type Answer, type Job, type ModelId } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
+import { keptLessons, type Kpis } from "./lessons-store";
 
 export interface PracticeCase {
   propertyId: number;
@@ -85,6 +86,9 @@ export interface PracticeRound {
   finishedAt?: string;
   paused?: boolean; // no new search starts; running ones pause at their next turn
   deleted?: boolean; // never written to disk again
+  lessons?: string[]; // the practice lessons every search of the round reads
+  trialOf?: string; // the lesson this round tests (lessons.ts)
+  reviewed?: boolean; // lessons were drawn from it
   split: "practice" | "test";
   models: ModelId[];
   results: PracticeResult[];
@@ -195,6 +199,11 @@ export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: s
   return { outcome: "unsure", answer: named, lostAt: lostAt(job, truth) };
 }
 
+/** The right building's entry in a run's checklist, if the run ever shortlisted it. */
+export function truthCandidate(job: Job, truth: TruthKeys) {
+  return Object.values(job.search?.candidates ?? {}).find((x) => fingerprint("egid", String(x.egid)) === truth.egid);
+}
+
 // Where the right house dropped out, from the run's own checklist.
 function lostAt(job: Job, truth: TruthKeys): LostAt {
   const s = job.search;
@@ -237,10 +246,27 @@ function refresh(round: PracticeRound): boolean {
 }
 
 /** Start a round: `limit` cases of one split, each searched once by every model given. */
-export async function startRound(split: "practice" | "test", limit: number, models: ModelId[]): Promise<PracticeRound> {
-  const cases = sampleCases(await fetchCases(split, Infinity), limit);
+export async function startRound(
+  split: "practice" | "test",
+  limit: number,
+  models: ModelId[],
+  // A lesson's test: the same listings as the round it is compared with, and its own lessons.
+  opts: { propertyIds?: number[]; lessons?: string[]; trialOf?: string } = {},
+): Promise<PracticeRound> {
+  const all = await fetchCases(split, Infinity);
+  const cases = opts.propertyIds
+    ? opts.propertyIds.map((id) => all.find((c) => c.propertyId === id)).filter((c): c is PracticeCase => !!c)
+    : sampleCases(all, limit);
   if (!cases.length) throw new Error(`Radar has no ${split} cases yet.`);
-  const round: PracticeRound = { id: `r${Date.now().toString(36)}${randomUUID().slice(0, 4)}`, createdAt: new Date().toISOString(), split, models, results: [] };
+  const round: PracticeRound = {
+    id: `r${Date.now().toString(36)}${randomUUID().slice(0, 4)}`,
+    createdAt: new Date().toISOString(),
+    split,
+    models,
+    lessons: opts.lessons ?? (await keptLessons()),
+    ...(opts.trialOf ? { trialOf: opts.trialOf } : {}),
+    results: [],
+  };
   for (const c of cases)
     for (const model of models)
       round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null });
@@ -273,7 +299,7 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES },
+          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [] },
           r.model,
         );
         r.jobId = job.id;
@@ -300,6 +326,9 @@ export interface RoundSummary {
   createdAt: string;
   finishedAt: string | null;
   paused: boolean;
+  trialOf: string | null;
+  lessons: number;
+  accuracy: number | null; // right / (right + wrong): the goal is 100%
   split: string;
   models: string[];
   total: number;
@@ -326,6 +355,9 @@ export function summarize(round: PracticeRound): RoundSummary {
     createdAt: round.createdAt,
     finishedAt: round.finishedAt ?? null,
     paused: !!round.paused,
+    trialOf: round.trialOf ?? null,
+    lessons: round.lessons?.length ?? 0,
+    accuracy: n("right") + n("wrong") ? Math.round((n("right") / (n("right") + n("wrong"))) * 1000) / 10 : null,
     split: round.split,
     models: round.models,
     total: round.results.length,
@@ -434,6 +466,54 @@ export async function deleteRound(id: string): Promise<boolean> {
   rounds.delete(round.id);
   await rm(fileOf(round.id), { force: true });
   return true;
+}
+
+/** Every round on disk (deleted ones excepted), newest first. */
+export async function allRounds(): Promise<PracticeRound[]> {
+  let files: string[] = [];
+  try {
+    files = (await readdir(dir())).filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const out: PracticeRound[] = [];
+  for (const f of files) {
+    const r = await getRound(f.replace(/\.json$/, ""));
+    if (r && !r.deleted) out.push(r);
+  }
+  return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * Mark a round finished once nothing in it is left to run. drive() does this
+ * when it ends, but a round whose searches resumed after a restart has no
+ * drive() of its own, so the lessons loop calls this on its beat.
+ */
+export async function settleRound(round: PracticeRound): Promise<boolean> {
+  if (round.finishedAt || round.paused || round.deleted || driving.has(round.id)) return !!round.finishedAt;
+  if (refresh(round) || round.results.some((r) => !r.jobId && r.outcome === "running")) return false;
+  round.finishedAt = new Date().toISOString();
+  await save(round);
+  return true;
+}
+
+export async function markReviewed(round: PracticeRound): Promise<void> {
+  round.reviewed = true;
+  await save(round);
+}
+
+/** The round's score on the goal. */
+export function kpisOf(round: PracticeRound): Kpis {
+  const s = summarize(round);
+  return {
+    runs: s.total,
+    right: s.right,
+    wrong: s.wrong,
+    notFound: s.unsure + s.overBudget,
+    errors: s.errors,
+    avgMinutes: s.avgMinutes,
+    avgCostUsd: s.avgCostUsd,
+  };
 }
 
 export async function listRounds(): Promise<RoundSummary[]> {
