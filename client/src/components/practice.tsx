@@ -357,11 +357,19 @@ export function ListingsPanel({
 }) {
   const [filter, setFilter] = useState<ListingFilter>("all");
   const [open, setOpen] = useState<number | null>(null);
-  // Order by cost: none → most expensive first → cheapest first.
-  const [sort, setSort] = useState<"none" | "desc" | "asc">("none");
+  // Order by cost or by rank: none → highest first → lowest first.
+  const [sort, setSort] = useState<{ by: "cost" | "rank"; dir: "desc" | "asc" } | null>(null);
+  const cycle = (by: "cost" | "rank") =>
+    setSort(sort?.by !== by ? { by, dir: "desc" } : sort.dir === "desc" ? { by, dir: "asc" } : null);
   const ids = Array.from(new Set(results.map((r) => r.propertyId)));
   const runsOf = (pid: number) => results.filter((r) => r.propertyId === pid);
   const costOf = (pid: number) => runsOf(pid).reduce((a, r) => a + (r.costUsd ?? 0), 0);
+  // The best rank any run gave the right house; off the list sorts after every rank.
+  const rankOf = (pid: number): number | null => {
+    const measured = runsOf(pid).filter((r) => r.rankOf != null);
+    if (!measured.length) return null;
+    return Math.min(...measured.map((r) => r.rank ?? Infinity));
+  };
   const has = (pid: number, o: Result["outcome"]) => runsOf(pid).some((r) => r.outcome === o);
   const done = (pid: number) => runsOf(pid).every((r) => r.outcome !== "running");
   const count = {
@@ -373,8 +381,18 @@ export function ListingsPanel({
   const shown = ids.filter((p) =>
     filter === "all" ? true : filter === "found" ? has(p, "right") : filter === "unsure" ? has(p, "unsure") && !has(p, "right") : has(p, "wrong"),
   );
-  if (sort !== "none") shown.sort((a, b) => (sort === "desc" ? costOf(b) - costOf(a) : costOf(a) - costOf(b)));
-  const SortIcon = sort === "desc" ? ArrowDown : sort === "asc" ? ArrowUp : ArrowUpDown;
+  if (sort) {
+    const value = sort.by === "cost" ? costOf : rankOf;
+    shown.sort((a, b) => {
+      const x = value(a), y = value(b);
+      if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1; // not measured: always last
+      if (x === y) return 0;
+      return sort.dir === "desc" ? (y > x ? 1 : -1) : x > y ? 1 : -1;
+    });
+  }
+  const iconFor = (by: "cost" | "rank") => (sort?.by !== by ? ArrowUpDown : sort.dir === "desc" ? ArrowDown : ArrowUp);
+  const RankIcon = iconFor("rank");
+  const CostIcon = iconFor("cost");
   return (
     <div className="space-y-3">
       <Tabs value={filter} onValueChange={(v) => setFilter(v as ListingFilter)}>
@@ -397,16 +415,21 @@ export function ListingsPanel({
                 </TableHead>
               ))}
               <TableHead className="text-right">Found by</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Rank</TableHead>
+              <TableHead className="text-right whitespace-nowrap">
+                <Button variant="ghost" size="sm" className="-mr-3 h-8 px-3" onClick={() => cycle("rank")}>
+                  Rank
+                  <RankIcon className="ml-1 h-3.5 w-3.5" />
+                </Button>
+              </TableHead>
               <TableHead className="text-right">
                 <Button
                   variant="ghost"
                   size="sm"
                   className="-mr-3 h-8 px-3"
-                  onClick={() => setSort(sort === "none" ? "desc" : sort === "desc" ? "asc" : "none")}
+                  onClick={() => cycle("cost")}
                 >
                   Cost
-                  <SortIcon className="ml-1 h-3.5 w-3.5" />
+                  <CostIcon className="ml-1 h-3.5 w-3.5" />
                 </Button>
               </TableHead>
             </TableRow>
