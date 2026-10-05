@@ -28,6 +28,8 @@ const MAX_RUNS_REVIEWED = 12;
 // A lesson is tested on a small batch of the base round's runs, not all of it
 // (Daniel, 05.10: "otherwise it's a neverending loop").
 const TRIAL_RUNS = Number(process.env.PRACTICE_TRIAL_RUNS ?? 12);
+// How many lessons are tested at the same time.
+const PARALLEL_TESTS = Number(process.env.PRACTICE_PARALLEL_TESTS ?? 3);
 
 /** The decision rule, in one place: never less accurate, and better at something. */
 export function judge(before: Kpis, after: Kpis): { keep: boolean; verdict: string } {
@@ -281,11 +283,10 @@ async function beat(): Promise<void> {
       }
     }
 
-    // One test at a time, oldest proposal first.
-    if (!lessons.some((l) => l.status === "testing")) {
-      const next = lessons.find((l) => l.status === "proposed");
-      if (next) await testLesson(next).catch((err) => console.error(`[lessons] test of ${next.id} failed to start:`, err));
-    }
+    // Several tests side by side (each a small batch), oldest proposal first.
+    const slots = PARALLEL_TESTS - lessons.filter((l) => l.status === "testing").length;
+    for (const next of lessons.filter((l) => l.status === "proposed").slice(0, Math.max(0, slots)))
+      await testLesson(next).catch((err) => console.error(`[lessons] test of ${next.id} failed to start:`, err));
   } finally {
     busy = false;
   }
@@ -306,7 +307,8 @@ export async function setLesson(id: string, action: "keep" | "drop" | "test" | "
   if (action === "delete") {
     lessons.splice(lessons.indexOf(l), 1);
   } else if (action === "test") {
-    if (lessons.some((x) => x.status === "testing")) throw new Error("Another lesson is being tested; this one waits its turn.");
+    if (lessons.filter((x) => x.status === "testing").length >= PARALLEL_TESTS)
+      throw new Error(`${PARALLEL_TESTS} lessons are being tested already; this one waits its turn.`);
     await testLesson(l);
   } else {
     Object.assign(l, {
