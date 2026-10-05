@@ -405,7 +405,8 @@ export function registerPlatformRoutes(app: Express) {
   });
 
   // The test track (practice.ts): rounds of real searches on radar's practice
-  // set, scored against the known building. Behind the same API key as /v1.
+  // set, scored against the known building. /v1 takes the API key; /api is the
+  // admin page's own door, behind the website's ADMIN_PASSWORD.
   const roundSchema = z.object({
     split: z.enum(["practice", "test"]).default("practice"),
     // The first rounds run every model a real search runs, so the scoreboard
@@ -413,30 +414,32 @@ export function registerPlatformRoutes(app: Express) {
     limit: z.number().int().min(1).max(200).default(20),
     models: z.array(z.enum(MODELS)).min(1).max(MODELS.length).optional(),
   });
-  app.post("/v1/practice/rounds", async (req: Request, res: Response) => {
-    const parsed = roundSchema.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      res.status(400).json({ error: `Expected { split?: "practice"|"test", limit?: 1-200, models?: [${MODELS.join(", ")}] }` });
-      return;
-    }
-    try {
-      const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models ?? listingModels());
-      res.status(202).json(summarize(round));
-    } catch (err) {
-      res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
-    }
-  });
-  app.get("/v1/practice/rounds", async (_req: Request, res: Response) => {
-    res.json({ rounds: await listRounds() });
-  });
-  app.get("/v1/practice/rounds/:id", async (req: Request, res: Response) => {
-    const round = await getRound(req.params.id);
-    if (!round) {
-      res.status(404).json({ error: "No such round" });
-      return;
-    }
-    res.json({ summary: summarize(round), results: round.results });
-  });
+  for (const base of ["/v1/practice", "/api/practice"]) {
+    app.post(`${base}/rounds`, async (req: Request, res: Response) => {
+      const parsed = roundSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        res.status(400).json({ error: `Expected { split?: "practice"|"test", limit?: 1-200, models?: [${MODELS.join(", ")}] }` });
+        return;
+      }
+      try {
+        const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models ?? listingModels());
+        res.status(202).json(summarize(round));
+      } catch (err) {
+        res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    });
+    app.get(`${base}/rounds`, async (_req: Request, res: Response) => {
+      res.json({ rounds: await listRounds() });
+    });
+    app.get(`${base}/rounds/:id`, async (req: Request, res: Response) => {
+      const round = await getRound(req.params.id);
+      if (!round) {
+        res.status(404).json({ error: "No such round" });
+        return;
+      }
+      res.json({ summary: summarize(round), results: round.results });
+    });
+  }
 
   app.post("/v1/address", async (req: Request, res: Response) => {
     if (!claudeConfigured()) {

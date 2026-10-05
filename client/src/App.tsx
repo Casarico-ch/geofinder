@@ -8,6 +8,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import AddressFinder from "./pages/AddressFinder";
 import Requests from "./pages/Requests";
 import Usage from "./pages/Usage";
+import Practice from "./pages/Practice";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <Route path={"/i/:id"} component={AddressFinder} />
       <Route path={"/requests"} component={Requests} />
       <Route path={"/usage"} component={Usage} />
+      <Route path={"/practice"} component={Practice} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
