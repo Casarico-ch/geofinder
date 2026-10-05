@@ -6,10 +6,11 @@ import {
   LOST,
   LearningBadge,
   MODEL_LABEL,
-  ResultsGrid,
-  RoundLessons,
+  ListingsPanel,
+  LessonsPanel,
   when,
   type Lesson,
+  type ListingInfo,
   type Result,
   type Round,
 } from "@/components/practice";
@@ -17,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Pause, Play, Trash2 } from "lucide-react";
 
@@ -84,6 +86,7 @@ export default function PracticeRound() {
   const [, navigate] = useLocation();
   const [round, setRound] = useState<Round | null>(null);
   const [results, setResults] = useState<Result[] | null>(null);
+  const [listingInfo, setListingInfo] = useState<Record<number, ListingInfo>>({});
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -97,6 +100,7 @@ export default function PracticeRound() {
         const body = await rs.json();
         setRound(body.summary);
         setResults(body.results);
+        setListingInfo(body.listings ?? {});
       }
       if (ls.ok) setLessons(((await ls.json()).lessons as Lesson[]).filter((l) => l.fromRound === id));
     } catch {
@@ -351,26 +355,25 @@ export default function PracticeRound() {
           </Card>
         </div>
 
-        <Card className="p-0 overflow-x-auto">
-          <div className="px-4 pt-4">
-            <h3 className="text-sm font-semibold">Every listing</h3>
-          </div>
-          <ResultsGrid results={results} models={round.models} />
-        </Card>
-
-        {!round.trialOf && (
-          <Card className="p-0">
-            <div className="px-4 pt-4 pb-1">
-              <h3 className="text-sm font-semibold">Lessons from this round</h3>
-            </div>
-            <RoundLessons
-              lessons={lessons}
-              models={round.models}
-              busy={busy}
-              onAct={(l, a) => call(l.id, `/api/practice/lessons/${l.id}/${a}`, "POST")}
-            />
-          </Card>
-        )}
+        <Tabs defaultValue="listings" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="listings">Listings {listings.total}</TabsTrigger>
+            {!round.trialOf && <TabsTrigger value="lessons">Lessons {lessons.length}</TabsTrigger>}
+          </TabsList>
+          <TabsContent value="listings">
+            <ListingsPanel results={results} models={round.models} listings={listingInfo} />
+          </TabsContent>
+          {!round.trialOf && (
+            <TabsContent value="lessons">
+              <LessonsPanel
+                lessons={lessons}
+                models={round.models}
+                busy={busy}
+                onAct={(l, a) => call(l.id, `/api/practice/lessons/${l.id}/${a}`, "POST")}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
       </main>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>

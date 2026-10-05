@@ -458,7 +458,21 @@ export function registerPlatformRoutes(app: Express) {
         res.status(404).json({ error: "No such round" });
         return;
       }
-      res.json({ summary: await roundView(summarize(round), await listRounds()), results: round.results });
+      // What each listing is, from the text its searches were given (address hidden).
+      const listings: Record<number, { title: string | null; place: string | null; kind: string | null; rooms: string | null; price: string | null }> = {};
+      for (const r of round.results) {
+        const text = (r.jobId ? getJob(r.jobId)?.input.listingText : undefined) ?? "";
+        if (listings[r.propertyId] || !text) continue;
+        const line = (k: string) => text.match(new RegExp(`^${k}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? null;
+        listings[r.propertyId] = {
+          title: line("Title"),
+          place: line("Municipality") ?? line("Town"),
+          kind: line("Subtype") ?? line("Category") ?? line("Type"),
+          rooms: line("Rooms"),
+          price: line("Price"),
+        };
+      }
+      res.json({ summary: await roundView(summarize(round), await listRounds()), results: round.results, listings });
     });
     app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
       const round = await pauseRound(req.params.id);
