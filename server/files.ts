@@ -63,7 +63,7 @@ export class RunFiles {
   ) {}
 
   /** `login` is the pool login the pictures go to; none for the API key. */
-  // `inlineOnly`: the endpoint has no Files API (DeepSeek), every picture goes inline.
+  // `inlineOnly`: the endpoint has no Anthropic Files API (Gemini), every picture goes inline.
   static async load(client: Anthropic, runDir: string, login?: string | null, inlineOnly = false): Promise<RunFiles> {
     const file = login ? `files.${login}.json` : FILES_FILE;
     let ids: Record<string, string> = {};

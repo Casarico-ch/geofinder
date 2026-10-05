@@ -98,7 +98,8 @@ function sandboxEnv(): NodeJS.ProcessEnv {
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_BASE_URL;
-  delete env.DEEPSEEK_API_KEY;
+  delete env.GEMINI_API_KEY;
+  delete env.GOOGLE_API_KEY;
   for (const k of Object.keys(env)) if (isPoolVariable(k)) delete env[k]; // the subscription logins
   return env;
 }

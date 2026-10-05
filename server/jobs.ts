@@ -102,14 +102,16 @@ export const MODELS = [
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
-  // DeepSeek, through its Anthropic-compatible endpoint (server/deepseek.ts).
-  "deepseek-v4-pro",
-  "deepseek-flash",
+  // Google Gemini, through a translator for the same agent loop (server/gemini.ts).
+  "gemini-3.1-pro-preview",
+  "gemini-3.8-flash",
+  "gemini-3.5-flash",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
 // Models no longer offered, kept so past runs still show and price correctly.
-const RETIRED_MODELS = ["claude-opus-4-8"] as const;
+// DeepSeek was removed on 05.10.2026 (V4 Pro cannot see images).
+const RETIRED_MODELS = ["claude-opus-4-8", "deepseek-v4-pro", "deepseek-flash"] as const;
 export type KnownModel = ModelId | (typeof RETIRED_MODELS)[number];
 const KNOWN_MODELS: readonly string[] = [...MODELS, ...RETIRED_MODELS];
 // A re-run of a past run uses the same model, or the default if it is retired.
@@ -128,6 +130,14 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   // at the plain input rate, and peak hours cost double.
   "deepseek-v4-pro": { in: 0.66, cacheRead: 0.022, cacheWrite: 0.66, out: 1.98 },
   "deepseek-flash": { in: 0.15, cacheRead: 0.003, cacheWrite: 0.15, out: 0.6 },
+  // Gemini paid tier (ai.google.dev/gemini-api/docs/pricing, 05.10.2026). Cache
+  // reads are Gemini's implicit-cache price; there is no cache-write charge.
+  // 3.1 Pro doubles input (and 1.5x output) on prompts over 200k tokens, which
+  // a long run reaches, so its cost is under-counted then. 3.8 Flash doubles on
+  // 01.01.2027.
+  "gemini-3.1-pro-preview": { in: 2, cacheRead: 0.2, cacheWrite: 2, out: 12 },
+  "gemini-3.8-flash": { in: 0.75, cacheRead: 0.075, cacheWrite: 0.75, out: 3.75 },
+  "gemini-3.5-flash": { in: 1.5, cacheRead: 0.15, cacheWrite: 1.5, out: 9 },
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {
