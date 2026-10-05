@@ -232,7 +232,7 @@ export default function PracticeRound() {
             hint={round.ranks?.measured ? `median · ${round.ranks.top10} top 10 · ${round.ranks.top120} top 120 of ${round.ranks.measured}` : "measured from new rounds on"}
           />
           <Kpi label="Runs that found it" value={pct(round.right, round.total)} hint={`${round.right} of ${round.total} runs`} />
-          <Kpi label="Average time" value={round.avgMinutes != null ? `${round.avgMinutes} min` : "—"} hint="per run · limit 5 min" />
+          <Kpi label="Average time" value={round.avgMinutes != null ? `${round.avgMinutes} min` : "—"} hint="per run · limit 15 min" />
           <Kpi label="Cost per house found" value={round.right ? usd(searchesCost / round.right) : "—"} hint={`average run ${usd(round.avgCostUsd)}`} />
           <Kpi
             label="Total cost"

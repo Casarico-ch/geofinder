@@ -117,8 +117,9 @@ const CONCURRENCY = Number(process.env.PRACTICE_CONCURRENCY ?? 3);
 // USD, so the cap is converted at USD_PER_CHF.
 const BUDGET_CHF = Number(process.env.PRACTICE_BUDGET_CHF ?? 1);
 const USD_PER_CHF = Number(process.env.USD_PER_CHF ?? 1.25);
-// And 5 minutes (Daniel, 05.10): "find the right house fast".
-const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 5);
+// 15 minutes (Daniel, 05.10): 7 of 100 houses ran out of the old 5 minutes with
+// the right one on their list (#7-#73); runs are on Sonnet low now, so cheap.
+const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 15);
 // The register proof is off in practice unless PRACTICE_PROOF=on: a house two
 // runs name independently counts as confirmed instead (summarize, "agreed").
 const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
