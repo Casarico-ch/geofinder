@@ -167,6 +167,27 @@ export interface ListingInfo {
   sourceUrl?: string | null;
 }
 
+// Where the right house sat on the ranked list: the best of the listing's runs.
+function Rank({ runs }: { runs: Result[] }) {
+  const measured = runs.filter((r) => r.rankOf != null);
+  if (!measured.length) return <span className="text-muted-foreground">—</span>;
+  const ranks = measured.map((r) => r.rank).filter((x): x is number => x != null);
+  const of = measured[0].rankOf!;
+  if (!ranks.length)
+    return (
+      <span className="text-destructive" title={`not on the list of ${of} homes`}>
+        off list
+      </span>
+    );
+  const best = Math.min(...ranks);
+  return (
+    <span className={best <= 10 ? "text-emerald-700" : best <= 120 ? "" : "text-amber-700"} title={`of ${of} homes`}>
+      #{best}
+      <span className="text-muted-foreground text-xs"> / {of}</span>
+    </span>
+  );
+}
+
 // The listing in Radar and on the web, for the person reading the results.
 function ListingLinks({ info }: { info?: ListingInfo }) {
   if (!info?.radarUrl && !info?.sourceUrl) return null;
@@ -336,6 +357,7 @@ export function ListingsPanel({
                   {SHORT[m] ?? MODEL_LABEL[m] ?? m}
                 </TableHead>
               ))}
+              <TableHead className="text-right whitespace-nowrap">Rank</TableHead>
               <TableHead className="text-right">Found by</TableHead>
               <TableHead className="text-right">Cost</TableHead>
             </TableRow>
@@ -343,7 +365,7 @@ export function ListingsPanel({
           <TableBody>
             {shown.length === 0 && (
               <TableRow>
-                <TableCell colSpan={models.length + 4} className="text-muted-foreground">
+                <TableCell colSpan={models.length + 5} className="text-muted-foreground">
                   No listing here.
                 </TableCell>
               </TableRow>
@@ -374,6 +396,9 @@ export function ListingsPanel({
                         <RunCell r={runs.find((r) => r.model === m)} />
                       </TableCell>
                     ))}
+                    <TableCell className="text-right tabular-nums text-sm whitespace-nowrap">
+                      <Rank runs={runs} />
+                    </TableCell>
                     <TableCell className="text-right">
                       <Badge
                         variant="outline"
@@ -386,7 +411,7 @@ export function ListingsPanel({
                   </TableRow>
                   {isOpen && (
                     <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={models.length + 4} className="bg-muted/40 whitespace-normal">
+                      <TableCell colSpan={models.length + 5} className="bg-muted/40 whitespace-normal">
                         <div className="flex flex-wrap items-center gap-3 mb-2">
                           {info?.price && <p className="text-xs text-muted-foreground">{info.price}</p>}
                           <ListingLinks info={info} />

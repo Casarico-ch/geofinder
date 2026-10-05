@@ -3,10 +3,7 @@ import { Link, useLocation, useRoute } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
 import {
-  LOST,
   LearningBadge,
-  WHY,
-  MODEL_LABEL,
   ListingsPanel,
   LessonsPanel,
   when,
@@ -21,52 +18,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, Lightbulb, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 1000) / 10}%` : "—");
 const usd = (v: number | null | undefined) => (v == null ? "—" : `$${v.toFixed(2)}`);
-const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
-const round1 = (v: number | null) => (v == null ? "—" : String(Math.round(v * 10) / 10));
-
-// One model's score in the round.
-interface ModelStats {
-  model: string;
-  runs: number;
-  right: number;
-  wrong: number;
-  unsure: number;
-  over: number;
-  errors: number;
-  minutes: number | null;
-  cost: number;
-  avgCost: number | null;
-  uniqueFinds: number; // listings only this model found
-}
-
-function statsOf(results: Result[], models: string[]): ModelStats[] {
-  const foundBy = new Map<number, string[]>();
-  for (const r of results) if (r.outcome === "right") foundBy.set(r.propertyId, [...(foundBy.get(r.propertyId) ?? []), r.model]);
-  return models.map((model) => {
-    const mine = results.filter((r) => r.model === model);
-    const n = (o: Result["outcome"]) => mine.filter((r) => r.outcome === o).length;
-    const done = mine.filter((r) => r.outcome !== "running" && r.minutes != null);
-    const cost = mine.reduce((a, r) => a + (r.costUsd ?? 0), 0);
-    return {
-      model,
-      runs: mine.length,
-      right: n("right"),
-      wrong: n("wrong"),
-      unsure: n("unsure"),
-      over: n("over_budget"),
-      errors: n("error"),
-      minutes: avg(done.map((r) => r.minutes!)),
-      cost,
-      avgCost: avg(done.map((r) => r.costUsd ?? 0)),
-      uniqueFinds: Array.from(foundBy.values()).filter((ms) => ms.length === 1 && ms[0] === model).length,
-    };
-  });
-}
 
 function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "good" | "bad" }) {
   return (
@@ -132,7 +87,6 @@ export default function PracticeRound() {
     }
   };
 
-  const stats = useMemo(() => (round && results ? statsOf(results, round.models) : []), [round, results]);
 
   // Listing-level view: did anyone find it, did everyone, did anyone go wrong.
   const listings = useMemo(() => {
@@ -149,27 +103,6 @@ export default function PracticeRound() {
       withWrong: finished.filter((pid) => of(pid).some((r) => r.outcome === "wrong")).length,
     };
   }, [results]);
-
-  // Where the right house dropped out, per model.
-  const lost = useMemo(() => {
-    if (!results || !round) return [];
-    const reasons = Object.keys(LOST).filter((k) => results.some((r) => r.lostAt === k && r.outcome !== "right"));
-    return reasons.map((k) => ({
-      reason: k,
-      byModel: round.models.map((m) => results.filter((r) => r.model === m && r.lostAt === k && r.outcome !== "right").length),
-    }));
-  }, [results, round]);
-
-  // Why the right house was never on the list, per model (server/miss.ts).
-  const whys = useMemo(() => {
-    if (!results || !round) return { rows: [] as { code: string; byModel: number[] }[], pending: 0 };
-    const missed = results.filter((r) => r.outcome !== "right" && (r.lostAt === "not_shortlisted" || r.lostAt === "commune"));
-    const codes = Object.keys(WHY).filter((k) => missed.some((r) => r.why?.code === k));
-    return {
-      rows: codes.map((k) => ({ code: k, byModel: round.models.map((m) => missed.filter((r) => r.model === m && r.why?.code === k).length) })),
-      pending: missed.filter((r) => !r.why).length,
-    };
-  }, [results, round]);
 
   if (missing)
     return (
@@ -198,7 +131,6 @@ export default function PracticeRound() {
     );
 
   const searchesCost = round.costUsd;
-  const bestFind = Math.max(...stats.map((s) => (s.runs ? s.right / s.runs : 0)));
 
   return (
     <div className="min-h-screen bg-background">
@@ -307,168 +239,6 @@ export default function PracticeRound() {
             value={usd(round.totalCostUsd)}
             hint={`searches ${usd(searchesCost)} · lesson tests ${usd(round.testsCostUsd)}`}
           />
-        </div>
-
-        <Card className="p-0 overflow-x-auto">
-          <div className="px-4 pt-4">
-            <h3 className="text-sm font-semibold">By model</h3>
-            <p className="text-xs text-muted-foreground">
-              Unique finds: houses only that model found in this round.
-            </p>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Model</TableHead>
-                <TableHead className="text-right">Runs</TableHead>
-                <TableHead className="text-right">Found</TableHead>
-                <TableHead className="text-right">Wrong</TableHead>
-                <TableHead className="text-right">Not sure</TableHead>
-                <TableHead className="text-right">Over limit</TableHead>
-                <TableHead className="text-right">Errors</TableHead>
-                <TableHead className="text-right">Accuracy</TableHead>
-                <TableHead className="text-right">Find rate</TableHead>
-                <TableHead className="text-right">Unique finds</TableHead>
-                <TableHead className="text-right">Avg min</TableHead>
-                <TableHead className="text-right">Avg cost</TableHead>
-                <TableHead className="text-right">Cost per find</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {stats.map((s) => (
-                <TableRow key={s.model}>
-                  <TableCell className="font-medium whitespace-nowrap">{MODEL_LABEL[s.model] ?? s.model}</TableCell>
-                  <TableCell className="text-right">{s.runs}</TableCell>
-                  <TableCell className="text-right">{s.right}</TableCell>
-                  <TableCell className={`text-right ${s.wrong ? "text-destructive font-medium" : ""}`}>{s.wrong}</TableCell>
-                  <TableCell className="text-right">{s.unsure}</TableCell>
-                  <TableCell className="text-right">{s.over}</TableCell>
-                  <TableCell className="text-right">{s.errors}</TableCell>
-                  <TableCell className={`text-right ${s.wrong ? "text-destructive" : ""}`}>{pct(s.right, s.right + s.wrong)}</TableCell>
-                  <TableCell className={`text-right ${s.runs && s.right / s.runs === bestFind && bestFind > 0 ? "font-semibold" : ""}`}>
-                    {pct(s.right, s.runs)}
-                  </TableCell>
-                  <TableCell className="text-right">{s.uniqueFinds}</TableCell>
-                  <TableCell className="text-right">{round1(s.minutes)}</TableCell>
-                  <TableCell className="text-right">{usd(s.avgCost)}</TableCell>
-                  <TableCell className="text-right">{s.right ? usd(s.cost / s.right) : "—"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-
-        <Card className="p-0 overflow-x-auto">
-          <div className="px-4 pt-4">
-            <h3 className="text-sm font-semibold">Why the right house was never on the list</h3>
-            <p className="text-xs text-muted-foreground">
-              The house found in the federal register and the run's own filters replayed on it.
-              {whys.pending > 0 && ` ${whys.pending} still being worked out (or held back while that listing is being searched).`}
-            </p>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Reason</TableHead>
-                {round.models.map((m) => (
-                  <TableHead key={m} className="text-right whitespace-nowrap">
-                    {MODEL_LABEL[m] ?? m}
-                  </TableHead>
-                ))}
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {whys.rows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={round.models.length + 2} className="text-muted-foreground">
-                    {whys.pending ? "Working it out…" : "No run missed the house this way."}
-                  </TableCell>
-                </TableRow>
-              )}
-              {whys.rows.map((w) => (
-                <TableRow key={w.code}>
-                  <TableCell>{WHY[w.code]}</TableCell>
-                  {w.byModel.map((n, i) => (
-                    <TableCell key={i} className="text-right">
-                      {n || "—"}
-                    </TableCell>
-                  ))}
-                  <TableCell className="text-right font-medium">{w.byModel.reduce((a, b) => a + b, 0)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="p-0 overflow-x-auto">
-            <div className="px-4 pt-4">
-              <h3 className="text-sm font-semibold">Where the right house was missed</h3>
-              <p className="text-xs text-muted-foreground">From each run's own checklist, for every run that did not find it.</p>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Missed because it</TableHead>
-                  {round.models.map((m) => (
-                    <TableHead key={m} className="text-right whitespace-nowrap">
-                      {MODEL_LABEL[m] ?? m}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lost.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={round.models.length + 1} className="text-muted-foreground">
-                      Nothing missed yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {lost.map((l) => (
-                  <TableRow key={l.reason}>
-                    <TableCell>{LOST[l.reason]}</TableCell>
-                    {l.byModel.map((n, i) => (
-                      <TableCell key={i} className="text-right">
-                        {n || "—"}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-
-          <Card className="p-4 space-y-2">
-            <h3 className="text-sm font-semibold">Listings</h3>
-            <dl className="grid grid-cols-2 gap-y-1.5 text-sm">
-              <dt className="text-muted-foreground">Listings in the round</dt>
-              <dd className="text-right">{listings.total}</dd>
-              <dt className="text-muted-foreground">Finished</dt>
-              <dd className="text-right">{listings.finished}</dd>
-              <dt className="text-muted-foreground">Found by every model</dt>
-              <dd className="text-right">{listings.foundByAll}</dd>
-              <dt className="text-muted-foreground">Found by at least one</dt>
-              <dd className="text-right">{listings.foundByAny}</dd>
-              <dt className="text-muted-foreground">Found by none</dt>
-              <dd className="text-right">{listings.foundByNone}</dd>
-              <dt className="text-muted-foreground">With a wrong answer</dt>
-              <dd className={`text-right ${listings.withWrong ? "text-destructive font-medium" : ""}`}>{listings.withWrong}</dd>
-            </dl>
-            {round.skipped.length > 0 && (
-              <div className="pt-2 border-t space-y-1">
-                <p className="text-xs font-medium">
-                  {round.skipped.length} listing{round.skipped.length === 1 ? "" : "s"} left out: the answer key contradicts the listing
-                </p>
-                {round.skipped.map((s) => (
-                  <p key={s.propertyId} className="text-xs text-muted-foreground">
-                    #{s.propertyId}: {s.reason}
-                  </p>
-                ))}
-              </div>
-            )}
-          </Card>
         </div>
 
         <Tabs defaultValue="listings" className="space-y-4">
