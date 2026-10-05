@@ -504,8 +504,8 @@ export function registerPlatformRoutes(app: Express) {
       const results = round.results.map((r) => ({ ...r, why: searching.has(r.propertyId) ? null : missReasonNow(r) }));
       res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings });
     });
-    // The same listings and models again, under today's code and lessons: a
-    // before/after on exactly the same houses.
+    // The same listings again, under today's code, lessons and investigators
+    // (PRACTICE_MODELS): a before/after on exactly the same houses.
     app.post(`${base}/rounds/:id/rerun`, async (req: Request, res: Response) => {
       const src = await getRound(req.params.id);
       if (!src) {
@@ -514,7 +514,11 @@ export function registerPlatformRoutes(app: Express) {
       }
       try {
         const ids = Array.from(new Set(src.results.map((r) => r.propertyId)));
-        const round = await startRound(src.split, ids.length, src.models, { propertyIds: ids, rerunOf: src.id });
+        if (PRACTICE_MODELS.some(isGemini) && !geminiConfigured()) {
+          res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
+          return;
+        }
+        const round = await startRound(src.split, ids.length, PRACTICE_MODELS, { propertyIds: ids, rerunOf: src.id });
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
