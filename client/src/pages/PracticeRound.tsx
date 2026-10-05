@@ -5,6 +5,7 @@ import AdminHeader from "@/components/AdminHeader";
 import {
   LOST,
   LearningBadge,
+  WHY,
   MODEL_LABEL,
   ListingsPanel,
   LessonsPanel,
@@ -158,6 +159,17 @@ export default function PracticeRound() {
     }));
   }, [results, round]);
 
+  // Why the right house was never on the list, per model (server/miss.ts).
+  const whys = useMemo(() => {
+    if (!results || !round) return { rows: [] as { code: string; byModel: number[] }[], pending: 0 };
+    const missed = results.filter((r) => r.outcome !== "right" && (r.lostAt === "not_shortlisted" || r.lostAt === "commune"));
+    const codes = Object.keys(WHY).filter((k) => missed.some((r) => r.why?.code === k));
+    return {
+      rows: codes.map((k) => ({ code: k, byModel: round.models.map((m) => missed.filter((r) => r.model === m && r.why?.code === k).length) })),
+      pending: missed.filter((r) => !r.why).length,
+    };
+  }, [results, round]);
+
   if (missing)
     return (
       <div className="min-h-screen bg-background">
@@ -291,6 +303,49 @@ export default function PracticeRound() {
                   <TableCell className="text-right">{round1(s.minutes)}</TableCell>
                   <TableCell className="text-right">{usd(s.avgCost)}</TableCell>
                   <TableCell className="text-right">{s.right ? usd(s.cost / s.right) : "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+
+        <Card className="p-0 overflow-x-auto">
+          <div className="px-4 pt-4">
+            <h3 className="text-sm font-semibold">Why the right house was never on the list</h3>
+            <p className="text-xs text-muted-foreground">
+              The house found in the federal register and the run's own filters replayed on it.
+              {whys.pending > 0 && ` ${whys.pending} still being worked out (or held back while that listing is being searched).`}
+            </p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Reason</TableHead>
+                {round.models.map((m) => (
+                  <TableHead key={m} className="text-right whitespace-nowrap">
+                    {MODEL_LABEL[m] ?? m}
+                  </TableHead>
+                ))}
+                <TableHead className="text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {whys.rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={round.models.length + 2} className="text-muted-foreground">
+                    {whys.pending ? "Working it out…" : "No run missed the house this way."}
+                  </TableCell>
+                </TableRow>
+              )}
+              {whys.rows.map((w) => (
+                <TableRow key={w.code}>
+                  <TableCell>{WHY[w.code]}</TableCell>
+                  {w.byModel.map((n, i) => (
+                    <TableCell key={i} className="text-right">
+                      {n || "—"}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right font-medium">{w.byModel.reduce((a, b) => a + b, 0)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

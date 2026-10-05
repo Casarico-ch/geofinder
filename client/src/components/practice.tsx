@@ -98,6 +98,7 @@ export interface Result {
   minutes: number | null;
   costUsd: number | null;
   error?: string;
+  why?: { code: string; text: string } | null; // why the right house was never on its checklist
 }
 
 export const MODEL_LABEL: Record<string, string> = {
@@ -124,6 +125,17 @@ export const LOST: Record<string, string> = {
   left_possible: "left it as possible",
   not_proven: "matched but did not prove it",
   never_looked: "never looked at it",
+};
+
+// Why the right house was never on the checklist (server/miss.ts).
+export const WHY: Record<string, string> = {
+  wrong_commune: "It searched the wrong commune",
+  not_residential: "The register does not list it as a home",
+  floors: "Filtered out by its floors guess",
+  dwellings: "Filtered out by its homes guess",
+  footprint: "Filtered out by its footprint guess",
+  cut_off: "Passed the filters, but never shown",
+  not_found: "Not in any commune near the listing",
 };
 
 // What a listing is, from the text its searches were given (address hidden).
@@ -195,6 +207,12 @@ function RunCard({ model, r }: { model: string; r?: Result }) {
             <p className="text-xs">
               <span className="text-muted-foreground">Missed: </span>
               {LOST[r.lostAt] ?? r.lostAt}
+            </p>
+          )}
+          {r.why && (
+            <p className="text-xs rounded-md bg-amber-500/10 text-amber-800 px-2 py-1">
+              <span className="font-medium">Why: </span>
+              {r.why.text}
             </p>
           )}
           {r.error && <p className="text-xs text-destructive">{r.error}</p>}

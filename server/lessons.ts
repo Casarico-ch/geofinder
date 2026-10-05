@@ -16,6 +16,7 @@
 // from proposing and testing on its own; the page's buttons still work.
 // =============================================================================
 import { onLogin } from "./claude-pool";
+import { missReason } from "./miss";
 import { streetOf } from "./consensus";
 import { getJob } from "./jobs";
 import { loadLessons, keptLessons, newLessonId, saveLessons, type Kpis, type Lesson } from "./lessons-store";
@@ -53,7 +54,7 @@ export function judge(before: Kpis, after: Kpis): { keep: boolean; verdict: stri
 const clip = (s: string | undefined, n: number) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 // One run, as the reviewer reads it.
-function runBrief(round: PracticeRound, i: number): { text: string; streets: string[] } | null {
+function runBrief(round: PracticeRound, i: number, why?: string | null): { text: string; streets: string[] } | null {
   const r = round.results[i];
   const job = r.jobId ? getJob(r.jobId) : undefined;
   if (!job) return null;
@@ -70,7 +71,7 @@ function runBrief(round: PracticeRound, i: number): { text: string; streets: str
     `What it answered: ${clip(job.answer?.reasoning, 600) || "(nothing)"}`,
     truth
       ? `The right building WAS in its checklist: ${truth.address ?? "no address"} — verdict "${truth.verdict}"${truth.reason ? `, because: ${clip(truth.reason, 300)}` : ""}${truth.viewed ? "" : " (never looked at)"}.`
-      : `The right building was NEVER in its checklist (lost at: ${r.lostAt ?? "unknown"}).`,
+      : `The right building was NEVER in its checklist (lost at: ${r.lostAt ?? "unknown"}).${why ? ` Why: ${why}` : ""}`,
     `Last steps:\n${steps}`,
   ].join("\n");
   return { text, streets };
@@ -87,7 +88,9 @@ function pickRuns(round: PracticeRound): number[] {
 }
 
 async function review(round: PracticeRound): Promise<Lesson[]> {
-  const briefs = pickRuns(round).map((i) => runBrief(round, i)).filter((b): b is NonNullable<typeof b> => !!b);
+  const picked = pickRuns(round);
+  const whys = await Promise.all(picked.map((i) => missReason(round.results[i]).then((w) => w?.text ?? null)));
+  const briefs = picked.map((i, k) => runBrief(round, i, whys[k])).filter((b): b is NonNullable<typeof b> => !!b);
   if (!briefs.length) return [];
   const lessons = await loadLessons();
   const kept = lessons.filter((l) => l.status === "kept").map((l) => `- ${l.text}`);

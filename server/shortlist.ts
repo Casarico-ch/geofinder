@@ -150,11 +150,11 @@ export interface ShortlistOptions {
 
 // Floors and dwellings are matched as a ±1 RANGE (unknown passes); the
 // footprint as a wide band. Era is never a parameter.
-function inRange(v: number | null, est: number | undefined, lo: number, hi: number): boolean {
+export function inRange(v: number | null, est: number | undefined, lo: number, hi: number): boolean {
   if (v == null || typeof est !== "number") return true;
   return v >= est - lo && v <= est + hi;
 }
-function inBand(v: number | null, est: number | undefined): boolean {
+export function inBand(v: number | null, est: number | undefined): boolean {
   if (v == null || typeof est !== "number" || est <= 0) return true;
   return v >= est * 0.55 && v <= est * 1.7;
 }

@@ -1126,6 +1126,15 @@ export async function dispatchTool(
         (a, b) => Number(b.strongFit) - Number(a.strongFit),
       );
       const added = r.supported ? addCandidates(search, r.commune, cands) : 0;
+      if (r.supported)
+        (search.calls ??= []).push({
+          commune: r.commune,
+          floors: num(input.floors),
+          footprintM2: num(input.footprintM2),
+          dwellings: num(input.dwellings),
+          survivors: r.survivors,
+          returned: r.candidates.length,
+        });
       await saveSearch(job, search);
       await addStep(job, {
         kind: "bash",
