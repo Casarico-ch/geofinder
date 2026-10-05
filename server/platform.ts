@@ -12,6 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
+import { deepseekConfigured, isDeepSeek } from "./deepseek";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
 import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
@@ -409,6 +410,10 @@ export function registerPlatformRoutes(app: Express) {
     }
     const { municipality, listingId, listingUrl, radarUrl } = parsed.data;
     const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : LISTING_MODELS;
+    if (models.some(isDeepSeek) && !deepseekConfigured()) {
+      res.status(503).json({ error: "DeepSeek is not configured. Set DEEPSEEK_API_KEY on the server." });
+      return;
+    }
     const images: AgentImage[] = parsed.data.images.map((i) => ({ base64: i.imageBase64, mediaType: i.mediaType }));
 
     try {

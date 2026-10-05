@@ -43,6 +43,8 @@ const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "deepseek-flash": "DeepSeek Flash",
 };
 
 type RangeKey =

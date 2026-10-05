@@ -22,6 +22,7 @@ import {
 } from "./agent";
 import { exportJobHtml } from "./export";
 import { claudeConfigured, poolOn, poolStatus } from "./claude-pool";
+import { deepseekConfigured, isDeepSeek } from "./deepseek";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -117,6 +118,10 @@ export function registerApiRoutes(app: Express) {
       res.status(400).json({
         error: "Expected { imageCount?, images?, listingText?, municipality?, listingId?, listingUrl?, radarUrl? }",
       });
+      return;
+    }
+    if (isDeepSeek(parsed.data.model) && !deepseekConfigured()) {
+      res.status(503).json({ error: "DeepSeek is not configured. Set DEEPSEEK_API_KEY on the server." });
       return;
     }
 
@@ -254,6 +259,10 @@ export function registerApiRoutes(app: Express) {
     const override = relaunchSchema.safeParse(req.body ?? {});
     if (!override.success) {
       res.status(400).json({ error: "Unknown model" });
+      return;
+    }
+    if (isDeepSeek(override.data.model ?? src.model) && !deepseekConfigured()) {
+      res.status(503).json({ error: "DeepSeek is not configured. Set DEEPSEEK_API_KEY on the server." });
       return;
     }
     try {

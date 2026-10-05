@@ -102,6 +102,9 @@ export const MODELS = [
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
+  // DeepSeek, through its Anthropic-compatible endpoint (server/deepseek.ts).
+  "deepseek-v4-pro",
+  "deepseek-flash",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
@@ -120,6 +123,11 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },
+  // DeepSeek's published off-peak rates (api-docs.deepseek.com/quick_start/pricing,
+  // as recorded in Rico's model-prices.json, 21.09.2026); a cache miss is billed
+  // at the plain input rate, and peak hours cost double.
+  "deepseek-v4-pro": { in: 0.66, cacheRead: 0.022, cacheWrite: 0.66, out: 1.98 },
+  "deepseek-flash": { in: 0.15, cacheRead: 0.003, cacheWrite: 0.15, out: 0.6 },
 };
 
 export function costUsd(t: TokenUsage, model?: string): number {

@@ -17,11 +17,13 @@
 // Nothing here logs, returns or stores a token value — only the variable name.
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
+import { deepseekClient, isDeepSeek } from "./deepseek";
 
 const OAUTH_BETA = "oauth-2025-04-20"; // an OAuth bearer is refused without it
 const COOLDOWN_MS = Number(process.env.CLAUDE_POOL_COOLDOWN_MS ?? 5 * 60_000);
 const MAX_WAIT_MS = Number(process.env.CLAUDE_POOL_WAIT_MS ?? 20 * 60_000);
 const OUTAGE_RETRIES = 3;
+export const DEEPSEEK_LABEL = "deepseek";
 
 interface Login {
   label: string; // the Railway variable's name, never its value
@@ -124,7 +126,10 @@ export interface PoolTurn<T> {
 export async function onLogin<T>(
   prefer: string | undefined,
   fn: (client: Anthropic, label: string | null) => Promise<T>,
+  model?: string,
 ): Promise<PoolTurn<T>> {
+  // DeepSeek has its own key and endpoint; the Claude logins never serve it.
+  if (isDeepSeek(model)) return { value: await fn(deepseekClient(), DEEPSEEK_LABEL), label: DEEPSEEK_LABEL, switchedFrom: null, waitedMs: 0 };
   if (!poolOn()) {
     fallback ??= new Anthropic();
     return { value: await fn(fallback, null), label: null, switchedFrom: null, waitedMs: 0 };
