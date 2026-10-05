@@ -31,6 +31,8 @@ import { exactAddressOf, houseNumberOf, streetOf } from "./consensus";
 import { createJob, deleteJob, elapsedMs, costUsd, getJob, requestPause, type Answer, type Job, type ModelId } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
 import { keptLessons, type Kpis } from "./lessons-store";
+import { buildingByEgid } from "./gwr";
+import { listingFacts } from "./proof";
 
 export interface PracticeCase {
   propertyId: number;
@@ -89,6 +91,8 @@ export interface PracticeRound {
   lessons?: string[]; // the practice lessons every search of the round reads
   trialOf?: string; // the lesson this round tests (lessons.ts)
   reviewed?: boolean; // the reviewer has read it (lessons.ts)
+  skipped?: { propertyId: number; reason: string }[]; // listings left out: their answer key contradicts them
+  rerunOf?: string; // the round whose listings it searches again
   reviewError?: string; // why the reviewer could not
   split: "practice" | "test";
   models: ModelId[];
@@ -131,6 +135,32 @@ export async function fetchCases(split: "practice" | "test", max: number): Promi
     afterId = body.nextAfterId;
   }
   return out.slice(0, max);
+}
+
+/**
+ * Why a listing's answer key cannot be trusted, or null. Radar keys a listing
+ * to the building of its stated address; on 05.10 five of the first 25 keys
+ * contradicted their own listing, and all 35 searches on them "missed": a 1974
+ * flat keyed to a single house built 2004, a 2027 six-room flat keyed to the
+ * one-home house it replaces, three listings (two of them detached houses)
+ * keyed to one three-home farmhouse.
+ */
+export async function keyTrouble(c: PracticeCase, all: PracticeCase[]): Promise<string | null> {
+  const b = await buildingByEgid(c.truth.egid).catch(() => null);
+  if (!b) return "the register has no building under its answer key";
+  const f = listingFacts(c.listingText);
+  const thisYear = new Date().getFullYear();
+  if (f.year && b.year && b.status === 1004 && f.year < thisYear - 1 && Math.abs(f.year - b.year) > 5)
+    return `built ${f.year} in the listing, ${b.year} in the register`;
+  if (f.kind === "flat" && b.dwellings != null && b.dwellings <= 1)
+    return `a flat, keyed to a building with ${b.dwellings} home`;
+  if (f.kind === "house" && b.dwellings != null && b.dwellings >= 4)
+    return `a single house, keyed to a building with ${b.dwellings} homes`;
+  const others = all.filter((o) => o.propertyId !== c.propertyId && o.truth.egid === c.truth.egid);
+  const kinds = [f.kind, ...others.map((o) => listingFacts(o.listingText).kind)];
+  if (others.length && (kinds.filter((k) => k === "house").length > 1 || (kinds.includes("house") && kinds.includes("flat"))))
+    return `${others.length + 1} different listings, houses and flats, share one building as their answer`;
+  return null;
 }
 
 /**
@@ -252,13 +282,25 @@ export async function startRound(
   limit: number,
   models: ModelId[],
   // A lesson's test: the same listings as the round it is compared with, and its own lessons.
-  opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string } = {},
+  opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string; rerunOf?: string } = {},
 ): Promise<PracticeRound> {
   const all = await fetchCases(split, Infinity);
   const ids = opts.pairs ? Array.from(new Set(opts.pairs.map((p) => p.propertyId))) : opts.propertyIds;
-  const cases = ids
-    ? ids.map((id) => all.find((c) => c.propertyId === id)).filter((c): c is PracticeCase => !!c)
-    : sampleCases(all, limit);
+  // A new sample is checked against its own answer key first: an answer key
+  // that contradicts its listing scores a right search as a miss (practice.ts
+  // keyTrouble). Re-runs and lesson tests reuse listings already checked.
+  const skipped: { propertyId: number; reason: string }[] = [];
+  let cases: PracticeCase[];
+  if (ids) cases = ids.map((id) => all.find((c) => c.propertyId === id)).filter((c): c is PracticeCase => !!c);
+  else {
+    cases = [];
+    for (const c of sampleCases(all, all.length)) {
+      if (cases.length >= limit) break;
+      const trouble = await keyTrouble(c, all);
+      if (trouble) skipped.push({ propertyId: c.propertyId, reason: trouble });
+      else cases.push(c);
+    }
+  }
   if (!cases.length) throw new Error(`Radar has no ${split} cases yet.`);
   const round: PracticeRound = {
     id: `r${Date.now().toString(36)}${randomUUID().slice(0, 4)}`,
@@ -267,6 +309,8 @@ export async function startRound(
     models,
     lessons: opts.lessons ?? (await keptLessons()),
     ...(opts.trialOf ? { trialOf: opts.trialOf } : {}),
+    ...(skipped.length ? { skipped } : {}),
+    ...(opts.rerunOf ? { rerunOf: opts.rerunOf } : {}),
     results: [],
   };
   for (const c of cases)
@@ -330,6 +374,8 @@ export interface RoundSummary {
   finishedAt: string | null;
   paused: boolean;
   trialOf: string | null;
+  rerunOf: string | null;
+  skipped: { propertyId: number; reason: string }[];
   lessons: number;
   accuracy: number | null; // right / (right + wrong): the goal is 100%
   split: string;
@@ -360,6 +406,8 @@ export function summarize(round: PracticeRound): RoundSummary {
     finishedAt: round.finishedAt ?? null,
     paused: !!round.paused,
     trialOf: round.trialOf ?? null,
+    rerunOf: round.rerunOf ?? null,
+    skipped: round.skipped ?? [],
     lessons: round.lessons?.length ?? 0,
     accuracy: n("right") + n("wrong") ? Math.round((n("right") / (n("right") + n("wrong"))) * 1000) / 10 : null,
     split: round.split,

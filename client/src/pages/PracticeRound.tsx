@@ -21,7 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Pause, Play, Trash2 } from "lucide-react";
+import { ArrowLeft, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 1000) / 10}%` : "—");
 const usd = (v: number | null | undefined) => (v == null ? "—" : `$${v.toFixed(2)}`);
@@ -212,6 +212,13 @@ export default function PracticeRound() {
           </Link>
           <h2 className="text-lg font-semibold">Practice round of {when(round.createdAt)}</h2>
           {round.trialOf && <Badge variant="outline">Lesson test</Badge>}
+          {round.rerunOf && (
+            <Link href={`/practice/${round.rerunOf}`}>
+              <Badge variant="outline" className="cursor-pointer">
+                Re-run of an earlier round
+              </Badge>
+            </Link>
+          )}
           {round.paused ? (
             <Badge variant="outline">Paused</Badge>
           ) : round.running > 0 ? (
@@ -232,6 +239,30 @@ export default function PracticeRound() {
               Pause
             </Button>
           ) : null}
+          {!round.trialOf && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!busy}
+              onClick={async () => {
+                setBusy("round");
+                try {
+                  const res = await fetch(`/api/practice/rounds/${id}/rerun`, { method: "POST" });
+                  const body = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+                  toast.success(`Same ${listings.total} listings started again`);
+                  navigate(`/practice/${body.id}`);
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setBusy(null);
+                }
+              }}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Run again on the same listings
+            </Button>
+          )}
           <Button variant="outline" size="sm" disabled={!!busy} onClick={() => setConfirmDelete(true)}>
             <Trash2 className="mr-1.5 h-3.5 w-3.5" />
             Delete
@@ -407,6 +438,18 @@ export default function PracticeRound() {
               <dt className="text-muted-foreground">With a wrong answer</dt>
               <dd className={`text-right ${listings.withWrong ? "text-destructive font-medium" : ""}`}>{listings.withWrong}</dd>
             </dl>
+            {round.skipped.length > 0 && (
+              <div className="pt-2 border-t space-y-1">
+                <p className="text-xs font-medium">
+                  {round.skipped.length} listing{round.skipped.length === 1 ? "" : "s"} left out: the answer key contradicts the listing
+                </p>
+                {round.skipped.map((s) => (
+                  <p key={s.propertyId} className="text-xs text-muted-foreground">
+                    #{s.propertyId}: {s.reason}
+                  </p>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
 

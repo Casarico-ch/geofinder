@@ -35,6 +35,8 @@ export interface Round {
   finishedAt: string | null;
   paused: boolean;
   trialOf: string | null;
+  rerunOf: string | null;
+  skipped: { propertyId: number; reason: string }[];
   lessons: number;
   accuracy: number | null;
   split: string;

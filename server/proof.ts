@@ -29,6 +29,10 @@ export interface ListingFacts {
   rooms: number | null; // "Rooms: 3.5"
   /** The flat's storey, 0 = ground floor ("im 5. Obergeschoss" = 5); flats only. */
   floor: number | null;
+  /** What is for sale: one house, one flat, or a whole building (its living area is the building's). */
+  kind: "house" | "flat" | "building" | null;
+  year: number | null; // "Year built: 1985"
+  units: number | null; // "Units in building: 8"
 }
 
 const num = (s: string | undefined): number | null => {
@@ -50,7 +54,22 @@ export function listingFacts(text: string | undefined): ListingFacts {
     /\b(?:deux|trois|quatre|2|3|4)\s+(?:logements|appartements|Wohnungen|unités)\b/i.test(t);
   const house = /\bhouse\b|maison|villa|chalet|einfamilienhaus|\bhaus\b/.test(type);
   const rooms = num(line(/^Rooms:\s*([\d.,]+)$/im));
-  return { landM2, livingM2, dwellings: house && !multi ? 1 : null, sharedLand, rooms, floor: house ? null : flatFloor(t) };
+  const building = /\bbuilding\b|multi_family|multi-family|immeuble|mehrfamilien|rendite|investment|plurifamiliale/.test(type);
+  const flat = /apartment|appartement|wohnung|duplex|attique|attika|penthouse|loft|maisonette/.test(type);
+  const kind = building ? "building" : house && !multi ? "house" : flat ? "flat" : null;
+  const year = num(line(/^Year built:\s*(\d{4})/im));
+  const units = num(line(/^Units in building:\s*(\d+)/im));
+  return {
+    landM2,
+    livingM2,
+    dwellings: house && !multi ? 1 : null,
+    sharedLand,
+    rooms,
+    floor: house ? null : flatFloor(t),
+    kind,
+    year,
+    units,
+  };
 }
 
 // "im 5. Obergeschoss", "5. OG", "5th floor", "5e étage", or Radar's "Floor: 5".
@@ -243,7 +262,17 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
       fact: "Homes in the building",
       listing: `${l.dwellings} (a single house)`,
       building: b.dwellings == null ? "not in the register" : String(b.dwellings),
-      verdict: b.dwellings == null ? "unknown" : b.dwellings === l.dwellings ? "match" : "mismatch",
+      // The register often counts a granny flat or studio as a home of its own:
+      // a single house listed with 2 or 3 homes is unclear, not a mismatch
+      // (Dietlikonerstrasse 11, a detached house the register gives 3 homes).
+      verdict:
+        b.dwellings == null
+          ? "unknown"
+          : b.dwellings === l.dwellings
+            ? "match"
+            : l.dwellings === 1 && b.dwellings <= 3
+              ? "unknown"
+              : "mismatch",
     });
   }
   // Footprint × floors is the whole building: it stands for one home's living
@@ -258,7 +287,8 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
       verdict: ratio == null ? "unknown" : ratio >= LIVING_MIN && ratio <= LIVING_MAX ? "match" : "mismatch",
     });
   }
-  if (l.livingM2 != null && l.dwellings !== 1 && b.flats) rows.push(flatRow(l, l.livingM2, b.flats));
+  // A whole building for sale states the building's living area, not a flat's.
+  if (l.livingM2 != null && l.dwellings !== 1 && l.kind !== "building" && b.flats) rows.push(flatRow(l, l.livingM2, b.flats));
   if (l.landM2 != null && !l.sharedLand) {
     const plots = b.plots ?? [];
     const total = plots.reduce((s, p) => s + p.areaM2, 0);
@@ -296,6 +326,10 @@ function flatRow(l: ListingFacts, living: number, flats: Flat[]): FactRow {
     listing,
     building: `no flat of ${living} m²${where} (of ${flats.length}): ${show(onFloor.length ? onFloor : flats) || "none there"}`,
     verdict: close.length ? "unknown" : "mismatch",
+    // A flat for sale whose size no flat in the building comes within 10% of is
+    // another building: 3 of the first 5 wrong practice answers had exactly this
+    // mismatch and went through after one warning.
+    hard: !close.length && l.kind === "flat",
   };
 }
 

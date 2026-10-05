@@ -69,6 +69,7 @@ export interface ShortlistCall {
   dwellings?: number;
   survivors: number;
   returned: number;
+  ranked?: boolean; // the shortlist ranked every home (no estimate filters)
 }
 
 // ---------------------------------------------------------------------------
