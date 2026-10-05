@@ -182,7 +182,10 @@ export interface Job {
     listingId?: string;
     listingUrl?: string;
     radarUrl?: string; // the listing's page in Radar, the platform that sent it
+    // Spend cap in USD: the run stops with no answer once its cost reaches it.
+    budgetUsd?: number;
   };
+  overBudget?: boolean; // stopped by input.budgetUsd
   steps: Step[];
   answer: Answer | null;
   error?: string;

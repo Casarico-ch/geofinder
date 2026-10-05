@@ -52,6 +52,7 @@ import {
   setPromptVersion,
   setSignature,
   setAccount,
+  costUsd,
   DEFAULT_MODEL,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
@@ -680,6 +681,21 @@ async function runLoop(
             found: false,
             confidence: "unknown",
             reasoning: `Did not converge within the ${MAX_MINUTES}-minute limit.` +
+              (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
+          }),
+        });
+        return;
+      }
+      const budget = job.input.budgetUsd;
+      if (budget != null && costUsd(job.tokens, job.model) >= budget) {
+        job.overBudget = true;
+        await addStep(job, { kind: "note", title: `Stopped at its $${budget.toFixed(2)} budget` });
+        await finishJob(job, {
+          status: "done",
+          answer: coerceAnswer({
+            found: false,
+            confidence: "unknown",
+            reasoning: `Stopped at its $${budget.toFixed(2)} budget after ${i} steps.` +
               (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
           }),
         });
