@@ -24,11 +24,11 @@
 // names radar's property id, where a person can look the address up.
 // =============================================================================
 import { createHmac, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { exactAddressOf, houseNumberOf, streetOf } from "./consensus";
-import { createJob, elapsedMs, costUsd, getJob, type Answer, type Job, type ModelId } from "./jobs";
+import { createJob, deleteJob, elapsedMs, costUsd, getJob, requestPause, type Answer, type Job, type ModelId } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
 
 export interface PracticeCase {
@@ -83,6 +83,8 @@ export interface PracticeRound {
   id: string;
   createdAt: string;
   finishedAt?: string;
+  paused?: boolean; // no new search starts; running ones pause at their next turn
+  deleted?: boolean; // never written to disk again
   split: "practice" | "test";
   models: ModelId[];
   results: PracticeResult[];
@@ -124,6 +126,30 @@ export async function fetchCases(split: "practice" | "test", max: number): Promi
     afterId = body.nextAfterId;
   }
   return out.slice(0, max);
+}
+
+/**
+ * A random sample spread across the country (Daniel, 05.10): shuffled, then
+ * taken one commune at a time, so no commune gets a second listing before
+ * every commune in the pool has one. Radar's id order would hand over one
+ * agency's batch instead.
+ */
+export function sampleCases(all: PracticeCase[], n: number): PracticeCase[] {
+  const shuffled = [...all];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  const byCommune = new Map<string, PracticeCase[]>();
+  for (const c of shuffled) {
+    const k = (c.municipality ?? "").toLowerCase();
+    byCommune.set(k, [...(byCommune.get(k) ?? []), c]);
+  }
+  const piles = Array.from(byCommune.values());
+  const out: PracticeCase[] = [];
+  for (let round = 0; out.length < n && piles.some((p) => p.length > round); round++)
+    for (const p of piles) if (p[round] && out.length < n) out.push(p[round]);
+  return out;
 }
 
 const sniff = (b: Uint8Array): AgentImage["mediaType"] | null =>
@@ -184,6 +210,7 @@ function lostAt(job: Job, truth: TruthKeys): LostAt {
 const rounds = new Map<string, PracticeRound>();
 
 async function save(round: PracticeRound): Promise<void> {
+  if (round.deleted) return;
   await mkdir(dir(), { recursive: true });
   const f = fileOf(round.id);
   // Several searches finish at once: each write gets its own temp file, or
@@ -211,7 +238,7 @@ function refresh(round: PracticeRound): boolean {
 
 /** Start a round: `limit` cases of one split, each searched once by every model given. */
 export async function startRound(split: "practice" | "test", limit: number, models: ModelId[]): Promise<PracticeRound> {
-  const cases = await fetchCases(split, limit);
+  const cases = sampleCases(await fetchCases(split, Infinity), limit);
   if (!cases.length) throw new Error(`Radar has no ${split} cases yet.`);
   const round: PracticeRound = { id: `r${Date.now().toString(36)}${randomUUID().slice(0, 4)}`, createdAt: new Date().toISOString(), split, models, results: [] };
   for (const c of cases)
@@ -224,11 +251,23 @@ export async function startRound(split: "practice" | "test", limit: number, mode
 }
 
 // Runs the round's searches, CONCURRENCY at a time, then keeps the score fresh.
+const driving = new Set<string>(); // rounds with a drive() under way, so a resume never starts a second one
+
 async function drive(round: PracticeRound, cases: PracticeCase[], only?: PracticeResult[]): Promise<void> {
+  if (driving.has(round.id)) return;
+  driving.add(round.id);
+  try {
+    await driveQueue(round, cases, only);
+  } finally {
+    driving.delete(round.id);
+  }
+}
+
+async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: PracticeResult[]): Promise<void> {
   const byId = new Map(cases.map((c) => [c.propertyId, c]));
   const queue = (only ?? round.results).filter((r) => byId.has(r.propertyId) && !r.jobId && r.outcome === "running");
   const worker = async () => {
-    for (let r = queue.shift(); r; r = queue.shift()) {
+    for (let r = queue.shift(); r && !round.paused && !round.deleted; r = queue.shift()) {
       const c = byId.get(r.propertyId)!;
       try {
         const images = await loadPhotos(c.imageUrls);
@@ -250,6 +289,7 @@ async function drive(round: PracticeRound, cases: PracticeCase[], only?: Practic
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, worker));
+  if (round.paused || round.deleted) return;
   refresh(round);
   round.finishedAt = new Date().toISOString();
   await save(round);
@@ -259,6 +299,7 @@ export interface RoundSummary {
   id: string;
   createdAt: string;
   finishedAt: string | null;
+  paused: boolean;
   split: string;
   models: string[];
   total: number;
@@ -284,6 +325,7 @@ export function summarize(round: PracticeRound): RoundSummary {
     id: round.id,
     createdAt: round.createdAt,
     finishedAt: round.finishedAt ?? null,
+    paused: !!round.paused,
     split: round.split,
     models: round.models,
     total: round.results.length,
@@ -328,23 +370,70 @@ export async function resumeRounds(): Promise<void> {
   for (const f of files) {
     const round = await getRound(f.replace(/\.json$/, ""));
     if (!round || round.finishedAt) continue;
-    const waiting = round.results.filter((r) => !r.jobId && r.outcome === "running");
-    if (!waiting.length) continue;
+    if (round.paused) continue;
     try {
-      const want = new Set(waiting.map((r) => r.propertyId));
-      const cases = (await fetchCases(round.split, new Set(round.results.map((r) => r.propertyId)).size)).filter((c) =>
-        want.has(c.propertyId),
-      );
-      const found = new Set(cases.map((c) => c.propertyId));
-      for (const r of waiting)
-        if (!found.has(r.propertyId)) Object.assign(r, { outcome: "error", error: "radar no longer offers this listing" });
-      await save(round);
-      console.log(`[practice] round ${round.id}: resuming ${waiting.length} waiting searches`);
-      void drive(round, cases, waiting).catch((err) => console.error(`[practice] round ${round.id} crashed:`, err));
+      await continueRound(round);
     } catch (err) {
       console.error(`[practice] round ${round.id} could not resume:`, err);
     }
   }
+}
+
+// Queue the round's searches that never started: their listings come from
+// radar again (the round keeps only fingerprints of the truth, never the case).
+async function continueRound(round: PracticeRound): Promise<void> {
+  const waiting = round.results.filter((r) => !r.jobId && r.outcome === "running");
+  if (!waiting.length || driving.has(round.id)) return;
+  const want = new Set(waiting.map((r) => r.propertyId));
+  const cases = (await fetchCases(round.split, Infinity)).filter((c) =>
+    want.has(c.propertyId),
+  );
+  const found = new Set(cases.map((c) => c.propertyId));
+  for (const r of waiting)
+    if (!found.has(r.propertyId)) Object.assign(r, { outcome: "error", error: "radar no longer offers this listing" });
+  await save(round);
+  console.log(`[practice] round ${round.id}: queueing ${waiting.length} waiting searches`);
+  void drive(round, cases, waiting).catch((err) => console.error(`[practice] round ${round.id} crashed:`, err));
+}
+
+/** Pause: no new search starts, and the running ones stop at their next turn (resumable). */
+export async function pauseRound(id: string): Promise<PracticeRound | null> {
+  const round = await getRound(id);
+  if (!round) return null;
+  round.paused = true;
+  for (const r of round.results) {
+    const job = r.jobId ? getJob(r.jobId) : undefined;
+    if (job?.status === "running") requestPause(job);
+  }
+  await save(round);
+  return round;
+}
+
+/** Resume: paused searches carry on from where they stopped, and the waiting ones start. */
+export async function resumeRound(id: string): Promise<PracticeRound | null> {
+  const round = await getRound(id);
+  if (!round) return null;
+  round.paused = false;
+  delete round.finishedAt;
+  await save(round);
+  for (const r of round.results) {
+    const job = r.jobId ? getJob(r.jobId) : undefined;
+    if (job?.status === "paused")
+      void resumeInvestigation(job).catch((err) => console.error(`[practice] resume ${job.id} failed:`, err));
+  }
+  await continueRound(round);
+  return round;
+}
+
+/** Delete: stop every search, remove their runs and the round itself. */
+export async function deleteRound(id: string): Promise<boolean> {
+  const round = await getRound(id);
+  if (!round) return false;
+  round.deleted = true;
+  for (const r of round.results) if (r.jobId) await deleteJob(r.jobId);
+  rounds.delete(round.id);
+  await rm(fileOf(round.id), { force: true });
+  return true;
 }
 
 export async function listRounds(): Promise<RoundSummary[]> {

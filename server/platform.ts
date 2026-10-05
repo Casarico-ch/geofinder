@@ -12,7 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
-import { getRound, listRounds, startRound, summarize } from "./practice";
+import { deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
@@ -438,6 +438,24 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       res.json({ summary: summarize(round), results: round.results });
+    });
+    app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
+      const round = await pauseRound(req.params.id);
+      if (!round) res.status(404).json({ error: "No such round" });
+      else res.json(summarize(round));
+    });
+    app.post(`${base}/rounds/:id/resume`, async (req: Request, res: Response) => {
+      try {
+        const round = await resumeRound(req.params.id);
+        if (!round) res.status(404).json({ error: "No such round" });
+        else res.json(summarize(round));
+      } catch (err) {
+        res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    });
+    app.delete(`${base}/rounds/:id`, async (req: Request, res: Response) => {
+      if (await deleteRound(req.params.id)) res.json({ ok: true });
+      else res.status(404).json({ error: "No such round" });
     });
   }
 
