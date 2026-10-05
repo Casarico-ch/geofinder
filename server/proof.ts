@@ -67,6 +67,7 @@ export interface Plot {
   number: string;
   egrid: string | null;
   areaM2: number;
+  bbox?: [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
 }
 
 // Area of a [lon,lat] polygon in m², projected locally (exact enough for a plot).
@@ -102,7 +103,74 @@ async function getJson(url: string, ms = 20_000): Promise<any> {
 function toPlot(r: any): Plot | null {
   const p = r?.properties ?? r?.attributes ?? {};
   if (!p.number || !r.geometry) return null;
-  return { number: String(p.number), egrid: p.egris_egrid ?? null, areaM2: Math.round(polygonAreaM2(r.geometry) * 10) / 10 };
+  return {
+    number: String(p.number),
+    egrid: p.egris_egrid ?? null,
+    areaM2: Math.round(polygonAreaM2(r.geometry) * 10) / 10,
+    bbox: bboxOf(r.geometry),
+  };
+}
+
+function bboxOf(geometry: any): Plot["bbox"] {
+  const pts: number[][] = [];
+  const walk = (c: any) => (typeof c?.[0] === "number" ? pts.push(c) : (c ?? []).forEach(walk));
+  walk(geometry?.coordinates);
+  if (!pts.length) return undefined;
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+const samePlot = (a: Plot, b: Plot) => (a.egrid && b.egrid ? a.egrid === b.egrid : a.number === b.number && a.areaM2 === b.areaM2);
+
+/** The plots around one (its bounding box, widened by about 5 m): its neighbours. */
+export async function neighbourPlots(plot: Plot): Promise<Plot[]> {
+  if (!plot.bbox) return [];
+  const pad = 0.00005;
+  const [x0, y0, x1, y1] = [plot.bbox[0] - pad, plot.bbox[1] - pad, plot.bbox[2] + pad, plot.bbox[3] + pad];
+  try {
+    const j = await getJson(
+      `${API}/identify?geometry=${x0},${y0},${x1},${y1}&geometryType=esriGeometryEnvelope&layers=all:${PLOT_LAYER}&tolerance=0&sr=4326` +
+        `&returnGeometry=true&geometryFormat=geojson&mapExtent=${x0},${y0},${x1},${y1}&imageDisplay=800,600,96&limit=30`,
+    );
+    return ((j.results ?? []) as unknown[]).map(toPlot).filter((p): p is Plot => !!p && !samePlot(p, plot));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A property can be several plots: when the building's own plot is smaller
+ * than the listing's land, try it with one or two neighbouring plots and keep
+ * the sum closest to the listing. A group must match within 2% (a single plot
+ * within 5%): with many neighbours, some sum lands near any number by chance.
+ * Null when nothing fits.
+ */
+export async function plotGroupFor(own: Plot, landM2: number): Promise<Plot[] | null> {
+  if (Math.abs(own.areaM2 - landM2) / landM2 <= PLOT_MATCH) return [own];
+  if (own.areaM2 > landM2) return null;
+  const near = (await neighbourPlots(own)).filter((p) => p.areaM2 < landM2).slice(0, 15);
+  let best: { plots: Plot[]; off: number } | null = null;
+  const consider = (plots: Plot[]) => {
+    const off = Math.abs(plots.reduce((s, p) => s + p.areaM2, 0) - landM2) / landM2;
+    if (off <= PLOT_DECISIVE && (!best || off < best.off)) best = { plots, off };
+  };
+  for (let i = 0; i < near.length; i++) {
+    consider([own, near[i]]);
+    for (let j = i + 1; j < near.length; j++) consider([own, near[i], near[j]]);
+  }
+  return best ? (best as { plots: Plot[] }).plots : null;
+}
+
+/**
+ * Decisive: the listing's land matches these plots almost exactly (within 2%)
+ * and no fact the register holds contradicts the building. Such an answer is
+ * proven without settling every other candidate on the checklist: in a
+ * 5-minute search that is what kept nine right picks from being answers.
+ */
+export function decisive(rows: FactRow[], plots: Plot[], landM2: number | null): boolean {
+  if (landM2 == null || !plots.length || rows.some((r) => r.verdict === "mismatch")) return false;
+  const total = plots.reduce((s, p) => s + p.areaM2, 0);
+  return Math.abs(total - landM2) / landM2 <= PLOT_DECISIVE;
 }
 
 const plotCache = new Map<string, Promise<Plot | null>>();
@@ -162,7 +230,7 @@ export interface BuildingFacts {
 // Bands, wide on purpose: a register footprint is gross and outside the walls,
 // a listed living area is net and counts an attic the register may not.
 const LIVING_MIN = 0.45, LIVING_MAX = 1.35;
-const PLOT_MATCH = 0.05, PLOT_CLOSE = 0.15;
+const PLOT_MATCH = 0.05, PLOT_CLOSE = 0.15, PLOT_DECISIVE = 0.02;
 // A flat's register area is the same survey number the listing usually quotes;
 // near-identical entrances differ by a few m² (Ruopigenring 85: 96 m², 89: 99 m²).
 const FLAT_MATCH_M2 = 2, FLAT_CLOSE = 0.1;
@@ -253,10 +321,10 @@ export function fitText(rows: FactRow[]): string {
  */
 export async function annotateFit<
   T extends { lat: number; lon: number; floors: number | null; dwellings?: number | null; footprintM2: number | null },
->(l: ListingFacts, cands: T[], maxPlots = 100): Promise<(T & { strongFit: boolean; fit: string; plot?: Plot })[]> {
+>(l: ListingFacts, cands: T[], maxPlots = 100): Promise<(T & { strongFit: boolean; fit: string; plot?: Plot; plotGroup?: Plot[] })[]> {
   const out = cands.map((c) => {
     const rows = factRows(l, { floors: c.floors, dwellings: c.dwellings ?? null, footprintM2: c.footprintM2 });
-    return { ...c, strongFit: strongFit(rows), fit: fitText(rows), plot: undefined as Plot | undefined };
+    return { ...c, strongFit: strongFit(rows), fit: fitText(rows), plot: undefined as Plot | undefined, plotGroup: undefined as Plot[] | undefined };
   });
   if (l.landM2 == null || l.sharedLand) return out;
   const wanted = out.filter((c) => c.strongFit || !c.fit).slice(0, maxPlots);
@@ -266,8 +334,10 @@ export async function annotateFit<
       const c = wanted[next++];
       const plot = await plotAt(c.lat, c.lon);
       if (!plot) continue;
-      const rows = factRows(l, { floors: c.floors, dwellings: c.dwellings ?? null, footprintM2: c.footprintM2, plots: [plot] });
-      Object.assign(c, { plot, strongFit: strongFit(rows), fit: fitText(rows) });
+      // Several plots can make one property: a smaller plot is tried with its neighbours.
+      const group = await plotGroupFor(plot, l.landM2!);
+      const rows = factRows(l, { floors: c.floors, dwellings: c.dwellings ?? null, footprintM2: c.footprintM2, plots: group ?? [plot] });
+      Object.assign(c, { plot, plotGroup: group && group.length > 1 ? group : undefined, strongFit: strongFit(rows), fit: fitText(rows) });
     }
   };
   await Promise.all(Array.from({ length: 6 }, worker));

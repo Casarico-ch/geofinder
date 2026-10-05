@@ -21,7 +21,20 @@ import { RunFiles } from "./files";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
 import { buildingAt, flatsOf, normalizeCommune } from "./gwr";
-import { annotateFit, factRows, fitText, listingFacts, plotAt, plotByEgrid, strongFit, type ListingFacts, type Plot } from "./proof";
+import {
+  annotateFit,
+  decisive,
+  factRows,
+  fitText,
+  listingFacts,
+  neighbourPlots,
+  plotAt,
+  plotByEgrid,
+  plotGroupFor,
+  strongFit,
+  type ListingFacts,
+  type Plot,
+} from "./proof";
 import { shortlistBuildings } from "./shortlist";
 import { renderContactSheet } from "./sheet";
 import {
@@ -361,7 +374,7 @@ Treat each commune as a FINITE, listable set of buildings, not a map to eyeball.
 5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
 
 PROOF — what the code accepts as an exact address
-An exact (street/building) answer is recorded only when: it is a candidate you inspected with inspect_candidate and marked match; no other candidate is marked match; every shortlisted candidate has a verdict and none is left "possible" (settle each one: inspect it, then reject it with the visible difference, or match); and the listing's facts do not contradict it (a single house in a 2-dwelling building, a living area the building cannot hold, a plot of a different size). Until then submit_answer sends it back with what is missing. If you cannot get there, submit found=false at block confidence with your ranked candidates and what would separate them.
+An exact (street/building) answer is recorded only when: it is a candidate you inspected with inspect_candidate and marked match; no other candidate is marked match; every shortlisted candidate has a verdict and none is left "possible" (settle each one: inspect it, then reject it with the visible difference, or match) — EXCEPT when your answer is decisive: its plot, or its plot together with neighbouring plots, matches the listing's land area within 2% and no register fact contradicts it; then the rest of the checklist need not be settled, so submit it at once; and the listing's facts do not contradict it (a single house in a 2-dwelling building, a living area the building cannot hold, a plot of a different size). Until then submit_answer sends it back with what is missing. If you cannot get there, submit found=false at block confidence with your ranked candidates and what would separate them.
 
 ANSWER HONESTLY — a shortlist beats a wrong pin
 Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
@@ -1265,8 +1278,12 @@ async function inspectCandidate(
   const facts = listingFacts(job.input.listingText);
   const plot = c.plot ?? (await plotAt(c.lat, c.lon)) ?? undefined;
   const flats = await flatsFor(facts, c.egid);
-  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plot ? [plot] : [], flats });
-  Object.assign(c, { plot, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
+  // Several plots can make one property: a smaller plot is tried with its neighbours.
+  const group =
+    c.plotGroup ?? (plot && facts.landM2 != null && !facts.sharedLand ? ((await plotGroupFor(plot, facts.landM2)) ?? undefined) : undefined);
+  const plotGroup = group && group.length > 1 ? group : undefined;
+  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plotGroup ?? (plot ? [plot] : []), flats });
+  Object.assign(c, { plot, plotGroup, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
   await saveSearch(job, search);
   const sheetNo = String(job.steps.filter((st) => st.title.startsWith("close look")).length + 1).padStart(2, "0");
   const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [];
@@ -1360,15 +1377,19 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
       `Other candidates are also marked match: ${others.slice(0, 6).map((c) => `${c.egid} ${c.address ?? ""}`).join(", ")}. Reject them with the visible difference, or submit a ranked shortlist at block confidence.`,
     );
   }
+  // The rest of the checklist must be settled — unless the answer is decisive
+  // on its own: its plot(s) match the listing's land within 2% and no register
+  // fact contradicts it (proof.ts decisive).
+  const checklist: string[] = [];
   const open = unchecked(search).length;
-  if (open) blocking.push(`${open} shortlisted candidates have no verdict yet (${coverageText(search)}): view and mark them.`);
+  if (open) checklist.push(`${open} shortlisted candidates have no verdict yet (${coverageText(search)}): view and mark them.`);
   const poss = openPossibles(search).filter((c) => c !== claim);
   if (poss.length) {
-    blocking.push(
+    checklist.push(
       `${poss.length} candidates are still "possible" (${poss.slice(0, 8).map((c) => `${c.egid} ${c.address ?? ""}`).join(", ")}${poss.length > 8 ? ", …" : ""}): inspect each and settle it — rejected with the difference you see, or match.`,
     );
   }
-  if (!claim) return { proof: null, blocking, soft };
+  if (!claim) return { proof: null, blocking: [...blocking, ...checklist], soft };
 
   const plots = await plotsOf(a, claim);
   const facts = listingFacts(job.input.listingText);
@@ -1379,6 +1400,8 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
     plots,
     flats: await flatsFor(facts, claim.egid),
   });
+  const isDecisive = !facts.sharedLand && decisive(rows, plots, facts.landM2) && (await plotsBelong(claim, plots));
+  if (!isDecisive) blocking.push(...checklist);
   for (const r of rows.filter((x) => x.verdict === "mismatch")) {
     const line = `${r.fact} does not fit: the listing says ${r.listing}, the building has ${r.building}.`;
     if (r.hard) blocking.push(`${line} If the property covers several plots, list every one in parcels[]; otherwise this is not the house.`);
@@ -1401,14 +1424,28 @@ function flatsFor(facts: ListingFacts, egid: string | number) {
   return facts.livingM2 != null && facts.dwellings !== 1 ? flatsOf(egid) : Promise.resolve(undefined);
 }
 
-// The plots an answer covers: the ones it names (by EGRID), else the one under its building.
+// The plots an answer covers: the ones it names (by EGRID), else the group its
+// building's plot was found to make with its neighbours, else that plot alone.
 async function plotsOf(a: Answer, claim: LedgerEntry): Promise<Plot[]> {
   const named = (await Promise.all(a.parcels.filter((p) => p.egrid).map((p) => plotByEgrid(p.egrid!)))).filter(
     (p): p is Plot => !!p,
   );
   if (named.length) return named;
+  if (claim.plotGroup?.length) return claim.plotGroup;
   const own = claim.plot ?? (await plotAt(claim.lat, claim.lon));
   return own ? [own] : [];
+}
+
+// Decisive only for plots that are the building's own and its neighbours, so a
+// sum of unrelated plots picked to match the listing can never prove an answer.
+async function plotsBelong(claim: LedgerEntry, plots: Plot[]): Promise<boolean> {
+  const own = claim.plot ?? (await plotAt(claim.lat, claim.lon));
+  if (!own) return false;
+  const same = (x: Plot, y: Plot) => (x.egrid && y.egrid ? x.egrid === y.egrid : x.number === y.number);
+  if (!plots.some((p) => same(p, own))) return false;
+  if (plots.length === 1) return true;
+  const near = await neighbourPlots(own);
+  return plots.every((p) => same(p, own) || near.some((n) => same(n, p)));
 }
 
 // An address that could not be proven is kept, as the top of a ranked

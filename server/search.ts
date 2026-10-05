@@ -41,6 +41,8 @@ export interface LedgerEntry {
   strongFit?: boolean;
   fit?: string; // the fit line shown to the model
   plot?: { number: string; egrid: string | null; areaM2: number };
+  // The plots the property seems to span when its own plot is too small (proof.ts plotGroupFor).
+  plotGroup?: { number: string; egrid: string | null; areaM2: number }[];
   closeLook?: boolean; // looked at on its own with inspect_candidate
   loc?: { score: number; why: string }; // fit with the photos' location clues (locate.ts)
 }
@@ -200,6 +202,7 @@ export function addCandidates(
     strongFit?: boolean;
     fit?: string;
     plot?: LedgerEntry["plot"];
+    plotGroup?: LedgerEntry["plotGroup"];
     loc?: { score: number; why: string };
   }[],
 ): number {
@@ -211,7 +214,8 @@ export function addCandidates(
     const known = s.candidates[key];
     if (known) {
       // Re-shortlisted: keep the verdict, refresh what the facts say.
-      if (c.fit !== undefined) Object.assign(known, { strongFit: c.strongFit, fit: c.fit, plot: c.plot ?? known.plot });
+      if (c.fit !== undefined)
+        Object.assign(known, { strongFit: c.strongFit, fit: c.fit, plot: c.plot ?? known.plot, plotGroup: c.plotGroup ?? known.plotGroup });
       continue;
     }
     s.candidates[key] = {
@@ -227,7 +231,7 @@ export function addCandidates(
       viewed: false,
       verdict: "unchecked",
       ...(c.loc ? { loc: c.loc } : {}),
-      ...(c.fit !== undefined ? { strongFit: c.strongFit, fit: c.fit, plot: c.plot } : {}),
+      ...(c.fit !== undefined ? { strongFit: c.strongFit, fit: c.fit, plot: c.plot, ...(c.plotGroup ? { plotGroup: c.plotGroup } : {}) } : {}),
     };
     added++;
   }
