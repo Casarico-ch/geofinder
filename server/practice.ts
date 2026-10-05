@@ -343,6 +343,7 @@ export interface RoundSummary {
   running: number;
   avgMinutes: number | null;
   avgCostUsd: number | null;
+  costUsd: number; // every run of the round so far, running ones included
   lostAt: Record<string, number>;
 }
 
@@ -372,6 +373,7 @@ export function summarize(round: PracticeRound): RoundSummary {
     running: n("running"),
     avgMinutes: avg(done.map((r) => r.minutes!)),
     avgCostUsd: avg(done.map((r) => r.costUsd ?? 0)),
+    costUsd: Math.round(round.results.reduce((a, r) => a + (r.costUsd ?? 0), 0) * 100) / 100,
     lostAt: lost,
   };
 }

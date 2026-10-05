@@ -40,6 +40,9 @@ interface Round {
   running: number;
   avgMinutes: number | null;
   avgCostUsd: number | null;
+  costUsd: number;
+  testsCostUsd: number;
+  totalCostUsd: number;
   learning: Learning | null;
 }
 
@@ -419,6 +422,7 @@ export default function Practice() {
                 <TableHead className="text-right">Errors</TableHead>
                 <TableHead className="text-right">Avg min</TableHead>
                 <TableHead className="text-right">Avg cost</TableHead>
+                <TableHead className="text-right">Total cost</TableHead>
                 <TableHead>Learning</TableHead>
                 <TableHead />
               </TableRow>
@@ -426,14 +430,14 @@ export default function Practice() {
             <TableBody>
               {shown === null && (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-muted-foreground">
+                  <TableCell colSpan={13} className="text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               )}
               {shown?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-muted-foreground">
+                  <TableCell colSpan={13} className="text-muted-foreground">
                     No practice round yet.
                   </TableCell>
                 </TableRow>
@@ -465,6 +469,16 @@ export default function Practice() {
                     <TableCell className="text-right">{r.errors}</TableCell>
                     <TableCell className="text-right">{r.avgMinutes ?? "—"}</TableCell>
                     <TableCell className="text-right">{r.avgCostUsd != null ? `$${r.avgCostUsd.toFixed(2)}` : "—"}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>${r.totalCostUsd.toFixed(2)}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Searches ${r.costUsd.toFixed(2)} · lesson tests ${r.testsCostUsd.toFixed(2)}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableCell>
                     <TableCell>
                       <LearningBadge l={r.learning} />
                     </TableCell>
@@ -488,7 +502,7 @@ export default function Practice() {
                   </TableRow>
                   {open === r.id && (
                     <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={12} className="bg-muted/30 p-0 whitespace-normal">
+                      <TableCell colSpan={13} className="bg-muted/30 p-0 whitespace-normal">
                         <h3 className="text-sm font-semibold px-3 pt-3">Results</h3>
                         <RoundDetails id={r.id} models={r.models} />
                         <h3 className="text-sm font-semibold px-3 pt-4">Lessons from this round</h3>
