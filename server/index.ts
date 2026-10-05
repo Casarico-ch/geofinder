@@ -6,6 +6,7 @@ import { resumeInvestigation } from "./agent";
 import { registerApiRoutes } from "./api";
 import { loadPersistedJobs } from "./jobs";
 import { resumeRounds } from "./practice";
+import { startCleanupLoop } from "./cleanup";
 import { startLessonsLoop } from "./lessons";
 import { registerMagicFeedbackRoutes } from "./magic-feedback";
 import { registerPlatformRoutes } from "./platform";
@@ -69,6 +70,8 @@ async function startServer() {
   void resumeRounds().catch((err) => console.error("[practice] resume failed:", err));
   // Learn from finished rounds and test what was learned (lessons.ts).
   startLessonsLoop();
+  // Pictures of runs finished over an hour ago are deleted (cleanup.ts).
+  startCleanupLoop();
 
   // Serve run artifacts — the aerials and crops the agent actually looked at,
   // referenced by the documented trace. The internal resume state (the full
