@@ -121,13 +121,25 @@ export async function getPropertyProfile(address: string) {
 }
 
 export async function getProfileByLandId(id: string, matchedAddress: string | null) {
+  const { land, buildings, zoning } = await getLandData(id);
+  return toPropertyProfile(matchedAddress, land, buildings, zoning);
+}
+
+/** Popety's raw answers for one land id: the three paid calls of a profile. */
+export interface LandData {
+  land: any;
+  buildings: any;
+  zoning: any;
+}
+
+export async function getLandData(id: string): Promise<LandData> {
   const enc = encodeURIComponent(id);
   const [land, buildings, zoning] = await Promise.all([
     popety(`/v1/lands/${enc}`),
     popety(`/v1/lands/${enc}/buildings`),
     popety(`/v1/lands/${enc}/zoning`),
   ]);
-  return toPropertyProfile(matchedAddress, land, buildings, zoning);
+  return { land, buildings, zoning };
 }
 
 // A swisstopo map window around one or more parcels. Both images are public
