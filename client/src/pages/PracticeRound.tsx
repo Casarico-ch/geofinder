@@ -104,6 +104,22 @@ export default function PracticeRound() {
     };
   }, [results]);
 
+  // The same listings again under today's code: all of them, or only those no run found.
+  const rerun = async (failed: boolean) => {
+    setBusy("round");
+    try {
+      const res = await fetch(`/api/practice/rounds/${id}/rerun${failed ? "?failed=1" : ""}`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      toast.success(`${body.total ?? ""} ${failed ? "failed " : ""}listings started again`.trim());
+      navigate(`/practice/${body.id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (missing)
     return (
       <div className="min-h-screen bg-background">
@@ -178,26 +194,14 @@ export default function PracticeRound() {
               Find lessons
             </Button>
           )}
+          {!round.trialOf && listings.finished - listings.foundByAny > 0 && (
+            <Button variant="outline" size="sm" disabled={!!busy} onClick={() => rerun(true)}>
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Run again on the {listings.finished - listings.foundByAny} failed
+            </Button>
+          )}
           {!round.trialOf && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!!busy}
-              onClick={async () => {
-                setBusy("round");
-                try {
-                  const res = await fetch(`/api/practice/rounds/${id}/rerun`, { method: "POST" });
-                  const body = await res.json().catch(() => ({}));
-                  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-                  toast.success(`Same ${listings.total} listings started again`);
-                  navigate(`/practice/${body.id}`);
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : String(err));
-                } finally {
-                  setBusy(null);
-                }
-              }}
-            >
+            <Button variant="outline" size="sm" disabled={!!busy} onClick={() => rerun(false)}>
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
               Run again on the same listings
             </Button>

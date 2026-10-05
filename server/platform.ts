@@ -514,7 +514,14 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       try {
-        const ids = Array.from(new Set(src.results.map((r) => r.propertyId)));
+        // ?failed=1: only the listings no run found (wrong, not sure, over limit, error).
+        const failed = req.query.failed === "1";
+        const found = new Set(src.results.filter((r) => r.outcome === "right").map((r) => r.propertyId));
+        const ids = Array.from(new Set(src.results.map((r) => r.propertyId))).filter((p) => !failed || (!found.has(p) && src.results.some((r) => r.propertyId === p && r.outcome !== "running")));
+        if (!ids.length) {
+          res.status(400).json({ error: "No failed listing to run again." });
+          return;
+        }
         if (PRACTICE_MODELS.some(isGemini) && !geminiConfigured()) {
           res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
           return;
