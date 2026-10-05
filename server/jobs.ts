@@ -112,6 +112,7 @@ export const MODELS = [
   "sonnet-5-5-low-3",
   "sonnet-5-5-max-plain",
   "gemini-3-8-flash-low",
+  "opus-5-5-high",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 
@@ -128,6 +129,8 @@ export const VARIANTS: Record<string, { model: string; effort: Effort; plain: bo
   "sonnet-5-5-max-plain": { model: "claude-sonnet-5-5", effort: "max", plain: true },
   // Gemini 3.8 Flash at its fastest thinking level (Daniel, 05.10).
   "gemini-3-8-flash-low": { model: "gemini-3.8-flash", effort: "low", plain: false },
+  // The second look at a doubtful answer (practice.ts recheck; Daniel, 05.10).
+  "opus-5-5-high": { model: "claude-opus-5-5", effort: "high", plain: false },
 };
 /** The API model behind an investigator id. */
 export const apiModel = (m: string): string => VARIANTS[m]?.model ?? m;
@@ -150,6 +153,7 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "sonnet-5-5-low-2": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "sonnet-5-5-low-3": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "sonnet-5-5-max-plain": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
+  "opus-5-5-high": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
   "gemini-3-8-flash-low": { in: 0.75, cacheRead: 0.075, cacheWrite: 0.75, out: 3.75 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },

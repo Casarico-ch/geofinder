@@ -92,6 +92,10 @@ export interface PracticeResult {
   // The answer was the attached twin of the right house (twins.ts): counted as found.
   twin?: boolean;
   twinChecked?: boolean;
+  // The answer named a house but its own explanation doubted it, so a stronger
+  // model searched the listing again on its own (recheck below).
+  doubt?: boolean;
+  recheck?: boolean; // this run is that second search
 }
 
 export interface PracticeRound {
@@ -127,6 +131,15 @@ const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 15);
 // The register proof is off in practice unless PRACTICE_PROOF=on: a house two
 // runs name independently counts as confirmed instead (summarize, "agreed").
 const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
+// A named house whose explanation doubts it gets a second, independent search
+// by a stronger model (Daniel, 05.10: "Opus 5.5 high"). On 05.10 all 6 wrong
+// answers of rmuvmodoa2bc9 carried one of these words, against 11 of 80 right
+// ones. PRACTICE_RECHECK=off stops it.
+const RECHECK_MODEL: ModelId = "opus-5-5-high";
+const RECHECK = process.env.PRACTICE_RECHECK !== "off";
+const DOUBT =
+  /not (fully )?(proven|confirmed|certain|settled|checked|exact)|uncertain|moderate|tentative|alternative|did not (check|settle|verify|compare)|could not|unsure|probably|likely|not match|does not (fit|match)|mismatch/i;
+export const doubtful = (a: Answer | null): boolean => !!a && !!exactAddressOf(a) && DOUBT.test(a.reasoning ?? "");
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function radar(): { url: string; secret: string } {
@@ -413,6 +426,8 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         await save(round);
         await saveListingPhotos(job.runDir, images);
         await runInvestigation(job, images, c.listingText);
+        const again = recheckFor(round, r, getJob(job.id)?.answer ?? null);
+        if (again) queue.push(again);
       } catch (err) {
         r.outcome = "error";
         r.error = err instanceof Error ? err.message : String(err);
@@ -426,6 +441,17 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
   refresh(round);
   round.finishedAt = new Date().toISOString();
   await save(round);
+}
+
+/** A doubtful answer's second search, added to the round once per listing. */
+function recheckFor(round: PracticeRound, r: PracticeResult, answer: Answer | null): PracticeResult | null {
+  if (!RECHECK || r.recheck || !doubtful(answer)) return null;
+  r.doubt = true;
+  if (round.results.some((x) => x.recheck && x.propertyId === r.propertyId)) return null;
+  if (!round.models.includes(RECHECK_MODEL)) round.models.push(RECHECK_MODEL);
+  const again: PracticeResult = { ...r, jobId: null, model: RECHECK_MODEL, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, rank: undefined, rankOf: undefined, doubt: undefined, recheck: true, twin: undefined, twinChecked: undefined, error: undefined };
+  round.results.push(again);
+  return again;
 }
 
 export interface RoundSummary {
@@ -459,6 +485,9 @@ export interface RoundSummary {
   // Where the right house sat on the ranked list, over the runs that recorded it
   // (one per listing: the runs of a listing share the same list).
   ranks: { measured: number; top10: number; top120: number; median: number | null };
+  // Doubtful answers searched again: how many the second look turned right,
+  // turned from wrong to not sure, or turned from right to something else.
+  rechecks: { done: number; fixed: number; caught: number; broke: number };
 }
 
 export function summarize(round: PracticeRound): RoundSummary {
@@ -494,7 +523,22 @@ export function summarize(round: PracticeRound): RoundSummary {
     noProof: !!round.noProof,
     ...agreement(round),
     ranks: rankStats(round),
+    rechecks: recheckStats(round),
   };
+}
+
+function recheckStats(round: PracticeRound): RoundSummary["rechecks"] {
+  const out = { done: 0, fixed: 0, caught: 0, broke: 0 };
+  for (const again of round.results) {
+    if (!again.recheck || again.outcome === "running" || again.outcome === "error") continue;
+    const first = round.results.find((x) => x.doubt && x.propertyId === again.propertyId);
+    if (!first) continue;
+    out.done++;
+    if (first.outcome === "wrong" && again.outcome === "right") out.fixed++;
+    else if (first.outcome === "wrong" && again.outcome !== "wrong") out.caught++;
+    else if (first.outcome === "right" && again.outcome !== "right") out.broke++;
+  }
+  return out;
 }
 
 function rankStats(round: PracticeRound): RoundSummary["ranks"] {

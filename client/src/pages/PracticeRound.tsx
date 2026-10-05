@@ -212,7 +212,7 @@ export default function PracticeRound() {
           </Button>
         </div>
 
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-8">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-9">
           <Kpi
             label="Accuracy"
             value={round.accuracy != null ? `${round.accuracy}%` : "—"}
@@ -234,6 +234,12 @@ export default function PracticeRound() {
             label="Right house's rank"
             value={round.ranks?.measured ? (round.ranks.median != null ? `#${round.ranks.median}` : "off list") : "—"}
             hint={round.ranks?.measured ? `median · ${round.ranks.top10} top 10 · ${round.ranks.top120} top 120 of ${round.ranks.measured}` : "measured from new rounds on"}
+          />
+          <Kpi
+            label="Rechecked"
+            value={round.rechecks?.done ? `${round.rechecks.fixed + round.rechecks.caught} saved · ${round.rechecks.broke} lost` : "—"}
+            hint={round.rechecks?.done ? `${round.rechecks.done} doubtful answers · ${round.rechecks.fixed} turned right, ${round.rechecks.caught} wrong to not sure` : "doubtful answers, searched again by Opus"}
+            tone={!round.rechecks?.done ? undefined : round.rechecks.broke ? "bad" : "good"}
           />
           <Kpi label="Runs that found it" value={pct(round.right, round.total)} hint={`${round.right} of ${round.total} runs`} />
           <Kpi label="Average time" value={round.avgMinutes != null ? `${round.avgMinutes} min` : "—"} hint="per run · limit 15 min" />
