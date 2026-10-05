@@ -96,6 +96,8 @@ const CONCURRENCY = Number(process.env.PRACTICE_CONCURRENCY ?? 3);
 // USD, so the cap is converted at USD_PER_CHF.
 const BUDGET_CHF = Number(process.env.PRACTICE_BUDGET_CHF ?? 1);
 const USD_PER_CHF = Number(process.env.USD_PER_CHF ?? 1.25);
+// And 5 minutes (Daniel, 05.10): "find the right house fast".
+const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 5);
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function radar(): { url: string; secret: string } {
@@ -184,8 +186,11 @@ const rounds = new Map<string, PracticeRound>();
 async function save(round: PracticeRound): Promise<void> {
   await mkdir(dir(), { recursive: true });
   const f = fileOf(round.id);
-  await writeFile(`${f}.tmp`, JSON.stringify(round, null, 2));
-  await rename(`${f}.tmp`, f);
+  // Several searches finish at once: each write gets its own temp file, or
+  // two renames race over one and the loser crashes the round.
+  const tmp = `${f}.${randomUUID().slice(0, 8)}.tmp`;
+  await writeFile(tmp, JSON.stringify(round, null, 2));
+  await rename(tmp, f);
 }
 
 function refresh(round: PracticeRound): boolean {
@@ -219,9 +224,9 @@ export async function startRound(split: "practice" | "test", limit: number, mode
 }
 
 // Runs the round's searches, CONCURRENCY at a time, then keeps the score fresh.
-async function drive(round: PracticeRound, cases: PracticeCase[]): Promise<void> {
+async function drive(round: PracticeRound, cases: PracticeCase[], only?: PracticeResult[]): Promise<void> {
   const byId = new Map(cases.map((c) => [c.propertyId, c]));
-  const queue = [...round.results];
+  const queue = (only ?? round.results).filter((r) => byId.has(r.propertyId) && !r.jobId && r.outcome === "running");
   const worker = async () => {
     for (let r = queue.shift(); r; r = queue.shift()) {
       const c = byId.get(r.propertyId)!;
@@ -229,7 +234,7 @@ async function drive(round: PracticeRound, cases: PracticeCase[]): Promise<void>
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF },
+          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES },
           r.model,
         );
         r.jobId = job.id;
@@ -299,14 +304,46 @@ export async function getRound(id: string): Promise<PracticeRound | null> {
   if (hit) return hit;
   try {
     const r = JSON.parse(await readFile(fileOf(id), "utf8")) as PracticeRound;
-    // Read from disk, so no live drive() holds it: a search that never started
-    // was cut off by a restart (one that started resumes with its job).
-    for (const x of r.results)
-      if (!x.jobId && x.outcome === "running") Object.assign(x, { outcome: "error", error: "not started: the server restarted" });
+    // Read from disk, so no live drive() holds it: searches that never started
+    // wait for resumeRounds (one that started resumes with its job).
     rounds.set(r.id, r);
     return r;
   } catch {
     return null;
+  }
+}
+
+/**
+ * After a restart (a redeploy, a changed variable), carry on every round that
+ * still has searches waiting: fetch their listings from radar again and queue
+ * them as before. Searches already started resume with their own job.
+ */
+export async function resumeRounds(): Promise<void> {
+  let files: string[] = [];
+  try {
+    files = (await readdir(dir())).filter((f) => f.endsWith(".json"));
+  } catch {
+    return;
+  }
+  for (const f of files) {
+    const round = await getRound(f.replace(/\.json$/, ""));
+    if (!round || round.finishedAt) continue;
+    const waiting = round.results.filter((r) => !r.jobId && r.outcome === "running");
+    if (!waiting.length) continue;
+    try {
+      const want = new Set(waiting.map((r) => r.propertyId));
+      const cases = (await fetchCases(round.split, new Set(round.results.map((r) => r.propertyId)).size)).filter((c) =>
+        want.has(c.propertyId),
+      );
+      const found = new Set(cases.map((c) => c.propertyId));
+      for (const r of waiting)
+        if (!found.has(r.propertyId)) Object.assign(r, { outcome: "error", error: "radar no longer offers this listing" });
+      await save(round);
+      console.log(`[practice] round ${round.id}: resuming ${waiting.length} waiting searches`);
+      void drive(round, cases, waiting).catch((err) => console.error(`[practice] round ${round.id} crashed:`, err));
+    } catch (err) {
+      console.error(`[practice] round ${round.id} could not resume:`, err);
+    }
   }
 }
 

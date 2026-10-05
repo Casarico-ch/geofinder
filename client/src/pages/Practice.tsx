@@ -82,7 +82,7 @@ export default function Practice() {
             <h2 className="text-base font-semibold">Start a practice round</h2>
             <p className="text-sm text-muted-foreground">
               Every search model looks for listings whose building Radar already knows, with the address hidden. Each
-              model gets CHF 1 per listing; a run that reaches it without an answer counts as a failure.
+              model gets CHF 1 and 5 minutes per listing; a run that reaches either without an answer counts as a failure.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -117,7 +117,7 @@ export default function Practice() {
                 <TableHead className="text-right">Right</TableHead>
                 <TableHead className="text-right">Wrong</TableHead>
                 <TableHead className="text-right">Not sure</TableHead>
-                <TableHead className="text-right">Over budget</TableHead>
+                <TableHead className="text-right">Over limit</TableHead>
                 <TableHead className="text-right">Errors</TableHead>
                 <TableHead className="text-right">Avg min</TableHead>
                 <TableHead className="text-right">Avg cost</TableHead>
