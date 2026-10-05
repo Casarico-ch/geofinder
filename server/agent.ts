@@ -670,17 +670,19 @@ async function runLoop(
       job.activeMs = activeBefore + (Date.now() - loopStart - waitedMs);
       return job.activeMs / 60_000;
     };
-    const nearTimeLimit = () => elapsedMinutes() >= MAX_MINUTES * 0.85;
+    const maxMinutes = job.input.maxMinutes ?? MAX_MINUTES;
+    const nearTimeLimit = () => elapsedMinutes() >= maxMinutes * 0.85;
     const nearLimit = (step: number) => step >= MAX_STEPS - 15 || nearTimeLimit();
     let fastUnavailable = false;
     for (let i = startTurn; i < MAX_STEPS; i++) {
-      if (elapsedMinutes() >= MAX_MINUTES) {
+      if (elapsedMinutes() >= maxMinutes) {
+        if (job.input.maxMinutes != null) job.overBudget = true;
         await finishJob(job, {
           status: "done",
           answer: coerceAnswer({
             found: false,
             confidence: "unknown",
-            reasoning: `Did not converge within the ${MAX_MINUTES}-minute limit.` +
+            reasoning: `Did not converge within the ${maxMinutes}-minute limit.` +
               (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
           }),
         });

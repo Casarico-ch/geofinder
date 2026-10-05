@@ -184,8 +184,10 @@ export interface Job {
     radarUrl?: string; // the listing's page in Radar, the platform that sent it
     // Spend cap in USD: the run stops with no answer once its cost reaches it.
     budgetUsd?: number;
+    // Time cap in minutes, in place of AGENT_MAX_MINUTES; reaching it counts as over budget.
+    maxMinutes?: number;
   };
-  overBudget?: boolean; // stopped by input.budgetUsd
+  overBudget?: boolean; // stopped by input.budgetUsd or input.maxMinutes
   steps: Step[];
   answer: Answer | null;
   error?: string;
