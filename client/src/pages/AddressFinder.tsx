@@ -22,6 +22,7 @@ import {
   Pause,
   Play,
   Plus,
+  RotateCcw,
   Search,
   Terminal,
   X,
@@ -80,18 +81,19 @@ interface TokenUsage {
   total: number;
 }
 
-const MODEL_IDS = [
-  "claude-opus-5-5",
-  "claude-sonnet-5-5",
-  "claude-fable-5",
-  "claude-fable-5-1",
-] as const;
-type ModelId = (typeof MODEL_IDS)[number];
+// The search every listing gets, as on the practice track (server/platform.ts
+// LISTING_MODELS): Sonnet 5.5 at low effort, rechecked by Opus 5.5 high when
+// its answer is doubtful or not sure.
+const SEARCH_MODEL = "sonnet-5-5-low";
+const SEARCH_MODELS = [SEARCH_MODEL];
+type ModelId = string;
 // Also labels past runs on models no longer offered.
 const MODEL_LABEL: Record<string, string> = {
   "claude-opus-4-8": "Opus 4.8",
   "claude-opus-5-5": "Opus 5.5",
   "claude-sonnet-5-5": "Sonnet 5.5",
+  "sonnet-5-5-low": "Sonnet 5.5 · low",
+  "opus-5-5-high": "Opus 5.5 · high · recheck",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
@@ -99,13 +101,6 @@ const MODEL_LABEL: Record<string, string> = {
   "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
   "gemini-3.8-flash": "Gemini 3.8 Flash",
   "gemini-3.5-flash": "Gemini 3.5 Flash",
-};
-// Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
-const MODEL_COST_HINT: Record<ModelId, string> = {
-  "claude-opus-5-5": "default",
-  "claude-sonnet-5-5": "0.5×",
-  "claude-fable-5": "2.5×",
-  "claude-fable-5-1": "2.5×",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -417,6 +412,67 @@ function PotentialView({ p }: { p: BuildPotential }) {
 }
 
 // What this run is researching: the listing as the caller sent it.
+interface RecheckInfo {
+  requestId: string | null;
+  requestStatus: string | null;
+  recheck: { jobId: string; model: string; status: string; answer: { address: string | null; parcel: string | null; confidence: string } | null } | null;
+}
+
+/**
+ * A doubtful or unsure answer is searched again by the recheck model, whose
+ * answer then counts (server/platform.ts recheckIfDoubtful). Shown on the
+ * first search's page, which is where New search lands.
+ */
+function RecheckNote({ jobId, settled }: { jobId: string; settled: boolean }) {
+  const [info, setInfo] = useState<RecheckInfo | null>(null);
+  useEffect(() => {
+    if (!settled) return;
+    let alive = true;
+    const tick = async (): Promise<boolean> => {
+      try {
+        const res = await fetch(`/api/requests/for-job/${jobId}`);
+        if (!res.ok) return false;
+        const data = (await res.json()) as RecheckInfo;
+        if (alive) setInfo(data);
+        const live = (s: string | null | undefined) => s === "running" || s === "paused";
+        return !live(data.recheck?.status) && !live(data.requestStatus);
+      } catch {
+        return false;
+      }
+    };
+    void tick();
+    const timer = setInterval(async () => {
+      if (await tick()) clearInterval(timer);
+    }, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [jobId, settled]);
+  const r = info?.recheck;
+  if (!r || r.jobId === jobId) return null;
+  const busy = r.status === "running" || r.status === "paused";
+  const who = (MODEL_LABEL[r.model] ?? r.model).replace(" · recheck", "");
+  const exact = r.answer && ["street", "building"].includes(r.answer.confidence) ? (r.answer.address ?? r.answer.parcel) : null;
+  return (
+    <div className="rounded-xl border bg-card p-4 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-start gap-2 min-w-0">
+        <RotateCcw className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+        <p className="text-sm">
+          {busy
+            ? `This answer was doubtful, so ${who} is searching again. Its answer will count.`
+            : r.status === "done"
+              ? `Rechecked by ${who}: ${exact ?? "not sure"}. This is the answer that counts.`
+              : `The recheck by ${who} did not finish, so this answer stands.`}
+        </p>
+      </div>
+      <Button variant="outline" size="sm" asChild className="shrink-0">
+        <Link href={`/i/${r.jobId}`}>Open the recheck</Link>
+      </Button>
+    </div>
+  );
+}
+
 function ListingCard({ job }: { job: Job }) {
   const { input } = job;
   const body = (input.listingText ?? "").replace(/^Municipality \/ commune: [^\n]*\n*/, "").trim();
@@ -524,15 +580,7 @@ export default function AddressFinder() {
   const [pictures, setPictures] = useState<Picture[]>([]);
   const [municipality, setMunicipality] = useState("");
   const [description, setDescription] = useState("");
-  // One investigation is started per selected model, all from the same inputs,
-  // so several models can be compared on the first try.
-  // The same four a Radar listing runs on (server/platform.ts LISTING_MODELS).
-  const [models, setModels] = useState<ModelId[]>(["claude-sonnet-5-5", "claude-opus-5-5"]);
-  const toggleModel = useCallback((m: ModelId) => {
-    setModels((cur) =>
-      cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
-    );
-  }, []);
+  const models = SEARCH_MODELS;
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1031,26 +1079,10 @@ export default function AddressFinder() {
                   />
                 </Field>
 
-                <Field label="Models — pick one or more to compare">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {MODEL_IDS.map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => toggleModel(m)}
-                        aria-pressed={models.includes(m)}
-                        className={`h-9 px-2 rounded-md border text-sm font-medium transition-colors truncate ${
-                          models.includes(m)
-                            ? "border-primary bg-primary/10 text-foreground"
-                            : "border-input bg-card text-muted-foreground hover:border-primary/40"
-                        }`}
-                      >
-                        {MODEL_LABEL[m]}
-                        {` · ${MODEL_COST_HINT[m]}`}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
+                <p className="text-xs text-muted-foreground">
+                  Searched by Sonnet 5.5 (low effort); a doubtful or unsure answer is searched again by Opus 5.5 (high
+                  effort), whose answer then counts.
+                </p>
 
                 <Button onClick={() => void start()} disabled={submitting || pictures.length === 0} className="w-full h-10">
                   {submitting ? (
@@ -1058,8 +1090,6 @@ export default function AddressFinder() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Starting…
                     </>
-                  ) : models.length > 1 ? (
-                    `Find address · ${models.length} models`
                   ) : (
                     "Find address"
                   )}
@@ -1183,6 +1213,8 @@ export default function AddressFinder() {
                   </div>
                 </div>
               </div>
+
+              {jobId && <RecheckNote jobId={jobId} settled={job.status !== "running" && job.status !== "paused"} />}
 
               <ListingCard job={job} />
 

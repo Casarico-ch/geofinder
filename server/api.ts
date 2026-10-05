@@ -21,6 +21,7 @@ import {
   type AgentImage,
 } from "./agent";
 import { exportJobHtml } from "./export";
+import { runLimits } from "./practice";
 import { claudeConfigured, poolOn, poolStatus } from "./claude-pool";
 import { geminiConfigured, isGemini } from "./gemini";
 import { analyzeBuildPotential } from "./potential";
@@ -140,6 +141,7 @@ export function registerApiRoutes(app: Express) {
           listingId: parsed.data.listingId,
           listingUrl: parsed.data.listingUrl,
           radarUrl: parsed.data.radarUrl,
+          ...runLimits(),
         },
         parsed.data.model,
       );
@@ -279,6 +281,7 @@ export function registerApiRoutes(app: Express) {
           listingId: src.input.listingId,
           listingUrl: src.input.listingUrl,
           radarUrl: src.input.radarUrl,
+          ...runLimits(),
         },
         override.data.model ?? runnableModel(src.model),
       );
