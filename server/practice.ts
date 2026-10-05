@@ -115,7 +115,7 @@ const CONCURRENCY = Number(process.env.PRACTICE_CONCURRENCY ?? 3);
 // Each model gets CHF 1 per listing (Daniel, 05.10); a run that reaches it
 // without an answer counts as a failure, whatever the model. Costs are kept in
 // USD, so the cap is converted at USD_PER_CHF.
-const BUDGET_CHF = Number(process.env.PRACTICE_BUDGET_CHF ?? 1);
+const BUDGET_CHF = Number(process.env.PRACTICE_BUDGET_CHF ?? 2); // CHF 2 (Daniel, 05.10), was 1
 const USD_PER_CHF = Number(process.env.USD_PER_CHF ?? 1.25);
 // 15 minutes (Daniel, 05.10): 7 of 100 houses ran out of the old 5 minutes with
 // the right one on their list (#7-#73); runs are on Sonnet low now, so cheap.
