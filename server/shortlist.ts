@@ -329,7 +329,8 @@ async function rankByListing(
   if (l?.kind === "house") used.push("a single house");
   if (l?.kind === "flat") used.push("a flat in a block");
   if (l?.units) used.push(`${l.units} homes in the building`);
-  const plot = l?.landM2 != null && !l.sharedLand && l.kind !== "flat";
+  const V = process.env.PLOT_VARIANT ?? "A";
+  const plot = l?.landM2 != null && !l.sharedLand && l.kind !== "flat" && !(V !== "A" && l.landM2 < 100);
   const flat = l?.livingM2 != null && l.kind === "flat";
   if (plot) used.push(`plot ${l!.landM2} m²`);
   if (flat) used.push(`a flat of ${l!.livingM2} m²`);
@@ -395,6 +396,9 @@ async function rankByListing(
               strong.add(b);
               why.set(b, `plot ${group[0].number}: ${total} m² ✓`);
             }
+          } else if (V === "B") {
+            const off = Math.abs(p.areaM2 - l!.landM2!) / l!.landM2!;
+            score.set(b, score.get(b)! + (off <= 0.25 ? -1 : 1));
           } else if (Math.abs(p.areaM2 - l!.landM2!) / l!.landM2! > 0.15) score.set(b, score.get(b)! + 1);
         } else {
           const flats = await flatsOf(b.egid).catch(() => []);
