@@ -51,9 +51,11 @@ import {
   saveSearch,
   setPromptVersion,
   setSignature,
+  setAccount,
   DEFAULT_MODEL,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
+import { onLogin, poolOn } from "./claude-pool";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -641,21 +643,30 @@ async function runLoop(
   messages: Anthropic.Messages.MessageParam[],
   startTurn: number,
 ): Promise<void> {
-  const client = new Anthropic();
-  const files = await RunFiles.load(client, job.runDir);
-
-  try {
-    if (startTurn > 0) {
-      const lost = await files.verify();
+  // Which Claude login the run is on (claude-pool.ts; null = the API key) and
+  // the picture uploads made through each one — pictures belong to an account.
+  let login: string | null = job.account ?? null;
+  const filesByLogin = new Map<string | null, RunFiles>();
+  const filesFor = async (client: Anthropic, label: string | null): Promise<RunFiles> => {
+    let f = filesByLogin.get(label);
+    if (!f) {
+      f = await RunFiles.load(client, job.runDir, label);
+      filesByLogin.set(label, f);
+      const lost = await f.verify(); // a map left by a resumed run may hold expired references
       if (lost > 0)
         await addStep(job, { kind: "note", title: `${lost} uploaded picture(s) had expired and are sent again` });
     }
+    return f;
+  };
+  let waitedMs = 0; // time spent waiting for a login to come back; not counted as working time
+
+  try {
     // Active running time only: a run paused for a day, or resumed after a
     // redeploy, must not trip the time limit on its first turn.
     const activeBefore = job.activeMs ?? 0;
     const loopStart = Date.now();
     const elapsedMinutes = () => {
-      job.activeMs = activeBefore + (Date.now() - loopStart);
+      job.activeMs = activeBefore + (Date.now() - loopStart - waitedMs);
       return job.activeMs / 60_000;
     };
     const nearTimeLimit = () => elapsedMinutes() >= MAX_MINUTES * 0.85;
@@ -692,10 +703,8 @@ async function runLoop(
         return;
       }
 
-      await files.upload(messages);
-      if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
       const model = job.model ?? MODEL;
-      const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
+      const request = (files: RunFiles): Anthropic.Messages.MessageCreateParamsNonStreaming => ({
         model,
         max_tokens: 16_000,
         // display: "summarized" so the model's reasoning is actually returned
@@ -715,25 +724,39 @@ async function runLoop(
         // model has already downloaded are read from cache, not reprocessed.
         cache_control: { type: "ephemeral" },
         messages: files.wire(messages),
-      };
-      let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable;
-      let resp: Anthropic.Messages.Message;
-      try {
-        resp = fast
-          ? ((await client.beta.messages.create({
-              ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
-              speed: "fast",
-              betas: ["fast-mode-2026-02-01"],
-            })) as unknown as Anthropic.Messages.Message)
-          : await client.messages.create(params);
-      } catch (err) {
-        // Fast mode has its own rate limit: when it is exhausted (or refused),
-        // finish the run at standard speed instead of failing it.
-        if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError)) throw err;
-        fastUnavailable = true;
-        fast = false;
-        await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
-        resp = await client.messages.create(params);
+      });
+      // Fast mode is an API-key feature; subscription logins run at standard speed.
+      let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable && !poolOn();
+      const turn = await onLogin(login ?? undefined, async (client, label) => {
+        const files = await filesFor(client, label);
+        await files.upload(messages);
+        if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
+        const params = request(files);
+        try {
+          return fast
+            ? ((await client.beta.messages.create({
+                ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+                speed: "fast",
+                betas: ["fast-mode-2026-02-01"],
+              })) as unknown as Anthropic.Messages.Message)
+            : await client.messages.create(params);
+        } catch (err) {
+          // Fast mode has its own rate limit: when it is exhausted (or refused),
+          // finish the run at standard speed instead of failing it.
+          if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError)) throw err;
+          fastUnavailable = true;
+          fast = false;
+          await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
+          return await client.messages.create(params);
+        }
+      });
+      const resp = turn.value;
+      waitedMs += turn.waitedMs;
+      if (turn.label !== login) {
+        if (login && turn.label)
+          await addStep(job, { kind: "note", title: `Claude login ${login} is unavailable (limit reached or refused) — continuing on ${turn.label}` });
+        login = turn.label;
+        await setAccount(job, login);
       }
 
       // Record token usage for this turn (input includes cache traffic so the
@@ -878,7 +901,7 @@ async function runLoop(
       // model's reasoning — exactly as the model saw it, for the export.
       await saveConversation(job, messages);
       await clearState(job);
-      await files.deleteAll();
+      for (const f of Array.from(filesByLogin.values())) await f.deleteAll();
     }
   }
 }

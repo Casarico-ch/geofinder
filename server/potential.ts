@@ -11,6 +11,7 @@
 // number, HONEST and flagged where it is discretionary. It never fabricates.
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
+import { onLogin } from "./claude-pool";
 import {
   COMPUTER_TOOLS,
   MODEL,
@@ -165,14 +166,14 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
     title: "— Construction potential — analysing how much more can be built",
   });
 
-  const client = new Anthropic();
+  let login = job.account ?? undefined; // stay on the investigation's Claude login while it can serve
   const messages: Anthropic.Messages.MessageParam[] = [
     { role: "user", content: seedMessage(answer) },
   ];
 
   try {
     for (let i = 0; i < MAX_STEPS; i++) {
-      const resp = await client.messages.create({
+      const turn = await onLogin(login, (client) => client.messages.create({
         model: job.model ?? MODEL,
         max_tokens: 16_000,
         thinking: { type: "adaptive", display: "summarized" },
@@ -183,7 +184,9 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
         tools: TOOLS,
         cache_control: { type: "ephemeral" },
         messages,
-      });
+      }));
+      const resp = turn.value;
+      login = turn.label ?? undefined;
 
       const u = resp.usage;
       if (u) {

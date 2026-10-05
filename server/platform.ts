@@ -11,6 +11,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
+import { claudeConfigured } from "./claude-pool";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
 import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
@@ -397,7 +398,7 @@ export function registerPlatformRoutes(app: Express) {
   });
 
   app.post("/v1/address", async (req: Request, res: Response) => {
-    if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+    if (!claudeConfigured()) {
       res.status(503).json({ error: "Not configured. Set ANTHROPIC_API_KEY on the server." });
       return;
     }
