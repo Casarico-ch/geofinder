@@ -408,8 +408,10 @@ export function registerPlatformRoutes(app: Express) {
   // set, scored against the known building. Behind the same API key as /v1.
   const roundSchema = z.object({
     split: z.enum(["practice", "test"]).default("practice"),
-    limit: z.number().int().min(1).max(200).default(10),
-    models: z.array(z.enum(MODELS)).min(1).max(MODELS.length).default(["claude-sonnet-5-5"]),
+    // The first rounds run every model a real search runs, so the scoreboard
+    // compares their approaches on the same listings.
+    limit: z.number().int().min(1).max(200).default(20),
+    models: z.array(z.enum(MODELS)).min(1).max(MODELS.length).optional(),
   });
   app.post("/v1/practice/rounds", async (req: Request, res: Response) => {
     const parsed = roundSchema.safeParse(req.body ?? {});
@@ -418,7 +420,7 @@ export function registerPlatformRoutes(app: Express) {
       return;
     }
     try {
-      const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models);
+      const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models ?? listingModels());
       res.status(202).json(summarize(round));
     } catch (err) {
       res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
