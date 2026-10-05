@@ -19,12 +19,15 @@ import { onLogin } from "./claude-pool";
 import { streetOf } from "./consensus";
 import { getJob } from "./jobs";
 import { loadLessons, keptLessons, newLessonId, saveLessons, type Kpis, type Lesson } from "./lessons-store";
-import { allRounds, getRound, kpisOf, markReviewed, settleRound, startRound, truthCandidate, type PracticeRound } from "./practice";
+import { allRounds, deleteRound, getRound, kpisOf, markReviewed, settleRound, startRound, truthCandidate, type Pair, type PracticeRound } from "./practice";
 
 const AUTO = process.env.PRACTICE_AUTO_LESSONS !== "0";
 const REVIEWER = "claude-opus-5-5";
 const TICK_MS = 60_000;
 const MAX_RUNS_REVIEWED = 12;
+// A lesson is tested on a small batch of the base round's runs, not all of it
+// (Daniel, 05.10: "otherwise it's a neverending loop").
+const TRIAL_RUNS = Number(process.env.PRACTICE_TRIAL_RUNS ?? 12);
 
 /** The decision rule, in one place: never less accurate, and better at something. */
 export function judge(before: Kpis, after: Kpis): { keep: boolean; verdict: string } {
@@ -146,31 +149,40 @@ Answer with JSON only: {"lessons":[{"text":"the rule","why":"which runs show it,
 // Testing and deciding
 // ---------------------------------------------------------------------------
 
-/** Start testing a proposed lesson against its base round. */
+/**
+ * The small batch a lesson is tested on: the runs it should fix (every wrong
+ * one, then the misses) and, as guards, runs that were right — a lesson that
+ * breaks a right answer must show it. At most TRIAL_RUNS.
+ */
+export function trialPairs(base: PracticeRound, max = TRIAL_RUNS): Pair[] {
+  const of = (o: string) => base.results.filter((r) => r.outcome === o);
+  const guards = Math.max(1, Math.floor(max / 3));
+  const right = of("right").slice(0, guards);
+  const fix = [...of("wrong"), ...of("over_budget"), ...of("unsure")].slice(0, max - right.length);
+  return [...fix, ...right].map((r) => ({ propertyId: r.propertyId, model: r.model }));
+}
+
+/** Start testing a proposed lesson against its base round, on a small batch. */
 export async function testLesson(lesson: Lesson): Promise<void> {
   const base = await getRound(lesson.baseRound ?? lesson.fromRound);
   if (!base) throw new Error("Its base round was deleted.");
-  const ids = Array.from(new Set(base.results.map((r) => r.propertyId)));
-  const trial = await startRound(base.split, ids.length, base.models, {
-    propertyIds: ids,
+  const pairs = trialPairs(base);
+  if (!pairs.length) throw new Error("Its base round has no finished runs to test on.");
+  const trial = await startRound(base.split, pairs.length, base.models, {
+    pairs,
     lessons: [...(await keptLessons()), lesson.text],
     trialOf: lesson.id,
   });
-  Object.assign(lesson, { status: "testing", trialRound: trial.id, before: kpisOf(base) });
+  Object.assign(lesson, { status: "testing", trialRound: trial.id, pairs, before: kpisOf(base, pairs) });
   await saveLessons();
 }
 
 async function decide(lesson: Lesson, trial: PracticeRound): Promise<void> {
   const base = await getRound(lesson.baseRound ?? lesson.fromRound);
-  const before = lesson.before ?? (base ? kpisOf(base) : kpisOf(trial));
+  const before = lesson.before ?? (base ? kpisOf(base, lesson.pairs as Pair[] | undefined) : kpisOf(trial));
   const after = kpisOf(trial);
   const { keep, verdict } = judge(before, after);
   Object.assign(lesson, { status: keep ? "kept" : "dropped", before, after, verdict, decidedAt: new Date().toISOString(), decidedBy: "test" });
-  // A kept lesson changes what "before" means: the next lessons from the same
-  // listings are compared with this trial, which already read it.
-  if (keep)
-    for (const l of await loadLessons())
-      if (l.status === "proposed" && l.baseRound === lesson.baseRound) l.baseRound = trial.id;
   await saveLessons();
   console.log(`[lessons] ${lesson.id}: ${verdict}`);
 }
@@ -180,6 +192,49 @@ async function decide(lesson: Lesson, trial: PracticeRound): Promise<void> {
 // ---------------------------------------------------------------------------
 
 let busy = false;
+const reviewing = new Set<string>();
+
+/** Where a round's learning stands, for its row on the Practice page. */
+export interface Learning {
+  state: "searching" | "paused" | "waiting" | "reviewing" | "testing" | "done" | "failed" | "off";
+  proposed: number; // waiting to be tested
+  testing: number;
+  kept: number;
+  dropped: number;
+  error?: string;
+}
+
+export async function learningOf(round: PracticeRound): Promise<Learning> {
+  const mine = (await loadLessons()).filter((l) => l.fromRound === round.id);
+  const n = (st: Lesson["status"]) => mine.filter((l) => l.status === st).length;
+  const counts = { proposed: n("proposed"), testing: n("testing"), kept: n("kept"), dropped: n("dropped") };
+  const state: Learning["state"] = round.paused
+    ? "paused"
+    : !round.finishedAt
+      ? "searching"
+      : reviewing.has(round.id)
+        ? "reviewing"
+        : round.reviewError
+          ? "failed"
+          : !round.reviewed
+            ? AUTO
+              ? "waiting"
+              : "off"
+            : counts.proposed + counts.testing
+              ? "testing"
+              : "done";
+  return { state, ...counts, ...(round.reviewError ? { error: round.reviewError } : {}) };
+}
+
+/** Deleting a round takes its lessons' tests and the lessons not kept with it. */
+export async function forgetRound(id: string): Promise<void> {
+  const lessons = await loadLessons();
+  for (const l of lessons.filter((x) => x.fromRound === id)) {
+    if (l.trialRound) await deleteRound(l.trialRound);
+    if (l.status !== "kept") lessons.splice(lessons.indexOf(l), 1);
+  }
+  await saveLessons();
+}
 
 async function beat(): Promise<void> {
   if (busy) return;
@@ -192,7 +247,12 @@ async function beat(): Promise<void> {
     // Decide every lesson whose test has finished.
     for (const l of lessons.filter((x) => x.status === "testing")) {
       const trial = l.trialRound ? await getRound(l.trialRound) : null;
-      if (!trial) {
+      // A test started before tests were small re-runs a whole round: stop it and test again, small.
+      if (trial && !l.pairs) {
+        await deleteRound(trial.id);
+        Object.assign(l, { status: "proposed", trialRound: undefined, before: undefined });
+        await saveLessons();
+      } else if (!trial) {
         Object.assign(l, { status: "proposed", trialRound: undefined });
         await saveLessons();
       } else if (trial.finishedAt) await decide(l, trial);
@@ -201,16 +261,23 @@ async function beat(): Promise<void> {
 
     // Learn from every finished ordinary round that has enough real runs.
     for (const r of rounds.filter((x) => x.finishedAt && !x.trialOf && !x.reviewed)) {
-      await markReviewed(r);
       const scored = r.results.filter((x) => x.outcome !== "error").length;
-      if (scored < r.results.length / 2) continue;
+      if (scored < r.results.length / 2) {
+        await markReviewed(r, "Too many runs ended in an error to learn from.");
+        continue;
+      }
+      reviewing.add(r.id);
       try {
         const found = await review(r);
         lessons.push(...found);
         await saveLessons();
+        await markReviewed(r);
         console.log(`[lessons] round ${r.id}: ${found.length} lesson(s) proposed`);
       } catch (err) {
+        await markReviewed(r, err instanceof Error ? err.message : String(err));
         console.error(`[lessons] review of round ${r.id} failed:`, err);
+      } finally {
+        reviewing.delete(r.id);
       }
     }
 

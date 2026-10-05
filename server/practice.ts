@@ -88,7 +88,8 @@ export interface PracticeRound {
   deleted?: boolean; // never written to disk again
   lessons?: string[]; // the practice lessons every search of the round reads
   trialOf?: string; // the lesson this round tests (lessons.ts)
-  reviewed?: boolean; // lessons were drawn from it
+  reviewed?: boolean; // the reviewer has read it (lessons.ts)
+  reviewError?: string; // why the reviewer could not
   split: "practice" | "test";
   models: ModelId[];
   results: PracticeResult[];
@@ -251,11 +252,12 @@ export async function startRound(
   limit: number,
   models: ModelId[],
   // A lesson's test: the same listings as the round it is compared with, and its own lessons.
-  opts: { propertyIds?: number[]; lessons?: string[]; trialOf?: string } = {},
+  opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string } = {},
 ): Promise<PracticeRound> {
   const all = await fetchCases(split, Infinity);
-  const cases = opts.propertyIds
-    ? opts.propertyIds.map((id) => all.find((c) => c.propertyId === id)).filter((c): c is PracticeCase => !!c)
+  const ids = opts.pairs ? Array.from(new Set(opts.pairs.map((p) => p.propertyId))) : opts.propertyIds;
+  const cases = ids
+    ? ids.map((id) => all.find((c) => c.propertyId === id)).filter((c): c is PracticeCase => !!c)
     : sampleCases(all, limit);
   if (!cases.length) throw new Error(`Radar has no ${split} cases yet.`);
   const round: PracticeRound = {
@@ -269,7 +271,8 @@ export async function startRound(
   };
   for (const c of cases)
     for (const model of models)
-      round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null });
+      if (!opts.pairs || opts.pairs.some((p) => p.propertyId === c.propertyId && p.model === model))
+        round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null });
   rounds.set(round.id, round);
   await save(round);
   void drive(round, cases).catch((err) => console.error(`[practice] round ${round.id} crashed:`, err));
@@ -497,14 +500,26 @@ export async function settleRound(round: PracticeRound): Promise<boolean> {
   return true;
 }
 
-export async function markReviewed(round: PracticeRound): Promise<void> {
+export async function markReviewed(round: PracticeRound, error?: string): Promise<void> {
   round.reviewed = true;
+  if (error) round.reviewError = error;
+  else delete round.reviewError;
   await save(round);
 }
 
 /** The round's score on the goal. */
-export function kpisOf(round: PracticeRound): Kpis {
-  const s = summarize(round);
+/** One listing searched by one model: the unit a lesson's test re-runs. */
+export interface Pair {
+  propertyId: number;
+  model: ModelId;
+}
+
+/** The round's score on the goal, over all its runs or only the given pairs. */
+export function kpisOf(round: PracticeRound, pairs?: Pair[]): Kpis {
+  const only = pairs
+    ? { ...round, results: round.results.filter((r) => pairs.some((p) => p.propertyId === r.propertyId && p.model === r.model)) }
+    : round;
+  const s = summarize(only);
   return {
     runs: s.total,
     right: s.right,

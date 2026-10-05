@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { Link } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
 import { Badge } from "@/components/ui/badge";
@@ -8,11 +9,18 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, Pause, Play, Trash2 } from "lucide-react";
-import { Link } from "wouter";
-import { Fragment } from "react";
 
-// Mirrors RoundSummary in server/practice.ts.
+// A practice round, as GET /api/practice/rounds returns it (RoundSummary + learning).
+interface Learning {
+  state: "searching" | "paused" | "waiting" | "reviewing" | "testing" | "done" | "failed" | "off";
+  proposed: number;
+  testing: number;
+  kept: number;
+  dropped: number;
+  error?: string;
+}
 interface Round {
   id: string;
   createdAt: string;
@@ -32,11 +40,12 @@ interface Round {
   running: number;
   avgMinutes: number | null;
   avgCostUsd: number | null;
+  learning: Learning | null;
 }
 
 const SIZES = [5, 10, 20, 50, 100];
 
-// Mirrors Lesson in server/lessons-store.ts.
+// A lesson, as server/lessons-store.ts keeps it.
 interface Kpis {
   runs: number;
   right: number;
@@ -52,6 +61,9 @@ interface Lesson {
   why: string;
   status: "proposed" | "testing" | "kept" | "dropped";
   createdAt: string;
+  fromRound: string;
+  trialRound?: string;
+  pairs?: { propertyId: number; model: string }[];
   before?: Kpis;
   after?: Kpis;
   verdict?: string;
@@ -170,22 +182,129 @@ const kpiLine = (k?: Kpis) =>
 const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
+// The Learning cell of a round: where the review and the lesson tests stand.
+function LearningBadge({ l }: { l: Learning | null }) {
+  if (!l) return null;
+  const tested = l.kept + l.dropped;
+  const total = tested + l.proposed + l.testing;
+  const text: Record<Learning["state"], string> = {
+    searching: "After the searches",
+    paused: "Paused",
+    waiting: "Review starts shortly",
+    reviewing: "Reviewing…",
+    testing: `Testing lessons ${tested + 1} of ${total}`,
+    done: total ? `Done · ${l.kept} kept, ${l.dropped} dropped` : "Done · nothing to learn",
+    failed: "Review failed",
+    off: "Automatic learning is off",
+  };
+  const tone =
+    l.state === "done"
+      ? "bg-emerald-500/10 text-emerald-700"
+      : l.state === "failed"
+        ? "bg-destructive/10 text-destructive"
+        : l.state === "reviewing" || l.state === "testing"
+          ? "bg-primary/10 text-primary"
+          : "bg-muted text-muted-foreground";
+  const badge = (
+    <Badge variant="outline" className={`border-transparent font-normal whitespace-nowrap ${tone}`}>
+      {(l.state === "reviewing" || l.state === "testing") && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+      {text[l.state]}
+    </Badge>
+  );
+  if (!l.error) return badge;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+      <TooltipContent className="max-w-sm">{l.error}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// The lessons drawn from one round: each with its evidence, its test on a
+// small batch of the round's runs, and the decision.
+function RoundLessons({
+  lessons,
+  models,
+  busy,
+  onAct,
+}: {
+  lessons: Lesson[];
+  models: string[];
+  busy: string | null;
+  onAct: (l: Lesson, a: "keep" | "drop" | "test" | "delete") => void;
+}) {
+  const [shown, setShown] = useState<string | null>(null);
+  if (!lessons.length) return <p className="text-sm text-muted-foreground px-3 pb-3">No lesson from this round yet.</p>;
+  return (
+    <div className="divide-y">
+      {lessons.map((l) => (
+        <div key={l.id} className="px-3 py-3 space-y-1.5">
+          <div className="flex flex-wrap items-start gap-2">
+            <Badge variant={STATUS[l.status].variant} className="shrink-0">
+              {STATUS[l.status].label}
+            </Badge>
+            <p className="text-sm flex-1 min-w-60">{l.text}</p>
+            <div className="flex gap-1 shrink-0">
+              {l.status === "proposed" && (
+                <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => onAct(l, "test")}>
+                  Test now
+                </Button>
+              )}
+              {l.status === "kept" ? (
+                <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => onAct(l, "drop")}>
+                  Drop
+                </Button>
+              ) : (
+                <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => onAct(l, "keep")}>
+                  Keep
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => onAct(l, "delete")}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Why: {l.why}</p>
+          {l.before && (
+            <p className="text-xs">
+              Tested on {l.pairs?.length ?? l.before.runs} runs · before: {kpiLine(l.before)} · after: {kpiLine(l.after)}
+            </p>
+          )}
+          {l.verdict && <p className="text-xs text-muted-foreground">{l.verdict}</p>}
+          {l.trialRound && (
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setShown(shown === l.id ? null : l.id)}>
+              {shown === l.id ? "Hide its test" : "Show its test"}
+            </Button>
+          )}
+          {shown === l.id && l.trialRound && (
+            <div className="rounded-md border bg-background">
+              <RoundDetails id={l.trialRound} models={models} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const LEARNING_HELP =
+  "After a round, a reviewer reads its failed and slow runs and proposes rules. Each rule is tested on a small batch of that round's runs: the ones it should fix and a few that were right. It is kept only if no answer turns wrong and the search finds more, or the same faster and cheaper. Kept lessons are read by every search.";
+
 // The test track: GeoFinder searches listings whose building Radar already
-// knows (address hidden), and every answer is scored against it.
+// knows (address hidden), every answer is scored, and each round teaches it.
 export default function Practice() {
   const [rounds, setRounds] = useState<Round[] | null>(null);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [size, setSize] = useState("20");
   const [starting, setStarting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Round | null>(null);
-  const [lessons, setLessons] = useState<Lesson[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const res = await fetch("/api/practice/rounds");
-      if (res.ok) setRounds((await res.json()).rounds);
-      const ls = await fetch("/api/practice/lessons");
+      const [rs, ls] = await Promise.all([fetch("/api/practice/rounds"), fetch("/api/practice/lessons")]);
+      if (rs.ok) setRounds((await rs.json()).rounds);
       if (ls.ok) setLessons((await ls.json()).lessons);
     } catch {
       /* the next poll tries again */
@@ -197,6 +316,21 @@ export default function Practice() {
     const t = setInterval(load, 10_000);
     return () => clearInterval(t);
   }, []);
+
+  const call = async (id: string, url: string, method: "POST" | "DELETE", done?: string) => {
+    setBusy(id);
+    try {
+      const res = await fetch(url, { method });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      if (done) toast.success(done);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const start = async () => {
     setStarting(true);
@@ -217,48 +351,35 @@ export default function Practice() {
     }
   };
 
-  // Pause, resume or delete one round.
-  const act = async (r: Round, action: "pause" | "resume" | "delete") => {
-    setBusy(r.id);
-    try {
-      const res = await fetch(`/api/practice/rounds/${r.id}${action === "delete" ? "" : `/${action}`}`, {
-        method: action === "delete" ? "DELETE" : "POST",
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-      toast.success(action === "pause" ? "Round paused" : action === "resume" ? "Round resumed" : "Round deleted");
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(null);
-    }
-  };
+  const roundAct = (r: Round, action: "pause" | "resume" | "delete") =>
+    call(
+      r.id,
+      `/api/practice/rounds/${r.id}${action === "delete" ? "" : `/${action}`}`,
+      action === "delete" ? "DELETE" : "POST",
+      action === "pause" ? "Round paused" : action === "resume" ? "Round resumed" : "Round deleted",
+    );
+  const lessonAct = (l: Lesson, action: "keep" | "drop" | "test" | "delete") =>
+    call(l.id, `/api/practice/lessons/${l.id}/${action}`, "POST");
 
-  const lessonAct = async (l: Lesson, action: "keep" | "drop" | "test" | "delete") => {
-    setBusy(l.id);
-    try {
-      const res = await fetch(`/api/practice/lessons/${l.id}/${action}`, { method: "POST" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(null);
-    }
-  };
+  // Lesson tests are shown inside the round they came from, not as rounds of their own.
+  const shown = rounds?.filter((r) => !r.trialOf) ?? null;
+  const inUse = lessons.filter((l) => l.status === "kept").length;
 
   return (
     <div className="min-h-screen bg-background">
       <AdminHeader subtitle="Practice" />
       <main className="container py-6 space-y-6">
         <Card className="p-5 space-y-4">
-          <div>
+          <div className="space-y-1">
             <h2 className="text-base font-semibold">Start a practice round</h2>
             <p className="text-sm text-muted-foreground">
-              Every search model looks for listings picked at random across Switzerland whose building Radar already knows, with the address hidden. Each
-              model gets CHF 1 and 5 minutes per listing; a run that reaches either without an answer counts as a failure.
+              Every search model looks for listings picked at random across Switzerland whose building Radar already knows,
+              with the address hidden. Each model gets CHF 1 and 5 minutes per listing; a run that reaches either without an
+              answer counts as a failure. The goal: 100% accuracy, then faster and cheaper.
+            </p>
+            <p className="text-sm text-muted-foreground">{LEARNING_HELP}</p>
+            <p className="text-sm">
+              {inUse ? `${inUse} kept lesson${inUse === 1 ? "" : "s"} in use by every search.` : "No kept lesson in use yet."}
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -298,155 +419,102 @@ export default function Practice() {
                 <TableHead className="text-right">Errors</TableHead>
                 <TableHead className="text-right">Avg min</TableHead>
                 <TableHead className="text-right">Avg cost</TableHead>
+                <TableHead>Learning</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rounds === null && (
+              {shown === null && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-muted-foreground">
+                  <TableCell colSpan={12} className="text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               )}
-              {rounds?.length === 0 && (
+              {shown?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-muted-foreground">
+                  <TableCell colSpan={12} className="text-muted-foreground">
                     No practice round yet.
                   </TableCell>
                 </TableRow>
               )}
-              {rounds?.map((r) => (
+              {shown?.map((r) => (
                 <Fragment key={r.id}>
-                <TableRow className="cursor-pointer" onClick={() => setOpen(open === r.id ? null : r.id)}>
-                  <TableCell className="whitespace-nowrap">
-                    {open === r.id ? (
-                      <ChevronDown className="inline h-4 w-4 mr-1 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="inline h-4 w-4 mr-1 text-muted-foreground" />
-                    )}
-                    {when(r.createdAt)}{" "}
-                    {r.trialOf ? <Badge variant="outline">Lesson test</Badge> : null}{" "}
-                    {r.paused ? (
-                      <Badge variant="outline">Paused</Badge>
-                    ) : r.running > 0 ? (
-                      <Badge variant="secondary">{r.running} running</Badge>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="text-right">{r.total}</TableCell>
-                  <TableCell className={`text-right ${r.accuracy != null && r.accuracy < 100 ? "text-destructive font-medium" : ""}`}>
-                    {r.accuracy != null ? `${r.accuracy}%` : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">{r.right}</TableCell>
-                  <TableCell className={`text-right ${r.wrong ? "text-destructive font-medium" : ""}`}>{r.wrong}</TableCell>
-                  <TableCell className="text-right">{r.unsure}</TableCell>
-                  <TableCell className="text-right">{r.overBudget}</TableCell>
-                  <TableCell className="text-right">{r.errors}</TableCell>
-                  <TableCell className="text-right">{r.avgMinutes ?? "—"}</TableCell>
-                  <TableCell className="text-right">{r.avgCostUsd != null ? `$${r.avgCostUsd.toFixed(2)}` : "—"}</TableCell>
-                  <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {r.paused ? (
-                      <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => act(r, "resume")}>
-                        <Play className="mr-1.5 h-3.5 w-3.5" />
-                        Resume
+                  <TableRow className="cursor-pointer" onClick={() => setOpen(open === r.id ? null : r.id)}>
+                    <TableCell className="whitespace-nowrap">
+                      {open === r.id ? (
+                        <ChevronDown className="inline h-4 w-4 mr-1 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="inline h-4 w-4 mr-1 text-muted-foreground" />
+                      )}
+                      {when(r.createdAt)}{" "}
+                      {r.paused ? (
+                        <Badge variant="outline">Paused</Badge>
+                      ) : r.running > 0 ? (
+                        <Badge variant="secondary">{r.running} running</Badge>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-right">{r.total}</TableCell>
+                    <TableCell className={`text-right ${r.accuracy != null && r.accuracy < 100 ? "text-destructive font-medium" : ""}`}>
+                      {r.accuracy != null ? `${r.accuracy}%` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right">{r.right}</TableCell>
+                    <TableCell className={`text-right ${r.wrong ? "text-destructive font-medium" : ""}`}>{r.wrong}</TableCell>
+                    <TableCell className="text-right">{r.unsure}</TableCell>
+                    <TableCell className="text-right">{r.overBudget}</TableCell>
+                    <TableCell className="text-right">{r.errors}</TableCell>
+                    <TableCell className="text-right">{r.avgMinutes ?? "—"}</TableCell>
+                    <TableCell className="text-right">{r.avgCostUsd != null ? `$${r.avgCostUsd.toFixed(2)}` : "—"}</TableCell>
+                    <TableCell>
+                      <LearningBadge l={r.learning} />
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {r.paused ? (
+                        <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "resume")}>
+                          <Play className="mr-1.5 h-3.5 w-3.5" />
+                          Resume
+                        </Button>
+                      ) : r.running > 0 ? (
+                        <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "pause")}>
+                          <Pause className="mr-1.5 h-3.5 w-3.5" />
+                          Pause
+                        </Button>
+                      ) : null}
+                      <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => setToDelete(r)}>
+                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                        Delete
                       </Button>
-                    ) : r.running > 0 ? (
-                      <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => act(r, "pause")}>
-                        <Pause className="mr-1.5 h-3.5 w-3.5" />
-                        Pause
-                      </Button>
-                    ) : null}
-                    <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => setToDelete(r)}>
-                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                {open === r.id ? (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={11} className="bg-muted/30 p-0">
-                      <RoundDetails id={r.id} models={r.models} />
                     </TableCell>
                   </TableRow>
-                ) : null}
+                  {open === r.id && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={12} className="bg-muted/30 p-0 whitespace-normal">
+                        <h3 className="text-sm font-semibold px-3 pt-3">Results</h3>
+                        <RoundDetails id={r.id} models={r.models} />
+                        <h3 className="text-sm font-semibold px-3 pt-4">Lessons from this round</h3>
+                        <RoundLessons
+                          lessons={lessons.filter((l) => l.fromRound === r.id)}
+                          models={r.models}
+                          busy={busy}
+                          onAct={lessonAct}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-
-        <Card className="p-5 space-y-4">
-          <div>
-            <h2 className="text-base font-semibold">Lessons</h2>
-            <p className="text-sm text-muted-foreground">
-              After each round a reviewer proposes rules from the runs that failed or were slow. Each rule is tested on the
-              same listings with the same models, and kept only if accuracy stays at 100% (no more wrong answers) and the
-              search finds more, or gets faster and cheaper. Kept lessons are read by every search.
-            </p>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Lesson</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Before → after</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lessons?.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-muted-foreground">
-                    No lesson yet: the first ones come once a round has finished.
-                  </TableCell>
-                </TableRow>
-              )}
-              {lessons?.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="max-w-md whitespace-normal align-top">
-                    <p className="text-sm">{l.text}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Why: {l.why}</p>
-                  </TableCell>
-                  <TableCell className="align-top whitespace-nowrap">
-                    <Badge variant={STATUS[l.status].variant}>{STATUS[l.status].label}</Badge>
-                  </TableCell>
-                  <TableCell className="align-top text-xs whitespace-normal">
-                    <p>Before: {kpiLine(l.before)}</p>
-                    <p>After: {kpiLine(l.after)}</p>
-                    {l.verdict ? <p className="text-muted-foreground mt-1">{l.verdict}</p> : null}
-                  </TableCell>
-                  <TableCell className="align-top text-right whitespace-nowrap">
-                    {l.status === "proposed" ? (
-                      <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => lessonAct(l, "test")}>
-                        Test now
-                      </Button>
-                    ) : null}
-                    {l.status !== "kept" ? (
-                      <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => lessonAct(l, "keep")}>
-                        Keep
-                      </Button>
-                    ) : (
-                      <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => lessonAct(l, "drop")}>
-                        Drop
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => lessonAct(l, "delete")}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
               ))}
             </TableBody>
           </Table>
         </Card>
       </main>
 
-      <Dialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
+      <Dialog open={!!toDelete} onOpenChange={(o) => !o && setToDelete(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete this practice round?</DialogTitle>
             <DialogDescription>
-              Its {toDelete?.total} runs stop and are removed, together with their scores. This cannot be undone.
+              Its {toDelete?.total} runs stop and are removed with their scores, and so are its lessons that were not kept
+              and their tests. Kept lessons stay in use. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -458,7 +526,7 @@ export default function Practice() {
               onClick={() => {
                 const r = toDelete!;
                 setToDelete(null);
-                void act(r, "delete");
+                void roundAct(r, "delete");
               }}
             >
               Delete
