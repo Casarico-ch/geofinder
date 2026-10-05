@@ -1492,7 +1492,7 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
     plots,
     flats: await flatsFor(facts, claim.egid),
   });
-  const isDecisive = !facts.sharedLand && decisive(rows, plots, facts.landM2) && (await plotsBelong(claim, plots));
+  const isDecisive = !facts.sharedLand && decisive(rows, plots, facts.landM2, facts.landAltM2) && (await plotsBelong(claim, plots));
   if (!isDecisive) blocking.push(...checklist);
   for (const r of rows.filter((x) => x.verdict === "mismatch")) {
     const line = `${r.fact} does not fit: the listing says ${r.listing}, the building has ${r.building}.`;

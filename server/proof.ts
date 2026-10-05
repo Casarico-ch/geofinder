@@ -21,6 +21,13 @@ const PLOT_LAYER = "ch.kantone.cadastralwebmap-farbe";
 
 export interface ListingFacts {
   landM2: number | null; // "Land area m²: 331"
+  /**
+   * Other plot sizes the description gives: a plot being divided is sold "on
+   * 400 m²" while the register still holds the whole "parcelle de plus de
+   * 1'300 m²" (Vallamand, 05.10: all three runs found the house and the 400 m²
+   * check refused it).
+   */
+  landAltM2: number[];
   livingM2: number | null; // "Living area m²: 236"
   /** 1 for a single house; null when the listing does not pin it (flats, multi-family). */
   dwellings: number | null;
@@ -50,6 +57,12 @@ export function listingFacts(text: string | undefined): ListingFacts {
   const line = (re: RegExp) => t.match(re)?.[1];
   const landM2 = num(line(/^Land area m²:\s*([\d'’.,\s]+)$/im));
   const livingM2 = num(line(/^Living area m²:\s*([\d'’.,\s]+)$/im));
+  const landAltM2 = Array.from(
+    t.matchAll(
+      /\b(?:parcelle|terrain|Grundstück\w*|Parzelle|Landfläche|plot|land|lot|fondo|terreno)\b[^.\n\d]{0,40}?(\d{1,3}(?:['’ ,]\d{3})+|\d{3,6})\s*m(?:²|2)(?!\w)/gi,
+    ),
+    (m) => num(m[1].replace(/[',’ ]/g, "")),
+  ).filter((n): n is number => n != null && n >= 100 && n !== landM2);
   const type = `${line(/^Type:\s*(.+)$/im) ?? ""} ${line(/^Category:\s*(.+)$/im) ?? ""} ${line(/^Subtype:\s*(.+)$/im) ?? ""}`.toLowerCase().replace(/_/g, " "); // "semi_detached_house"
   const sharedLand = /\b(?:PPE|copropri[ée]t[ée]|Stockwerkeigentum|STWE|condominio)\b/i.test(t);
   const multi =
@@ -71,6 +84,7 @@ export function listingFacts(text: string | undefined): ListingFacts {
     /\b(?:neubau|neubauprojekt|erstbezug|im bau|ab plan|bezug (?:ab|per|im)|bezugsbereit|construction neuve|nouvelle construction|projet résidentiel|en construction|sur plan|livraison prévue|new[- ]build|under construction|off[- ]plan|renderings?|visualisierungen?|nuova costruzione)\b/i.test(t);
   return {
     landM2,
+    landAltM2: Array.from(new Set(landAltM2)),
     livingM2,
     dwellings: house && !multi ? 1 : null,
     sharedLand,
@@ -197,10 +211,10 @@ export async function plotGroupFor(own: Plot, landM2: number): Promise<Plot[] | 
  * proven without settling every other candidate on the checklist: in a
  * 5-minute search that is what kept nine right picks from being answers.
  */
-export function decisive(rows: FactRow[], plots: Plot[], landM2: number | null): boolean {
+export function decisive(rows: FactRow[], plots: Plot[], landM2: number | null, landAltM2: number[] = []): boolean {
   if (landM2 == null || !plots.length || rows.some((r) => r.verdict === "mismatch")) return false;
   const total = plots.reduce((s, p) => s + p.areaM2, 0);
-  return Math.abs(total - landM2) / landM2 <= PLOT_DECISIVE;
+  return [landM2, ...landAltM2].some((a) => Math.abs(total - a) / a <= PLOT_DECISIVE);
 }
 
 const plotCache = new Map<string, Promise<Plot | null>>();
@@ -259,7 +273,9 @@ export interface BuildingFacts {
 
 // Bands, wide on purpose: a register footprint is gross and outside the walls,
 // a listed living area is net and counts an attic the register may not.
-const LIVING_MIN = 0.45, LIVING_MAX = 1.35;
+// 0.35: a 140 m² house the register gives 106 m² × 3 floors (basement and attic
+// counted) is 0.44 and was refused (Vallamand, 05.10).
+const LIVING_MIN = 0.35, LIVING_MAX = 1.35;
 const PLOT_MATCH = 0.05, PLOT_CLOSE = 0.15, PLOT_DECISIVE = 0.02;
 // A flat's register area is the same survey number the listing usually quotes;
 // near-identical entrances differ by a few m² (Ruopigenring 85: 96 m², 89: 99 m²).
@@ -303,10 +319,11 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
   if (l.landM2 != null && !l.sharedLand) {
     const plots = b.plots ?? [];
     const total = plots.reduce((s, p) => s + p.areaM2, 0);
-    const off = plots.length ? Math.abs(total - l.landM2) / l.landM2 : null;
+    // The closest of the land sizes the listing gives (the stated one, or one from the description).
+    const off = plots.length ? Math.min(...[l.landM2, ...(l.landAltM2 ?? [])].map((a) => Math.abs(total - a) / a)) : null;
     rows.push({
       fact: "Plot area",
-      listing: `${l.landM2} m²`,
+      listing: `${l.landM2} m²${l.landAltM2?.length ? ` (description: ${l.landAltM2.join(" / ")} m²)` : ""}`,
       building: plots.length ? `${plots.map((p) => p.number).join(" + ")}: ${Math.round(total)} m²` : "plot not found",
       verdict: off == null ? "unknown" : off <= PLOT_MATCH ? "match" : off <= PLOT_CLOSE ? "unknown" : "mismatch",
       hard: off != null && off > PLOT_CLOSE,
