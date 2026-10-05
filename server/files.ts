@@ -15,6 +15,10 @@
 // run dir so a resumed run sends exactly the same references. A picture whose
 // upload failed is sent inline from then on, never switched later — switching
 // would change an earlier turn.
+//
+// An uploaded picture belongs to the account that uploaded it. A run on the
+// subscription pool (claude-pool.ts) that moves to another login keeps one map
+// per login (files.<login>.json) and uploads its pictures again there.
 // =============================================================================
 import Anthropic, { toFile } from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
@@ -54,16 +58,19 @@ export class RunFiles {
     private client: Anthropic,
     private runDir: string,
     private ids: Record<string, string>,
+    private file: string,
   ) {}
 
-  static async load(client: Anthropic, runDir: string): Promise<RunFiles> {
+  /** `login` is the pool login the pictures go to; none for the API key. */
+  static async load(client: Anthropic, runDir: string, login?: string | null): Promise<RunFiles> {
+    const file = login ? `files.${login}.json` : FILES_FILE;
     let ids: Record<string, string> = {};
     try {
-      ids = JSON.parse(await readFile(path.join(runDir, FILES_FILE), "utf8"));
+      ids = JSON.parse(await readFile(path.join(runDir, file), "utf8"));
     } catch {
       /* first turn */
     }
-    return new RunFiles(client, runDir, ids);
+    return new RunFiles(client, runDir, ids, file);
   }
 
   /** True when this picture goes to the API inline (its upload failed). */
@@ -152,7 +159,7 @@ export class RunFiles {
 
   private async save(): Promise<void> {
     try {
-      const abs = path.join(this.runDir, FILES_FILE);
+      const abs = path.join(this.runDir, this.file);
       await writeFile(`${abs}.tmp`, JSON.stringify(this.ids));
       await rename(`${abs}.tmp`, abs);
     } catch (err) {

@@ -12,6 +12,7 @@
 // scripts, downloaded aerials and notes are isolated and can be served back to
 // the UI as the documented trace.
 // =============================================================================
+import { isPoolVariable } from "./claude-pool";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -97,6 +98,7 @@ function sandboxEnv(): NodeJS.ProcessEnv {
   delete env.ANTHROPIC_API_KEY;
   delete env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_BASE_URL;
+  for (const k of Object.keys(env)) if (isPoolVariable(k)) delete env[k]; // the subscription logins
   return env;
 }
 

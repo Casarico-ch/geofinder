@@ -149,6 +149,7 @@ export interface Job {
   finishedAt?: string; // when it reached a terminal state (done/error/cancelled)
   updatedAt: string;
   model: KnownModel; // which Claude model runs this investigation
+  account?: string | null; // the Claude subscription login it runs on (claude-pool.ts); the name, never the token
   promptVersion?: string; // fingerprint of the SYSTEM+TASK prompt this run used
   signature?: Signature; // the target's aerial signature (recorded up front)
   // Where to look (commune confidence + neighbour ring) and the candidate ledger:
@@ -293,6 +294,13 @@ export async function markStarted(job: Job): Promise<void> {
   if (job.startedAt) return;
   job.startedAt = nowIso();
   job.updatedAt = job.startedAt;
+  await persist(job);
+}
+
+// Record which subscription login the run is on (its Railway variable's name).
+export async function setAccount(job: Job, account: string | null): Promise<void> {
+  job.account = account;
+  job.updatedAt = nowIso();
   await persist(job);
 }
 

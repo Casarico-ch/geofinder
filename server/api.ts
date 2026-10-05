@@ -21,6 +21,7 @@ import {
   type AgentImage,
 } from "./agent";
 import { exportJobHtml } from "./export";
+import { claudeConfigured, poolOn, poolStatus } from "./claude-pool";
 import { analyzeBuildPotential } from "./potential";
 import {
   MODELS,
@@ -105,7 +106,7 @@ export function registerApiRoutes(app: Express) {
   // the photos in the background via /photos, which is what actually starts the
   // run. (Old callers may still pass `images` here for the one-shot path.)
   app.post("/api/geo/investigate", async (req: Request, res: Response) => {
-    if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
+    if (!claudeConfigured()) {
       res.status(503).json({
         error: "Not configured. Set ANTHROPIC_API_KEY on the server to enable investigations.",
       });
@@ -207,6 +208,11 @@ export function registerApiRoutes(app: Express) {
   });
 
   // List recent investigations (for reopening after the window was closed).
+  // The subscription logins investigations run on: names and states, never values.
+  app.get("/api/claude-pool", (_req: Request, res: Response) => {
+    res.json({ on: poolOn(), logins: poolStatus() });
+  });
+
   app.get("/api/geo/investigations", (_req: Request, res: Response) => {
     res.json({ jobs: listJobs().slice(0, 50).map(jobSummary) });
   });
