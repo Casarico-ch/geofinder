@@ -103,8 +103,15 @@ export interface Result {
   why?: { code: string; text: string } | null; // why the right house was never on its checklist
 }
 
+/** A round still doing something: searching, or reviewing and testing its lessons. */
+export const isBusy = (r: { running: number; learning?: { state: string } | null }) =>
+  r.running > 0 || ["waiting", "reviewing", "testing"].includes(r.learning?.state ?? "");
+
 export const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
+  "sonnet-5-5-low": "Sonnet 5.5 · low",
+  "sonnet-5-5-low-2": "Sonnet 5.5 · low (2nd)",
+  "sonnet-5-5-max-plain": "Sonnet 5.5 · max · plain",
   "claude-opus-5-5": "Opus 5.5",
   "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
   "gemini-3.8-flash": "Gemini 3.8 Flash",
@@ -187,6 +194,9 @@ const ICON: Record<Result["outcome"], { icon: typeof CheckCircle2; className: st
 
 const SHORT: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet",
+  "sonnet-5-5-low": "Sonnet low",
+  "sonnet-5-5-low-2": "Sonnet low 2",
+  "sonnet-5-5-max-plain": "Plain · max",
   "claude-opus-5-5": "Opus",
   "gemini-3.1-pro-preview": "Gem Pro",
   "gemini-3.8-flash": "Gem Flash",

@@ -19,7 +19,7 @@ import {
   dispatchTool,
   extractReasoning,
 } from "./agent";
-import { addStep, addUsage, setPotential, setPotentialStatus, type Answer, type Job } from "./jobs";
+import { addStep, addUsage, apiModel, setPotential, setPotentialStatus, type Answer, type Job } from "./jobs";
 
 const MAX_STEPS = Number(process.env.POTENTIAL_MAX_STEPS ?? 40);
 
@@ -174,7 +174,7 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
   try {
     for (let i = 0; i < MAX_STEPS; i++) {
       const turn = await onLogin(login, (client) => client.messages.create({
-        model: job.model ?? MODEL,
+        model: apiModel(job.model ?? MODEL),
         max_tokens: 16_000,
         thinking: { type: "adaptive", display: "summarized" },
         // Pin effort so every model runs at the same depth — Opus 5.5 would
@@ -184,7 +184,7 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
         tools: TOOLS,
         cache_control: { type: "ephemeral" },
         messages,
-      }), job.model);
+      }), apiModel(job.model ?? MODEL));
       const resp = turn.value;
       login = turn.label ?? undefined;
 

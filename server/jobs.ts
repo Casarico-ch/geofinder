@@ -106,8 +106,26 @@ export const MODELS = [
   "gemini-3.1-pro-preview",
   "gemini-3.8-flash",
   "gemini-3.5-flash",
+  // Investigators that are Sonnet 5.5 at a set effort (VARIANTS below).
+  "sonnet-5-5-low",
+  "sonnet-5-5-low-2",
+  "sonnet-5-5-max-plain",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
+
+// Practice investigators that are one Claude model at its own effort (Daniel,
+// 05.10: "make both investigators run on Sonnet 5.5 low … add the plain mode as
+// the third option that runs on Sonnet 5.5 max"). Two identical "low" runs show
+// how much one setting varies by chance. Plain: the same tools, but no method,
+// no search plan and no lessons — the model decides how to search by itself.
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+export const VARIANTS: Record<string, { model: string; effort: Effort; plain: boolean }> = {
+  "sonnet-5-5-low": { model: "claude-sonnet-5-5", effort: "low", plain: false },
+  "sonnet-5-5-low-2": { model: "claude-sonnet-5-5", effort: "low", plain: false },
+  "sonnet-5-5-max-plain": { model: "claude-sonnet-5-5", effort: "max", plain: true },
+};
+/** The API model behind an investigator id. */
+export const apiModel = (m: string): string => VARIANTS[m]?.model ?? m;
 export const DEFAULT_MODEL: ModelId = "claude-opus-5-5";
 // Models no longer offered, kept so past runs still show and price correctly.
 // DeepSeek was removed on 05.10.2026 (V4 Pro cannot see images).
@@ -123,6 +141,9 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "claude-opus-4-8": { in: 5, cacheRead: 0.5, cacheWrite: 6.25, out: 25 },
   "claude-opus-5-5": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
   "claude-sonnet-5-5": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
+  "sonnet-5-5-low": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
+  "sonnet-5-5-low-2": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
+  "sonnet-5-5-max-plain": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },
   // DeepSeek's published off-peak rates (api-docs.deepseek.com/quick_start/pricing,

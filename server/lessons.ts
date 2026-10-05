@@ -20,7 +20,7 @@ import { missReason } from "./miss";
 import { streetOf } from "./consensus";
 import { getJob } from "./jobs";
 import { loadLessons, keptLessons, newLessonId, saveLessons, type Kpis, type Lesson } from "./lessons-store";
-import { allRounds, deleteRound, getRound, kpisOf, markReviewed, settleRound, startRound, truthCandidate, type Pair, type PracticeRound } from "./practice";
+import { allRounds, deleteRound, getRound, kpisOf, markReviewed, pauseRound, resumeRound, settleRound, startRound, truthCandidate, type Pair, type PracticeRound } from "./practice";
 
 const AUTO = process.env.PRACTICE_AUTO_LESSONS !== "0";
 const REVIEWER = "claude-opus-5-5";
@@ -231,6 +231,15 @@ export async function learningOf(round: PracticeRound): Promise<Learning> {
   return { state, ...counts, ...(round.reviewError ? { error: round.reviewError } : {}) };
 }
 
+/**
+ * Pausing a round pauses its learning too (Daniel, 05.10): the tests of its
+ * lessons stop where they are and no new one starts until it resumes.
+ */
+export async function pauseLearning(id: string, pause: boolean): Promise<void> {
+  for (const l of (await loadLessons()).filter((x) => x.fromRound === id && x.status === "testing" && x.trialRound))
+    await (pause ? pauseRound : resumeRound)(l.trialRound!).catch((err) => console.error(`[lessons] ${pause ? "pause" : "resume"} of ${l.trialRound} failed:`, err));
+}
+
 /** Deleting a round takes its lessons' tests and the lessons not kept with it. */
 export async function forgetRound(id: string): Promise<void> {
   const lessons = await loadLessons();
@@ -265,7 +274,7 @@ async function beat(): Promise<void> {
     if (!AUTO) return;
 
     // Learn from every finished ordinary round that has enough real runs.
-    for (const r of rounds.filter((x) => x.finishedAt && !x.trialOf && !x.reviewed)) {
+    for (const r of rounds.filter((x) => x.finishedAt && !x.trialOf && !x.reviewed && !x.paused)) {
       const scored = r.results.filter((x) => x.outcome !== "error").length;
       if (scored < r.results.length / 2) {
         await markReviewed(r, "Too many runs ended in an error to learn from.");
@@ -288,7 +297,8 @@ async function beat(): Promise<void> {
 
     // Several tests side by side (each a small batch), oldest proposal first.
     const slots = PARALLEL_TESTS - lessons.filter((l) => l.status === "testing").length;
-    for (const next of lessons.filter((l) => l.status === "proposed").slice(0, Math.max(0, slots)))
+    const paused = new Set(rounds.filter((x) => x.paused).map((x) => x.id));
+    for (const next of lessons.filter((l) => l.status === "proposed" && !paused.has(l.fromRound)).slice(0, Math.max(0, slots)))
       await testLesson(next).catch((err) => console.error(`[lessons] test of ${next.id} failed to start:`, err));
   } finally {
     busy = false;
