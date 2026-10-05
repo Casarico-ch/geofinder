@@ -59,6 +59,7 @@ export interface ShortlistResult {
   survivors: number;
   truncatedTo?: number;
   candidates: Candidate[];
+  ranking?: number[]; // every home's EGID in ranked order (practice: where the right house sat)
   note: string;
 }
 
@@ -253,6 +254,7 @@ async function shortlistFromRegister(c: Commune, opts: ShortlistOptions): Promis
     residential: homes.length,
     survivors: homes.length,
     truncatedTo: homes.length > max ? max : undefined,
+    ranking: order.slice(0, 5000).map((b) => Number(b.egid)),
     candidates: top.map((b) => ({
       egid: Number(b.egid),
       lat: b.lat,

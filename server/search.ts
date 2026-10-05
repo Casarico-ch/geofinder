@@ -70,6 +70,7 @@ export interface ShortlistCall {
   survivors: number;
   returned: number;
   ranked?: boolean; // the shortlist ranked every home (no estimate filters)
+  order?: number[]; // the ranked EGIDs, so a practice round can say where the right house sat
 }
 
 // ---------------------------------------------------------------------------

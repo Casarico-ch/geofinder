@@ -59,6 +59,7 @@ export interface Round {
   agreed?: number;
   agreedRight?: number;
   agreedWrong?: number;
+  ranks?: { measured: number; top10: number; top120: number; median: number | null };
 }
 
 
@@ -105,6 +106,8 @@ export interface Result {
   costUsd: number | null;
   error?: string;
   why?: { code: string; text: string } | null; // why the right house was never on its checklist
+  rank?: number | null; // where the right house sat on the run's ranked list
+  rankOf?: number | null;
 }
 
 /** A round still doing something: searching, or reviewing and testing its lessons. */
@@ -250,6 +253,12 @@ function RunCard({ model, r }: { model: string; r?: Result }) {
             <span className="text-muted-foreground">Answered: </span>
             {r.answer ?? "nothing"}
           </p>
+          {r.rankOf != null && (
+            <p className="text-xs">
+              <span className="text-muted-foreground">Right house ranked: </span>
+              {r.rank != null ? `#${r.rank} of ${r.rankOf}` : `not on its list (${r.rankOf} homes)`}
+            </p>
+          )}
           {r.lostAt && r.outcome !== "right" && (
             <p className="text-xs">
               <span className="text-muted-foreground">Missed: </span>

@@ -84,6 +84,10 @@ export interface PracticeResult {
   steps: number | null;
   error?: string;
   sourceUrl?: string | null; // the public listing, for the results page only
+  // Where the right house sat on the run's ranked list (1 = first), and how
+  // long that list was; null when it was not on any list the run asked for.
+  rank?: number | null;
+  rankOf?: number | null;
 }
 
 export interface PracticeRound {
@@ -239,6 +243,17 @@ export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: s
   return { outcome: "unsure", answer: named, lostAt: lostAt(job, truth) };
 }
 
+/** Where the right house sat on the run's ranked shortlist (the commune list that held it). */
+export function truthRank(job: Job, truth: TruthKeys): { rank: number | null; rankOf: number | null } {
+  for (const c of job.search?.calls ?? []) {
+    if (!c.order?.length) continue;
+    const i = c.order.findIndex((egid) => fingerprint("egid", String(egid)) === truth.egid);
+    if (i >= 0) return { rank: i + 1, rankOf: c.order.length };
+  }
+  const any = (job.search?.calls ?? []).find((c) => c.order?.length);
+  return { rank: null, rankOf: any?.order?.length ?? null };
+}
+
 /** The right building's entry in a run's checklist, if the run ever shortlisted it. */
 export function truthCandidate(job: Job, truth: TruthKeys) {
   return Object.values(job.search?.candidates ?? {}).find((x) => fingerprint("egid", String(x.egid)) === truth.egid);
@@ -276,7 +291,7 @@ function refresh(round: PracticeRound): boolean {
     if (!r.jobId || (r.outcome !== "running" && r.outcome !== "error")) continue;
     const job = getJob(r.jobId);
     if (!job) continue;
-    Object.assign(r, score(job, r.truth), {
+    Object.assign(r, score(job, r.truth), job.status === "running" || job.status === "paused" ? {} : truthRank(job, r.truth), {
       minutes: Math.round((elapsedMs(job) / 60_000) * 10) / 10,
       costUsd: Math.round(costUsd(job.tokens, job.model) * 100) / 100,
       steps: job.steps.length,
@@ -414,6 +429,9 @@ export interface RoundSummary {
   agreed: number;
   agreedRight: number;
   agreedWrong: number;
+  // Where the right house sat on the ranked list, over the runs that recorded it
+  // (one per listing: the runs of a listing share the same list).
+  ranks: { measured: number; top10: number; top120: number; median: number | null };
 }
 
 export function summarize(round: PracticeRound): RoundSummary {
@@ -448,6 +466,21 @@ export function summarize(round: PracticeRound): RoundSummary {
     lostAt: lost,
     noProof: !!round.noProof,
     ...agreement(round),
+    ranks: rankStats(round),
+  };
+}
+
+function rankStats(round: PracticeRound): RoundSummary["ranks"] {
+  const per = new Map<number, number>(); // listing → best rank (missing from the list = Infinity)
+  for (const r of round.results)
+    if (r.rankOf != null) per.set(r.propertyId, Math.min(per.get(r.propertyId) ?? Infinity, r.rank ?? Infinity));
+  const xs = Array.from(per.values()).sort((a, b) => a - b);
+  const mid = xs.length ? xs[Math.floor((xs.length - 1) / 2)] : null;
+  return {
+    measured: xs.length,
+    top10: xs.filter((x) => x <= 10).length,
+    top120: xs.filter((x) => x <= 120).length,
+    median: mid == null || !Number.isFinite(mid) ? null : mid,
   };
 }
 
