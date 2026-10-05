@@ -39,6 +39,7 @@ export interface GwrBuilding {
   klass: number | null; // gklas (1272 = church or other religious building)
   status: number | null; // gstat (1004 = existing)
   year: number | null; // gbauj
+  postcode: number | null; // dplz4
 }
 
 async function getJson(url: string, ms = 60_000): Promise<any> {
@@ -248,6 +249,7 @@ function toBuilding(f: any): GwrBuilding | null {
     klass: num(p.gklas),
     status: num(p.gstat),
     year: num(p.gbauj),
+    postcode: num(p.dplz4),
   };
 }
 

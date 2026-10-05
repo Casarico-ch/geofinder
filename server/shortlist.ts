@@ -293,7 +293,9 @@ function buildingNote(b: GwrBuilding, why: string | undefined): string | undefin
 }
 
 // How many of the best-ranked homes get the slow checks (their plot, their flats).
-const DEEP = Number(process.env.SHORTLIST_DEEP ?? 400);
+// 150: a commune's best 150 by the cheap facts (postcode first) hold the house
+// when the listing names its village, and 400 took ~100 s of a 5-minute run.
+const DEEP = Number(process.env.SHORTLIST_DEEP ?? 150);
 const PLOT_FIT = 0.05, FLAT_FIT_M2 = 3;
 
 /**
@@ -310,6 +312,8 @@ async function rankByListing(
   const l = opts.listing;
   const used: string[] = [];
   if (l?.year) used.push(`built ${l.year}`);
+  if (l?.postcode) used.push(`postcode ${l.postcode}`);
+  if (l?.newBuild) used.push("a new build");
   if (l?.kind === "house") used.push("a single house");
   if (l?.kind === "flat") used.push("a flat in a block");
   if (l?.units) used.push(`${l.units} homes in the building`);
@@ -322,15 +326,20 @@ async function rankByListing(
   const cheap = (b: GwrBuilding): number => {
     let s = 0;
     if (b.category === 1060) s += 1;
-    if (homeStatus(b) === "new") s += l?.year && l.year >= thisYear - 1 ? -3 : 1;
+    // A merged commune spans villages; the listed postcode names the right one
+    // (Sion: Salins 1991 — the house ranked 535th of 6,254 without it).
+    if (l?.postcode && b.postcode) s += b.postcode === l.postcode ? -3 : 2;
+    if (homeStatus(b) === "new") s += l?.newBuild ? -3 : 1;
     if (l?.year && b.year) s += Math.abs(b.year - l.year) <= 2 ? -3 : Math.abs(b.year - l.year) > 10 ? 1 : 0;
     if (l?.kind === "house" && b.dwellings != null) s += b.dwellings <= 2 ? 0 : b.dwellings === 3 ? 0.5 : 2;
     if (l?.kind === "flat" && b.dwellings != null && b.dwellings < 2) s += 2;
+    // A flat on the 5th floor needs a building of at least 6 levels.
+    if (l?.kind === "flat" && l.floor != null && l.floor > 0 && b.floors != null) s += b.floors > l.floor ? -1 : 2;
     if (l?.units && b.dwellings != null) s += Math.abs(b.dwellings - l.units) <= 1 ? -2 : 1;
     // The model's estimates: a nudge, so a wrong guess costs places, not the house.
-    if (!inRange(b.floors, opts.floors, 1, 1)) s += 0.5;
-    if (!inRange(b.dwellings, opts.dwellings, 1, 1)) s += 0.5;
-    if (!inBand(b.footprintM2, opts.footprintM2)) s += 0.5;
+    if (!inRange(b.floors, opts.floors, 1, 1)) s += 1;
+    if (!inRange(b.dwellings, opts.dwellings, 1, 1)) s += 1;
+    if (!inBand(b.footprintM2, opts.footprintM2)) s += 1;
     return s;
   };
   const score = new Map(homes.map((b) => [b, cheap(b)]));
@@ -371,7 +380,7 @@ async function rankByListing(
         }
       }
     };
-    await Promise.all(Array.from({ length: 12 }, worker));
+    await Promise.all(Array.from({ length: 16 }, worker));
   }
   const all = [...homes].sort(byScore);
   return { strong: all.filter((b) => strong.has(b)), rest: all.filter((b) => !strong.has(b)), why, used };
