@@ -40,7 +40,7 @@ export interface PracticeCase {
   truth: { egid: number; address: string; postalCode: string | null; town: string | null };
 }
 
-export type Outcome = "right" | "wrong" | "unsure" | "error" | "running";
+export type Outcome = "right" | "wrong" | "unsure" | "over_budget" | "error" | "running";
 export type LostAt = "commune" | "not_shortlisted" | "rejected" | "left_possible" | "not_proven" | "never_looked" | null;
 
 // The truth as fingerprints only (see the header).
@@ -91,6 +91,11 @@ export interface PracticeRound {
 const dir = () => path.join(RUNS_ROOT, "_practice");
 const fileOf = (id: string) => path.join(dir(), `${id.replace(/[^\w-]/g, "")}.json`);
 const CONCURRENCY = Number(process.env.PRACTICE_CONCURRENCY ?? 3);
+// Each model gets CHF 1 per listing (Daniel, 05.10); a run that reaches it
+// without an answer counts as a failure, whatever the model. Costs are kept in
+// USD, so the cap is converted at USD_PER_CHF.
+const BUDGET_CHF = Number(process.env.PRACTICE_BUDGET_CHF ?? 1);
+const USD_PER_CHF = Number(process.env.USD_PER_CHF ?? 1.25);
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function radar(): { url: string; secret: string } {
@@ -147,6 +152,7 @@ async function loadPhotos(urls: string[]): Promise<AgentImage[]> {
 export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: string | null; lostAt: LostAt } {
   if (job.status === "running" || job.status === "paused") return { outcome: "running", answer: null, lostAt: null };
   if (job.status !== "done") return { outcome: "error", answer: null, lostAt: null };
+  if (job.overBudget) return { outcome: "over_budget", answer: null, lostAt: lostAt(job, truth) };
   const a: Answer | null = job.answer;
   const exact = exactAddressOf(a);
   const named = a?.address ?? a?.parcel ?? null;
@@ -223,7 +229,7 @@ async function drive(round: PracticeRound, cases: PracticeCase[]): Promise<void>
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}` },
+          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF },
           r.model,
         );
         r.jobId = job.id;
@@ -254,6 +260,7 @@ export interface RoundSummary {
   right: number;
   wrong: number;
   unsure: number;
+  overBudget: number;
   errors: number;
   running: number;
   avgMinutes: number | null;
@@ -278,6 +285,7 @@ export function summarize(round: PracticeRound): RoundSummary {
     right: n("right"),
     wrong: n("wrong"),
     unsure: n("unsure"),
+    overBudget: n("over_budget"),
     errors: n("error"),
     running: n("running"),
     avgMinutes: avg(done.map((r) => r.minutes!)),
