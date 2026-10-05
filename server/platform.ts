@@ -57,6 +57,12 @@ const LISTING_MODELS: ModelId[] = (
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
 const listingModels = (): ModelId[] => LISTING_MODELS.filter((m) => !isGemini(m) || geminiConfigured());
+// Practice rounds (Daniel, 05.10): two Sonnet 5.5 at low effort, and Sonnet 5.5
+// at max effort in plain mode (jobs.ts VARIANTS). Real requests keep LISTING_MODELS.
+const PRACTICE_MODELS: ModelId[] = (process.env.PRACTICE_MODELS ?? "sonnet-5-5-low,sonnet-5-5-low-2,sonnet-5-5-max-plain")
+  .split(",")
+  .map((m) => m.trim())
+  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
@@ -426,7 +432,7 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       try {
-        const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models ?? listingModels());
+        const round = await startRound(parsed.data.split, parsed.data.limit, parsed.data.models ?? PRACTICE_MODELS);
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });

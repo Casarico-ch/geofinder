@@ -67,6 +67,8 @@ import {
   setAccount,
   costUsd,
   DEFAULT_MODEL,
+  VARIANTS,
+  apiModel,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
 import { GEMINI_LABEL, onLogin, poolOn } from "./claude-pool";
@@ -413,6 +415,12 @@ Several tool calls in one turn run at the same time (bash, read_file, render_roo
 
 Reason explicitly about why you run each command — your thinking is the saved trace of the investigation.`;
 
+// Plain mode (jobs.ts VARIANTS): no method, no plan, no lessons — the tools alone.
+const PLAIN_SYSTEM = `You are GeoFinder. You find the exact street address of a Swiss property from its listing, using the tools you are given. Decide for yourself how to search. When you are done, call submit_answer.`;
+const PLAIN_TASK = `The images above and the text below are a property listing. Find the property's exact street address.`;
+const isPlain = (job: Job) => !!(job.model && VARIANTS[job.model]?.plain);
+const systemOf = (job: Job) => (isPlain(job) ? PLAIN_SYSTEM : SYSTEM + lessonsBlock(job.lessons ?? []));
+
 const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer.
 
 FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. Fill its location too: which way the ground falls away, the church, peak, lake or village seen from the house and in which direction, and the NEIGHBOURS — every building the photos show next to the house (its side, the gap, bigger or smaller, taller or lower, flat or pitched roof, ridge parallel or across) and every open side. A house alone looks like hundreds of others; the houses around it are what single it out, and the shortlist checks every candidate's real surroundings against them first. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
@@ -434,6 +442,7 @@ function initialContent(
   images: AgentImage[],
   listingText: string | undefined,
   searchPlan: string,
+  plain = false,
 ): Anthropic.Messages.ContentBlockParam[] {
   const blocks: Anthropic.Messages.ContentBlockParam[] = [];
   images.forEach((img, i) => {
@@ -443,9 +452,9 @@ function initialContent(
   blocks.push({
     type: "text",
     text:
-      `${TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
+      `${plain ? PLAIN_TASK : TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
       `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}` +
-      `\n\n${searchPlan}`,
+      (plain ? "" : `\n\n${searchPlan}`),
   });
   return blocks;
 }
@@ -588,7 +597,7 @@ export async function runInvestigation(
   // save the full prompt text next to the trace. This is what lets a later
   // post-mortem know which prompt produced these costs and this reasoning.
   // The lessons are fixed at the start, so a resumed run keeps reading the same ones.
-  job.lessons ??= job.input.lessons ?? (await keptLessons());
+  job.lessons ??= isPlain(job) ? [] : (job.input.lessons ?? (await keptLessons()));
   await stampPrompt(job);
   await seedGeoHelper(job.runDir); // drop the tested geo.mjs into the working dir
   await markStarted(job); // start the elapsed-time clock
@@ -603,7 +612,7 @@ export async function runInvestigation(
   const plan = searchPlanText(search);
   await addStep(job, { kind: "note", title: `Search plan: commune confidence ${search.confidence}`, detail: plan });
   const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: initialContent(images, listingText, plan) },
+    { role: "user", content: initialContent(images, listingText, plan, isPlain(job)) },
   ];
   await saveState(job, 0, messages);
   await runLoop(job, messages, 0);
@@ -615,7 +624,7 @@ async function stampPrompt(job: Job): Promise<void> {
   try {
     await writeFile(
       path.join(job.runDir, "prompt.txt"),
-      `# SYSTEM (version ${PROMPT_VERSION})\n\n${SYSTEM}${lessonsBlock(job.lessons ?? [])}\n\n# TASK\n\n${TASK}\n`,
+      `# SYSTEM (version ${PROMPT_VERSION})\n\n${systemOf(job)}\n\n# TASK\n\n${isPlain(job) ? PLAIN_TASK : TASK}\n`,
       "utf8",
     );
   } catch (err) {
@@ -761,7 +770,7 @@ async function runLoop(
         return;
       }
 
-      const model = job.model ?? MODEL;
+      const model = apiModel(job.model ?? MODEL);
       const request = (files: RunFiles): Anthropic.Messages.MessageCreateParamsNonStreaming => ({
         model,
         max_tokens: 16_000,
@@ -772,10 +781,10 @@ async function runLoop(
         thinking: { type: "adaptive", display: "summarized" },
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
-        output_config: { effort: EFFORT },
+        output_config: { effort: (job.model && VARIANTS[job.model]?.effort) || EFFORT },
         // Cache the static tools + system prompt (re-sent every turn). The
         // breakpoint on the system block covers tools + system together.
-        system: [{ type: "text", text: SYSTEM + lessonsBlock(job.lessons ?? []), cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: systemOf(job), cache_control: { type: "ephemeral" } }],
         tools: TOOLS,
         // Top-level auto-caching rolls a second breakpoint over the growing
         // conversation — so the re-sent listing photos and the aerials the
@@ -893,7 +902,7 @@ async function runLoop(
           // planned communes never shortlisted) is turned back ONCE — giving up
           // with the answer still unviewed is how run c5bc3cfd was lost. Near
           // the step/time limit it always goes through.
-          const gate = !answer.found && !nearLimit(i + 1) ? prematureGiveUp(job.search) : null;
+          const gate = !answer.found && !nearLimit(i + 1) && !isPlain(job) ? prematureGiveUp(job.search) : null;
           if (gate && job.search) {
             job.search.submitGated = true;
             await saveSearch(job, job.search);
