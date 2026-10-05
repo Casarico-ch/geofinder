@@ -74,6 +74,8 @@ import { keptLessons, lessonsBlock } from "./lessons-store";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
+// Turns a run may end with no tool call before its text is taken as the conclusion.
+const MAX_STALLS = 2;
 // Wall-clock budget for one investigation. Checking every candidate takes longer
 // than giving up early, so the cap is what keeps a hopeless search bounded.
 const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
@@ -690,6 +692,7 @@ async function runLoop(
     const nearTimeLimit = () => elapsedMinutes() >= maxMinutes * 0.85;
     const nearLimit = (step: number) => step >= MAX_STEPS - 15 || nearTimeLimit();
     let fastUnavailable = false;
+    let stalls = 0; // turns that ended with no tool call and no answer
     for (let i = startTurn; i < MAX_STEPS; i++) {
       if (elapsedMinutes() >= maxMinutes) {
         if (job.input.maxMinutes != null) job.overBudget = true;
@@ -816,8 +819,27 @@ async function runLoop(
       const toolUses = resp.content.filter(
         (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
       );
+      if (toolUses.length === 0 && stalls < MAX_STALLS) {
+        // A turn with no tool call is not an answer: Gemini 3.1 Pro sometimes
+        // ends a turn by echoing a tool's output, or by looping on one token
+        // ("ststst…"), after a minute or two. Send it back to work instead of
+        // recording that text as its conclusion.
+        stalls++;
+        await addStep(job, { kind: "note", title: "No tool call and no answer — sent back to work" });
+        messages.push({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "[system] Your last turn called no tool and gave no answer, so nothing was recorded. Continue the search with your tools, or call submit_answer — an answer exists only through submit_answer.",
+            },
+          ],
+        });
+        await saveState(job, i + 1, messages);
+        continue;
+      }
       if (toolUses.length === 0) {
-        // Model stopped without a tool call — treat its text as the conclusion.
+        // Still no tool call after being sent back: treat its text as the conclusion.
         await finishJob(job, {
           status: "done",
           answer: coerceAnswer({ found: false, confidence: "unknown", reasoning }),
