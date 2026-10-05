@@ -55,6 +55,10 @@ export interface Round {
   totalCostUsd: number;
   learning: Learning | null;
   lostAt?: Record<string, number>;
+  noProof?: boolean;
+  agreed?: number;
+  agreedRight?: number;
+  agreedWrong?: number;
 }
 
 
