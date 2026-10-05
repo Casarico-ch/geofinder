@@ -50,7 +50,8 @@ import {
 // as Found only when they all land on one address (Requests page). Gemini is
 // left out while GEMINI_API_KEY is unset, so a missing key never blocks Radar.
 const LISTING_MODELS: ModelId[] = (
-  process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5,gemini-3.1-pro-preview,gemini-3.8-flash"
+  // Sonnet 5.5 and Opus 5.5 only (Daniel, 05.10: "remove gemini").
+  process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5"
 )
   .split(",")
   .map((m) => m.trim())

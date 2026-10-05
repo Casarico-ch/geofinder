@@ -33,6 +33,9 @@ export interface ListingFacts {
   kind: "house" | "flat" | "building" | null;
   year: number | null; // "Year built: 1985"
   units: number | null; // "Units in building: 8"
+  postcode: number | null; // "Postcode: 1991" — within a merged commune it names the village
+  /** Sold before it is built or just finished: renderings, "Neubau", "neuf", a move-in date. */
+  newBuild: boolean;
 }
 
 const num = (s: string | undefined): number | null => {
@@ -58,7 +61,14 @@ export function listingFacts(text: string | undefined): ListingFacts {
   const flat = /apartment|appartement|wohnung|duplex|attique|attika|penthouse|loft|maisonette/.test(type);
   const kind = building ? "building" : house && !multi ? "house" : flat ? "flat" : null;
   const year = num(line(/^Year built:\s*(\d{4})/im));
-  const units = num(line(/^Units in building:\s*(\d+)/im));
+  const units = num(line(/^Units in (?:the )?building:\s*(\d+)/im));
+  const postcode = num(line(/^Postcode:\s*(\d{4})\b/im));
+  const thisYear = new Date().getFullYear();
+  const newBuild =
+    (year != null && year >= thisYear - 1) ||
+    /^Condition:\s*new\b/im.test(t) ||
+    // Phrases, not words: "un coup de neuf" (a fresh coat) is not a new build.
+    /\b(?:neubau|neubauprojekt|erstbezug|im bau|ab plan|bezug (?:ab|per|im)|bezugsbereit|construction neuve|nouvelle construction|projet résidentiel|en construction|sur plan|livraison prévue|new[- ]build|under construction|off[- ]plan|renderings?|visualisierungen?|nuova costruzione)\b/i.test(t);
   return {
     landM2,
     livingM2,
@@ -69,13 +79,15 @@ export function listingFacts(text: string | undefined): ListingFacts {
     kind,
     year,
     units,
+    postcode,
+    newBuild,
   };
 }
 
 // "im 5. Obergeschoss", "5. OG", "5th floor", "5e étage", or Radar's "Floor: 5".
 function flatFloor(t: string): number | null {
   const m =
-    t.match(/^Floor:\s*(-?\d{1,2})\s*$/im) ??
+    t.match(/^Floor:\s*(-?\d{1,2})\s*(?:e|er|re|ère|ème|e étage|\.|st|nd|rd|th|\.\s*OG|\.\s*Stock)?\s*$/im) ??
     t.match(/\b(\d{1,2})\.\s*(?:Obergeschoss|OG|Stock|Etage)\b/i) ??
     t.match(/\b(\d{1,2})(?:st|nd|rd|th)\s+floor\b/i) ??
     t.match(/\b(\d{1,2})(?:e|er|ème)\s+étage\b/i);
@@ -159,7 +171,7 @@ export async function neighbourPlots(plot: Plot): Promise<Plot[]> {
 
 /**
  * A property can be several plots: when the building's own plot is smaller
- * than the listing's land, try it with one or two neighbouring plots and keep
+ * than the listing's land, try it with one neighbouring plot and keep
  * the sum closest to the listing. A group must match within 2% (a single plot
  * within 5%): with many neighbours, some sum lands near any number by chance.
  * Null when nothing fits.
@@ -173,10 +185,9 @@ export async function plotGroupFor(own: Plot, landM2: number): Promise<Plot[] | 
     const off = Math.abs(plots.reduce((s, p) => s + p.areaM2, 0) - landM2) / landM2;
     if (off <= PLOT_DECISIVE && (!best || off < best.off)) best = { plots, off };
   };
-  for (let i = 0; i < near.length; i++) {
-    consider([own, near[i]]);
-    for (let j = i + 1; j < near.length; j++) consider([own, near[i], near[j]]);
-  }
+  // Own plot plus ONE neighbour: with two, three small plots summed to a listed
+  // 430 m² by chance in Sion (159 + 162 + 176) and drew a run away from the house.
+  for (let i = 0; i < near.length; i++) consider([own, near[i]]);
   return best ? (best as { plots: Plot[] }).plots : null;
 }
 
