@@ -63,6 +63,7 @@ export interface Round {
   agreedRight?: number;
   agreedWrong?: number;
   ranks?: { measured: number; top10: number; top120: number; median: number | null };
+  rechecks?: { done: number; fixed: number; caught: number; broke: number };
 }
 
 
@@ -110,6 +111,8 @@ export interface Result {
   error?: string;
   why?: { code: string; text: string } | null; // why the right house was never on its checklist
   twin?: boolean; // answered the attached twin of the right house: counted as found
+  doubt?: boolean; // its explanation doubted the house it named, so it was searched again
+  recheck?: boolean; // that second search
   rank?: number | null; // where the right house sat on the run's ranked list
   rankOf?: number | null;
 }
@@ -125,6 +128,7 @@ export const MODEL_LABEL: Record<string, string> = {
   "sonnet-5-5-low-3": "Sonnet 5.5 · low (3rd)",
   "sonnet-5-5-max-plain": "Sonnet 5.5 · max · plain",
   "gemini-3-8-flash-low": "Gemini 3.8 Flash · low",
+  "opus-5-5-high": "Opus 5.5 · high · recheck",
   "claude-opus-5-5": "Opus 5.5",
   "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
   "gemini-3.8-flash": "Gemini 3.8 Flash",
@@ -249,6 +253,7 @@ function RunCell({ r }: { r?: Result }) {
         <p className="text-xs font-medium">
           {OUTCOME[r.outcome].label}
           {r.twin && <span className="font-normal text-muted-foreground"> · twin</span>}
+          {r.doubt && <span className="font-normal text-muted-foreground"> · doubted</span>}
         </p>
         <p className="text-[11px] text-muted-foreground tabular-nums">
           {r.minutes != null ? `${r.minutes}m` : "—"} · {r.costUsd != null ? `$${r.costUsd.toFixed(2)}` : "—"}
@@ -283,6 +288,9 @@ function RunCard({ model, r }: { model: string; r?: Result }) {
           </p>
           {r.twin && (
             <p className="text-xs text-emerald-700">Counted as found: the attached twin of the right house.</p>
+          )}
+          {r.doubt && (
+            <p className="text-xs text-muted-foreground">Its explanation doubted this house, so Opus 5.5 searched again.</p>
           )}
           {r.rankOf != null && (
             <p className="text-xs">
