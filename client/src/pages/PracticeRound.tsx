@@ -22,7 +22,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, Lightbulb, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 1000) / 10}%` : "—");
 const usd = (v: number | null | undefined) => (v == null ? "—" : `$${v.toFixed(2)}`);
@@ -240,6 +240,12 @@ export default function PracticeRound() {
               Pause
             </Button>
           ) : null}
+          {!round.trialOf && round.finishedAt && ["off", "done", "failed"].includes(round.learning?.state ?? "") && (
+            <Button variant="outline" size="sm" disabled={!!busy} onClick={() => call("round", `/api/practice/rounds/${id}/learn`, "POST", "Looking for lessons")}>
+              <Lightbulb className="mr-1.5 h-3.5 w-3.5" />
+              Find lessons
+            </Button>
+          )}
           {!round.trialOf && (
             <Button
               variant="outline"

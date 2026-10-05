@@ -12,17 +12,19 @@
 //      or finds as much faster and cheaper. Otherwise it is dropped.
 //
 // Everything is on the Practice page: each lesson, its evidence, the before
-// and after numbers, and the decision. PRACTICE_AUTO_LESSONS=0 stops the loop
-// from proposing and testing on its own; the page's buttons still work.
+// and after numbers, and the decision. Learning runs only when asked (Daniel,
+// 05.10: "let me trigger it if I want"): the round page's "Find lessons" button
+// (requestLessons). PRACTICE_AUTO_LESSONS=1 brings back the automatic loop.
 // =============================================================================
 import { onLogin } from "./claude-pool";
 import { missReason } from "./miss";
 import { streetOf } from "./consensus";
 import { getJob } from "./jobs";
 import { loadLessons, keptLessons, newLessonId, saveLessons, type Kpis, type Lesson } from "./lessons-store";
-import { allRounds, deleteRound, getRound, kpisOf, markReviewed, pauseRound, resumeRound, settleRound, startRound, truthCandidate, type Pair, type PracticeRound } from "./practice";
+import { allRounds, deleteRound, getRound, kpisOf, markReviewed, pauseRound, resumeRound, saveRound, settleRound, startRound, truthCandidate, type Pair, type PracticeRound } from "./practice";
 
-const AUTO = process.env.PRACTICE_AUTO_LESSONS !== "0";
+const AUTO = process.env.PRACTICE_AUTO_LESSONS === "1";
+const wanted = (r: PracticeRound | null | undefined) => !!r && (AUTO || !!r.learnRequested);
 const REVIEWER = "claude-opus-5-5";
 const TICK_MS = 60_000;
 const MAX_RUNS_REVIEWED = 12;
@@ -222,13 +224,25 @@ export async function learningOf(round: PracticeRound): Promise<Learning> {
         : round.reviewError
           ? "failed"
           : !round.reviewed
-            ? AUTO
+            ? wanted(round)
               ? "waiting"
               : "off"
             : counts.proposed + counts.testing
               ? "testing"
               : "done";
   return { state, ...counts, ...(round.reviewError ? { error: round.reviewError } : {}) };
+}
+
+/** "Find lessons": review this round and test what it proposes (again, if it was reviewed before). */
+export async function requestLessons(id: string): Promise<PracticeRound | null> {
+  const round = await getRound(id);
+  if (!round || round.trialOf) return null;
+  round.learnRequested = true;
+  round.reviewed = false;
+  delete round.reviewError;
+  await saveRound(round);
+  void beat().catch((err) => console.error("[lessons] beat failed:", err));
+  return round;
 }
 
 /**
@@ -271,10 +285,8 @@ async function beat(): Promise<void> {
         await saveLessons();
       } else if (trial.finishedAt) await decide(l, trial);
     }
-    if (!AUTO) return;
-
     // Learn from every finished ordinary round that has enough real runs.
-    for (const r of rounds.filter((x) => x.finishedAt && !x.trialOf && !x.reviewed && !x.paused)) {
+    for (const r of rounds.filter((x) => x.finishedAt && !x.trialOf && !x.reviewed && !x.paused && wanted(x))) {
       const scored = r.results.filter((x) => x.outcome !== "error").length;
       if (scored < r.results.length / 2) {
         await markReviewed(r, "Too many runs ended in an error to learn from.");
@@ -298,7 +310,8 @@ async function beat(): Promise<void> {
     // Several tests side by side (each a small batch), oldest proposal first.
     const slots = PARALLEL_TESTS - lessons.filter((l) => l.status === "testing").length;
     const paused = new Set(rounds.filter((x) => x.paused).map((x) => x.id));
-    for (const next of lessons.filter((l) => l.status === "proposed" && !paused.has(l.fromRound)).slice(0, Math.max(0, slots)))
+    const asked = new Set(rounds.filter(wanted).map((x) => x.id));
+    for (const next of lessons.filter((l) => l.status === "proposed" && !paused.has(l.fromRound) && asked.has(l.fromRound)).slice(0, Math.max(0, slots)))
       await testLesson(next).catch((err) => console.error(`[lessons] test of ${next.id} failed to start:`, err));
   } finally {
     busy = false;
