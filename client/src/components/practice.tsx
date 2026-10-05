@@ -140,6 +140,7 @@ export const MODEL_LABEL: Record<string, string> = {
   "opus-5-5-high": "Opus 5.5 · high · recheck",
   "sonnet-5-5-high": "Sonnet 5.5 · high · recheck",
   "opus-5-5-low": "Opus 5.5 · low · recheck",
+  "opus-5-5-max": "Opus 5.5 · max · recheck",
   "claude-opus-5-5": "Opus 5.5",
   "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
   "gemini-3.8-flash": "Gemini 3.8 Flash",

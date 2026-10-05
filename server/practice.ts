@@ -137,11 +137,12 @@ const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
 // A doubtful answer, or a "not sure", gets a second, independent search by
 // stronger settings (Daniel, 05.10), each recheck model on its own so they can
 // be compared: PRACTICE_RECHECK_MODELS, comma-separated; PRACTICE_RECHECK=off
-// stops it. Doubtful: the explanation doubts the house, the register facts
+// stops it. Round rmuvq1hcj407e (05.10): Opus high fixed 6 of 11, Sonnet high
+// 4, Opus low 2 with 5 wrong, so Opus high now runs against Opus max. Doubtful: the explanation doubts the house, the register facts
 // shown beside the answer contradict the listing, or the plot is more than 1%
 // off. Measured on 05.10 over rmuvmodoa2bc9 and its re-run: that catches all
 // 12 wrong answers and 26 of 86 right ones.
-const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high,sonnet-5-5-high,opus-5-5-low")
+const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high,opus-5-5-max")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
