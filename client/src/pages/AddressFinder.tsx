@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle,
@@ -96,23 +94,7 @@ const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
-  "claude-haiku-4-5": "Haiku 4.5",
 };
-// The teams a New search runs next to the chosen models — the same four the
-// server runs on every listing request (server/platform.ts TEAMS).
-type RunModel = ModelId | "claude-haiku-4-5";
-const TEAMS: { name: string; models: RunModel[] }[] = [
-  { name: "mixed", models: ["claude-sonnet-5-5", "claude-opus-5-5"] },
-  { name: "haiku", models: Array(5).fill("claude-haiku-4-5") },
-  { name: "sonnet", models: Array(3).fill("claude-sonnet-5-5") },
-  { name: "opus", models: Array(3).fill("claude-opus-5-5") },
-  { name: "fable-opus", models: ["claude-fable-5-1", "claude-opus-5-5"] },
-];
-// Solo variants run with the teams (server/platform.ts VARIANTS).
-const VARIANTS: { model: ModelId; effort?: "max" }[] = [
-  { model: "claude-fable-5-1" },
-  { model: "claude-opus-5-5", effort: "max" },
-];
 // Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
   "claude-opus-5-5": "default",
@@ -540,9 +522,6 @@ export default function AddressFinder() {
   // One investigation is started per selected model, all from the same inputs,
   // so several models can be compared on the first try.
   const [models, setModels] = useState<ModelId[]>(["claude-opus-5-5"]);
-  // Team run (experiment): Sonnet 5.5 and Opus 5.5 search side by side, share a
-  // chat, and stop only when both name the same building at 95 % or more.
-  const [teamRun, setTeamRun] = useState(true);
   const toggleModel = useCallback((m: ModelId) => {
     setModels((cur) =>
       cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
@@ -741,18 +720,8 @@ export default function AddressFinder() {
     try {
       // 1) Create one job per selected model on tiny metadata requests — each
       //    returns in milliseconds.
-      const runs: { model: RunModel; team?: string; effort?: "max" }[] = [
-        ...models.map((model) => ({ model })),
-        ...(teamRun ? VARIANTS.filter((v) => v.effort || !models.includes(v.model)) : []),
-        ...(teamRun
-          ? TEAMS.flatMap((t) => {
-              const team = `t${t.name}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-              return t.models.map((model) => ({ model, team }));
-            })
-          : []),
-      ];
       const jobIds = await Promise.all(
-        runs.map(async ({ model, team, effort }) => {
+        models.map(async (model) => {
           const res = await fetch("/api/geo/investigate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -761,8 +730,6 @@ export default function AddressFinder() {
               listingText: description || undefined,
               municipality: municipality || undefined,
               model,
-              team,
-              effort,
             }),
           });
           const body = await res.json().catch(() => null);
@@ -816,7 +783,7 @@ export default function AddressFinder() {
     } finally {
       setSubmitting(false);
     }
-  }, [pictures, municipality, description, models, teamRun, clearForm, navigate]);
+  }, [pictures, municipality, description, models, clearForm, navigate]);
 
   const copyText = useCallback((text: string) => {
     navigator.clipboard
@@ -1079,24 +1046,14 @@ export default function AddressFinder() {
                   </div>
                 </Field>
 
-                <div className="flex items-start gap-2">
-                  <Checkbox id="team-run" checked={teamRun} onCheckedChange={(v) => setTeamRun(v === true)} className="mt-0.5" />
-                  <Label htmlFor="team-run" className="text-sm font-normal leading-snug cursor-pointer">
-                    <span className="font-medium">Teams and variants (experiment)</span>
-                    <span className="block text-muted-foreground">
-                      Also runs Fable 5.1 and Opus 5.5 at max effort on their own, and five teams — Sonnet + Opus, 5 × Haiku, 3 × Sonnet, 3 × Opus, Fable + Opus. Each team shares one chat and stops only when all its members agree on the same building at 95%+.
-                    </span>
-                  </Label>
-                </div>
-
                 <Button onClick={() => void start()} disabled={submitting || pictures.length === 0} className="w-full h-10">
                   {submitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Starting…
                     </>
-                  ) : models.length > 1 || teamRun ? (
-                    `Find address · ${models.length} model${models.length > 1 ? "s" : ""}${teamRun ? " + variants + 5 teams" : ""}`
+                  ) : models.length > 1 ? (
+                    `Find address · ${models.length} models`
                   ) : (
                     "Find address"
                   )}
