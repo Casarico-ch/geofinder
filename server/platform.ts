@@ -6,6 +6,7 @@
 //   GET  /v1/requests/:id                                     → status + each model's address
 //   POST /v1/property  { address } | { latitude, longitude } | { commune, plot } → Popety property data (CHF 3.80)
 //                      or { plots: [ ...2-10 of those ] } → each plot + the plots combined (CHF 3.80 per plot)
+//                      A plot bought once is kept and served free after (popety-store.ts).
 // The admin website reads the same records through /api/requests.
 // =============================================================================
 import { timingSafeEqual } from "node:crypto";
@@ -21,6 +22,7 @@ import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage
 import { type Candidate } from "./consensus";
 import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
+import { profileByLandId } from "./popety-store";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -29,7 +31,6 @@ import {
   findLandByCoordinates,
   findLandByEgrid,
   findLandByPlot,
-  getProfileByLandId,
 } from "./popety";
 import {
   type PlatformRequest,
@@ -357,10 +358,12 @@ export function registerPlatformRoutes(app: Express) {
 
       const pinned = matches.map((m, i) => ({ ...(m as Extract<typeof m, { kind: "match" }>), plot: plots[i] }));
       const unique = pinned.filter((m, i) => pinned.findIndex((o) => o.landId === m.landId) === i);
-      const profiles = await Promise.all(
-        unique.map((m) => getProfileByLandId(m.landId, m.matchedAddress ?? ("address" in m.plot ? m.plot.address : null))),
+      // A plot bought before comes from the store for free (popety-store.ts).
+      const looked = await Promise.all(
+        unique.map((m) => profileByLandId(m.landId, m.matchedAddress ?? ("address" in m.plot ? m.plot.address : null))),
       );
-      record.popetyCostChf = Math.round(profiles.length * PROFILE_COST_CHF * 100) / 100;
+      const profiles = looked.map((l) => l.profile);
+      record.popetyCostChf = Math.round(looked.filter((l) => l.paid).length * PROFILE_COST_CHF * 100) / 100;
       if ("plots" in input) {
         record.profiles = profiles;
         record.combined = combineProfiles(profiles);
