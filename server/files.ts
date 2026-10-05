@@ -59,10 +59,12 @@ export class RunFiles {
     private runDir: string,
     private ids: Record<string, string>,
     private file: string,
+    private inlineOnly: boolean,
   ) {}
 
   /** `login` is the pool login the pictures go to; none for the API key. */
-  static async load(client: Anthropic, runDir: string, login?: string | null): Promise<RunFiles> {
+  // `inlineOnly`: the endpoint has no Files API (DeepSeek), every picture goes inline.
+  static async load(client: Anthropic, runDir: string, login?: string | null, inlineOnly = false): Promise<RunFiles> {
     const file = login ? `files.${login}.json` : FILES_FILE;
     let ids: Record<string, string> = {};
     try {
@@ -70,7 +72,7 @@ export class RunFiles {
     } catch {
       /* first turn */
     }
-    return new RunFiles(client, runDir, ids, file);
+    return new RunFiles(client, runDir, ids, file, inlineOnly);
   }
 
   /** True when this picture goes to the API inline (its upload failed). */
@@ -84,6 +86,11 @@ export class RunFiles {
       if (!(key in this.ids)) todo.set(key, img.source);
     }
     if (todo.size === 0) return;
+    if (this.inlineOnly) {
+      for (const key of Array.from(todo.keys())) this.ids[key] = INLINE;
+      await this.save();
+      return;
+    }
     const queue = Array.from(todo.entries());
     const worker = async () => {
       for (let next = queue.shift(); next; next = queue.shift()) {

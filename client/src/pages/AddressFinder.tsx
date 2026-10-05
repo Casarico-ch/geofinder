@@ -85,6 +85,8 @@ const MODEL_IDS = [
   "claude-sonnet-5-5",
   "claude-fable-5",
   "claude-fable-5-1",
+  "deepseek-v4-pro",
+  "deepseek-flash",
 ] as const;
 type ModelId = (typeof MODEL_IDS)[number];
 // Also labels past runs on models no longer offered.
@@ -94,6 +96,8 @@ const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
   "claude-fable-5": "Fable 5",
   "claude-fable-5-1": "Fable 5.1",
+  "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "deepseek-flash": "DeepSeek Flash",
 };
 // Price relative to the Opus 5.5 default ($4 in / $20 out per 1M tokens).
 const MODEL_COST_HINT: Record<ModelId, string> = {
@@ -101,6 +105,8 @@ const MODEL_COST_HINT: Record<ModelId, string> = {
   "claude-sonnet-5-5": "0.5×",
   "claude-fable-5": "2.5×",
   "claude-fable-5-1": "2.5×",
+  "deepseek-v4-pro": "0.1×",
+  "deepseek-flash": "0.03×",
 };
 
 type PotentialStatus = "running" | "done" | "error";
@@ -521,7 +527,8 @@ export default function AddressFinder() {
   const [description, setDescription] = useState("");
   // One investigation is started per selected model, all from the same inputs,
   // so several models can be compared on the first try.
-  const [models, setModels] = useState<ModelId[]>(["claude-opus-5-5"]);
+  // The same four a Radar listing runs on (server/platform.ts LISTING_MODELS).
+  const [models, setModels] = useState<ModelId[]>(["claude-sonnet-5-5", "claude-opus-5-5", "deepseek-v4-pro", "deepseek-flash"]);
   const toggleModel = useCallback((m: ModelId) => {
     setModels((cur) =>
       cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),

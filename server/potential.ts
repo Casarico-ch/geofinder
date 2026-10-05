@@ -184,7 +184,7 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
         tools: TOOLS,
         cache_control: { type: "ephemeral" },
         messages,
-      }));
+      }), job.model);
       const resp = turn.value;
       login = turn.label ?? undefined;
 
