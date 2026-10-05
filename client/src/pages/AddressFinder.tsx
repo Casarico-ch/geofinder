@@ -527,7 +527,8 @@ export default function AddressFinder() {
   const [description, setDescription] = useState("");
   // One investigation is started per selected model, all from the same inputs,
   // so several models can be compared on the first try.
-  const [models, setModels] = useState<ModelId[]>(["claude-opus-5-5"]);
+  // The same four a Radar listing runs on (server/platform.ts LISTING_MODELS).
+  const [models, setModels] = useState<ModelId[]>(["claude-sonnet-5-5", "claude-opus-5-5", "deepseek-v4-pro", "deepseek-flash"]);
   const toggleModel = useCallback((m: ModelId) => {
     setModels((cur) =>
       cur.includes(m) ? (cur.length > 1 ? cur.filter((x) => x !== m) : cur) : MODEL_IDS.filter((x) => x === m || cur.includes(x)),
