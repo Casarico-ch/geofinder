@@ -110,6 +110,7 @@ export const MODELS = [
   "sonnet-5-5-low",
   "sonnet-5-5-low-2",
   "sonnet-5-5-max-plain",
+  "gemini-3-8-flash-low",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 
@@ -123,6 +124,8 @@ export const VARIANTS: Record<string, { model: string; effort: Effort; plain: bo
   "sonnet-5-5-low": { model: "claude-sonnet-5-5", effort: "low", plain: false },
   "sonnet-5-5-low-2": { model: "claude-sonnet-5-5", effort: "low", plain: false },
   "sonnet-5-5-max-plain": { model: "claude-sonnet-5-5", effort: "max", plain: true },
+  // Gemini 3.8 Flash at its fastest thinking level (Daniel, 05.10).
+  "gemini-3-8-flash-low": { model: "gemini-3.8-flash", effort: "low", plain: false },
 };
 /** The API model behind an investigator id. */
 export const apiModel = (m: string): string => VARIANTS[m]?.model ?? m;
@@ -144,6 +147,7 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "sonnet-5-5-low": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "sonnet-5-5-low-2": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "sonnet-5-5-max-plain": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
+  "gemini-3-8-flash-low": { in: 0.75, cacheRead: 0.075, cacheWrite: 0.75, out: 3.75 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },
   // DeepSeek's published off-peak rates (api-docs.deepseek.com/quick_start/pricing,

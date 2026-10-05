@@ -137,6 +137,9 @@ async function generate(model: string, body: unknown): Promise<any> {
   }
 }
 
+const levelOf = (effort: string | undefined): "low" | "medium" | "high" =>
+  effort === "low" ? "low" : effort === "medium" ? "medium" : "high";
+
 async function create(params: Anthropic.Messages.MessageCreateParamsNonStreaming): Promise<Anthropic.Messages.Message> {
   const tools = (params.tools ?? []) as { name: string; description?: string; input_schema: unknown }[];
   const data = await generate(params.model, {
@@ -147,7 +150,9 @@ async function create(params: Anthropic.Messages.MessageCreateParamsNonStreaming
       : {}),
     generationConfig: {
       maxOutputTokens: params.max_tokens,
-      thinkingConfig: { thinkingLevel: "high", includeThoughts: true },
+      // The run's effort picks the thinking level: Gemini has low / medium / high
+      // (3.8 Flash has no "minimal"; ai.google.dev/gemini-api/docs/thinking, 05.10.2026).
+      thinkingConfig: { thinkingLevel: levelOf((params as { output_config?: { effort?: string } }).output_config?.effort), includeThoughts: true },
     },
   });
 
