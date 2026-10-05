@@ -102,6 +102,10 @@ function sandboxEnv(): NodeJS.ProcessEnv {
   delete env.GEOFINDER_PRACTICE_SECRET; // keys the test track's answer fingerprints
   delete env.GEOFINDER_API_KEY;
   delete env.GOOGLE_API_KEY;
+  // Popety bills per call (05.10: CHF 80 of permit searches from an unknown caller); the model's
+  // shell never holds its key. Every *_KEY, *_TOKEN and *_SECRET goes too.
+  delete env.POPETY_API_KEY;
+  for (const k of Object.keys(env)) if (/(_KEY|_TOKEN|_SECRET|PASSWORD)$/i.test(k)) delete env[k];
   for (const k of Object.keys(env)) if (isPoolVariable(k)) delete env[k]; // the subscription logins
   return env;
 }
