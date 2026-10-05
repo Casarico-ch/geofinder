@@ -29,6 +29,8 @@ interface Login {
   restUntil: number;
   dead: boolean;
   uses: number;
+  // Anthropic's own words for the last refusal, so the status page says WHY.
+  lastRefusal?: { at: string; status: number | undefined; message: string; headers: Record<string, string> };
 }
 
 function loginsFromEnv(env: NodeJS.ProcessEnv): Login[] {
@@ -68,6 +70,16 @@ export function claudeConfigured(): boolean {
 /** Names that the sandbox must never inherit. */
 export function isPoolVariable(name: string): boolean {
   return /^CLAUDE_OAUTH_TOKEN(?:_\d+)?$/.test(name);
+}
+
+// What a refusal said, minus anything secret: the error text and the limit headers.
+function refusalOf(err: InstanceType<typeof Anthropic.APIError>): NonNullable<Login["lastRefusal"]> {
+  const headers: Record<string, string> = {};
+  const h = err.headers as Headers | undefined;
+  h?.forEach?.((v, k) => {
+    if (/^anthropic-ratelimit-|^retry-after$|^request-id$/.test(k)) headers[k] = v;
+  });
+  return { at: new Date().toISOString(), status: err.status, message: String(err.message ?? "").slice(0, 500), headers };
 }
 
 function usable(l: Login, now: number): boolean {
@@ -138,11 +150,13 @@ export async function onLogin<T>(
       return { value, label: login.label, switchedFrom: prefer && prefer !== login.label ? prefer : null, waitedMs };
     } catch (err) {
       if (err instanceof Anthropic.RateLimitError) {
+        login.lastRefusal = refusalOf(err);
         login.restUntil = resetAt(err, Date.now());
         console.warn(`[claude-pool] ${login.label} is resting until ${new Date(login.restUntil).toISOString()}`);
         continue;
       }
       if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+        login.lastRefusal = refusalOf(err);
         login.dead = true;
         console.warn(`[claude-pool] ${login.label} was refused (${err.status}); set aside until the next restart`);
         continue;
@@ -166,5 +180,6 @@ export function poolStatus() {
     state: l.dead ? "refused" : l.restUntil > now ? "resting" : "ready",
     restingUntil: l.restUntil > now ? new Date(l.restUntil).toISOString() : null,
     uses: l.uses,
+    lastRefusal: l.lastRefusal ?? null,
   }));
 }
