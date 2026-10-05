@@ -73,6 +73,8 @@ import {
 import { cluesText, coerceLocation } from "./locate";
 import { GEMINI_LABEL, onLogin, poolOn } from "./claude-pool";
 import { keptLessons, lessonsBlock } from "./lessons-store";
+import { houseNumberOf, streetOf } from "./consensus";
+import { twinsOf } from "./twins";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -914,7 +916,26 @@ async function runLoop(
           // Unproven, it goes back with what is missing (up to 3 times); near
           // the limit, or after that, it is recorded as a ranked shortlist.
           let final = answer;
-          if (answer.found && EXACT.has(answer.confidence) && job.input.noProof) {
+          // Practice: an answer short of an exact house is first tried as a
+          // twin pick, then sent back while the top of the ranked list is unseen.
+          if (job.input.noProof && !(answer.found && EXACT.has(answer.confidence)) && !isPlain(job)) {
+            const pick = await twinPick(job, answer).catch(() => null);
+            if (pick) {
+              final = pick;
+              await addStep(job, { kind: "note", title: "Twin pick", detail: `${pick.address} and ${pick.twinPick!.other} are attached twins at one street number; the plot closest to the listing was named.` });
+            } else {
+              const search = searchOf(job);
+              const gap = unseenTop(search);
+              if (gap && !nearLimit(i + 1) && (search.unsureGates ?? 0) < 3) {
+                search.unsureGates = (search.unsureGates ?? 0) + 1;
+                await saveSearch(job, search);
+                await addStep(job, { kind: "note", title: "Not finished yet — top of the list unseen", detail: gap });
+                results.push({ type: "tool_result", tool_use_id: tu.id, content: gap, is_error: true });
+                continue;
+              }
+            }
+          }
+          if (final === answer && answer.found && EXACT.has(answer.confidence) && job.input.noProof) {
             // No proof gate: recorded as given, with the register facts beside it for the reader.
             const pr = await proveAnswer(job, answer).catch(() => null);
             if (pr?.proof) final = { ...answer, proof: pr.proof };
@@ -968,6 +989,20 @@ async function runLoop(
               sig.clues.map((c, i) => `${i + 1}. ${c}`).join("\n") +
               (sig.location ? `\nLocation clues: ${cluesText(sig.location)}` : ""),
           });
+          // The neighbours were never filled at low effort (0 of 98 practice
+          // runs, 05.10): asked for once, since they single a house out.
+          const search = searchOf(job);
+          if (!sig.location?.neighbours?.length && !search.neighboursAsked && !isPlain(job)) {
+            search.neighboursAsked = true;
+            await saveSearch(job, search);
+            results.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content:
+                "Recorded, but location.neighbours is empty. Look at the photos again: which buildings stand next to the house (side, gap, size, height, roof) and which sides are open (none: true)? Call record_signature once more with them filled — they are what tells look-alike houses apart.",
+            });
+            continue;
+          }
           results.push({ type: "tool_result", tool_use_id: tu.id, content: "recorded" });
           continue;
         }
@@ -1428,6 +1463,65 @@ async function addFromRegister(search: SearchState, lat: number, lon: number): P
 
 const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"]);
 
+// Practice (Daniel, 05.10): of 7 runs that ended "not sure" with time left, 6
+// had the right house in the top 150 of their ranked list, unseen. A run may
+// not stop short of an exact answer before it has viewed or judged them.
+const TOP_LOOK = 150;
+function unseenTop(search: SearchState): string | null {
+  const calls = (search.calls ?? []).filter((c) => c.order?.length);
+  if (!calls.length) return null;
+  const commune = calls[0].commune;
+  const list = [...calls].reverse().find((c) => c.commune === commune)!.order!;
+  const seen = new Set(
+    Object.values(search.candidates)
+      .filter((c) => c.viewed || c.verdict !== "unchecked")
+      .map((c) => String(Number(c.egid))),
+  );
+  const top = list.slice(0, TOP_LOOK);
+  const unseen = top.filter((e) => !seen.has(String(e)));
+  if (!unseen.length) return null;
+  const first = top.findIndex((e) => !seen.has(String(e))) + 1;
+  return (
+    `Not recorded — ${unseen.length} of the top ${top.length} homes on the ${commune} ranked list have not been viewed yet (the first is #${first}). ` +
+    `In past searches the right house was usually there. Get them with shortlist_buildings (same commune, next page), view them (view_candidates) and mark the ones that fit; then answer.`
+  );
+}
+
+/**
+ * Practice: an answer that could not choose between two attached twins at one
+ * street number ("Via Muraccio 61b" or "61c") names the one whose plot is
+ * closest to the listed land, flagged as a twin pick (Daniel, 05.10: "ONLY IF
+ * EXACTLY TWIN AND STUCK TOGETHER", never at another address).
+ */
+async function twinPick(job: Job, a: Answer): Promise<Answer | null> {
+  const land = listingFacts(job.input.listingText).landM2;
+  const search = job.search;
+  if (!land || !search) return null;
+  const named = [a.address, ...a.candidates.map((c) => c.address)].filter((x): x is string => !!x);
+  const byAddress = (addr: string) => {
+    const st = streetOf(addr), no = houseNumberOf(addr);
+    return Object.values(search.candidates).find((c) => c.address && streetOf(c.address) === st && houseNumberOf(c.address) === no);
+  };
+  const entries = Array.from(new Set(named.map(byAddress).filter((c): c is NonNullable<typeof c> => !!c && !!c.plot)));
+  if (entries.length !== 2) return null;
+  const [x, y] = entries;
+  const base = (addr: string) => `${streetOf(addr)} ${(houseNumberOf(addr) ?? "").replace(/[a-z]$/, "")}`;
+  if (!x.address || !y.address || base(x.address) !== base(y.address) || !houseNumberOf(x.address)) return null;
+  if (!(await twinsOf(x.egid)).includes(String(Number(y.egid)))) return null;
+  const [best, other] = Math.abs(x.plot!.areaM2 - land) <= Math.abs(y.plot!.areaM2 - land) ? [x, y] : [y, x];
+  const picked: Answer = {
+    ...a,
+    found: true,
+    confidence: "building",
+    address: best.address,
+    parcel: best.plot!.number,
+    reasoning: `${a.reasoning}\n\nTwin pick: ${best.address} (plot ${Math.round(best.plot!.areaM2)} m²) and ${other.address} (plot ${Math.round(other.plot!.areaM2)} m²) are attached twins; the plot closest to the listed ${land} m² was named.`,
+    twinPick: { other: other.address! },
+  };
+  const pr = await proveAnswer(job, picked).catch(() => null);
+  return pr?.proof ? { ...picked, proof: pr.proof } : picked;
+}
+
 /** Practice: why an exact answer cannot stand as given, or null. */
 function sanityProblem(job: Job, a: Answer, egid: string | number | undefined): string | null {
   const first = (a.address ?? "").split(",")[0];
@@ -1532,7 +1626,7 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
   return {
     proof: {
       egid: claim.egid,
-      facts: rows.map(({ fact, listing, building, verdict }) => ({ fact, listing, building, verdict })),
+      facts: rows.map(({ fact, listing, building, verdict, off }) => ({ fact, listing, building, verdict, ...(off != null ? { off } : {}) })),
       ruledOut: all.filter((c) => c.verdict === "rejected").length,
       total: all.length,
     },

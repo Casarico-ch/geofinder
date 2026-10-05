@@ -57,6 +57,8 @@ export interface SearchState {
   candidates: Record<string, LedgerEntry>; // by EGID; `order` keeps the shortlist ranking
   submitGated?: boolean; // a premature found=false was turned back once
   foundGates?: number; // times an unproven exact answer was turned back
+  neighboursAsked?: boolean; // record_signature came without neighbours once already
+  unsureGates?: number; // practice: a not-exact answer sent back with the top of the list unseen
   sanityGates?: number; // practice: answers turned back for no street address or a plot far off
   // Every shortlist_buildings call and the estimates it filtered with, so a
   // miss can be traced to the filter that dropped the house (miss.ts).

@@ -12,6 +12,7 @@ import {
   type ListingInfo,
   type Result,
   type Round,
+  MODEL_LABEL,
 } from "@/components/practice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -238,7 +239,12 @@ export default function PracticeRound() {
           <Kpi
             label="Rechecked"
             value={round.rechecks?.done ? `${round.rechecks.fixed + round.rechecks.caught} saved · ${round.rechecks.broke} lost` : "—"}
-            hint={round.rechecks?.done ? `${round.rechecks.done} doubtful answers · ${round.rechecks.fixed} turned right, ${round.rechecks.caught} wrong to not sure` : "doubtful answers, searched again by Opus"}
+            hint={
+              round.rechecks?.done
+                ? `${round.rechecks.done} listings · ${round.rechecks.fixed} turned right, ${round.rechecks.caught} wrong to not sure` +
+                  (round.rechecks.byModel ?? []).map((m) => ` · ${MODEL_LABEL[m.model]?.replace(" · recheck", "") ?? m.model}: ${m.fixed} fixed, ${m.broke} lost, ${usd(m.costUsd)}`).join("")
+                : "doubtful and not-sure answers, searched again"
+            }
             tone={!round.rechecks?.done ? undefined : round.rechecks.broke ? "bad" : "good"}
           />
           <Kpi label="Runs that found it" value={pct(round.right, round.total)} hint={`${round.right} of ${round.total} runs`} />
