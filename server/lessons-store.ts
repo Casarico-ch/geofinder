@@ -34,6 +34,7 @@ export interface Lesson {
   fromRound: string; // the round whose runs it was learned from
   baseRound?: string; // the round it is compared against
   trialRound?: string; // the round that tested it
+  pairs?: { propertyId: number; model: string }[]; // the runs its test re-ran (a small batch)
   before?: Kpis;
   after?: Kpis;
   verdict?: string; // the decision in one sentence

@@ -13,7 +13,7 @@ import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
-import { setLesson } from "./lessons";
+import { forgetRound, learningOf, setLesson } from "./lessons";
 import { deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
@@ -431,7 +431,14 @@ export function registerPlatformRoutes(app: Express) {
       }
     });
     app.get(`${base}/rounds`, async (_req: Request, res: Response) => {
-      res.json({ rounds: await listRounds() });
+      // Each round with where its learning stands; lesson tests ride inside their round.
+      const rounds = await Promise.all(
+        (await listRounds()).map(async (r) => {
+          const round = await getRound(r.id);
+          return { ...r, learning: round ? await learningOf(round) : null };
+        }),
+      );
+      res.json({ rounds });
     });
     app.get(`${base}/rounds/:id`, async (req: Request, res: Response) => {
       const round = await getRound(req.params.id);
@@ -456,6 +463,7 @@ export function registerPlatformRoutes(app: Express) {
       }
     });
     app.delete(`${base}/rounds/:id`, async (req: Request, res: Response) => {
+      await forgetRound(req.params.id);
       if (await deleteRound(req.params.id)) res.json({ ok: true });
       else res.status(404).json({ error: "No such round" });
     });
