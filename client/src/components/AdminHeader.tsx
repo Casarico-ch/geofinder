@@ -5,6 +5,7 @@ import { MapPin, Search } from "lucide-react";
 const NAV = [
   { href: "/", label: "Requests" },
   { href: "/usage", label: "Usage" },
+  { href: "/practice", label: "Practice" },
 ];
 
 // Shared header for the admin pages: the logo, Requests / Usage, and New search.
