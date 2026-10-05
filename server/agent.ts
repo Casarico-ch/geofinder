@@ -55,7 +55,7 @@ import {
   DEFAULT_MODEL,
 } from "./jobs";
 import { cluesText, coerceLocation } from "./locate";
-import { DEEPSEEK_LABEL, onLogin, poolOn } from "./claude-pool";
+import { GEMINI_LABEL, onLogin, poolOn } from "./claude-pool";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -650,7 +650,7 @@ async function runLoop(
   const filesFor = async (client: Anthropic, label: string | null): Promise<RunFiles> => {
     let f = filesByLogin.get(label);
     if (!f) {
-      f = await RunFiles.load(client, job.runDir, label, label === DEEPSEEK_LABEL);
+      f = await RunFiles.load(client, job.runDir, label, label === GEMINI_LABEL);
       filesByLogin.set(label, f);
       const lost = await f.verify(); // a map left by a resumed run may hold expired references
       if (lost > 0)
@@ -753,7 +753,7 @@ async function runLoop(
       const resp = turn.value;
       waitedMs += turn.waitedMs;
       if (turn.label !== login) {
-        if (login && turn.label && turn.label !== DEEPSEEK_LABEL)
+        if (login && turn.label && turn.label !== GEMINI_LABEL)
           await addStep(job, { kind: "note", title: `Claude login ${login} is unavailable (limit reached or refused) — continuing on ${turn.label}` });
         login = turn.label;
         await setAccount(job, login);

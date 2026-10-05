@@ -12,7 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Express, NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
-import { deepseekConfigured, isDeepSeek } from "./deepseek";
+import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
 import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
@@ -43,15 +43,15 @@ import {
 } from "./requests";
 
 // The models every listing request runs on, side by side; the listing counts
-// as Found only when they all land on one address (Requests page). DeepSeek is
-// left out while DEEPSEEK_API_KEY is unset, so a missing key never blocks Radar.
+// as Found only when they all land on one address (Requests page). Gemini is
+// left out while GEMINI_API_KEY is unset, so a missing key never blocks Radar.
 const LISTING_MODELS: ModelId[] = (
-  process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5,deepseek-v4-pro,deepseek-flash"
+  process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5,gemini-3.1-pro-preview,gemini-3.8-flash"
 )
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-const listingModels = (): ModelId[] => LISTING_MODELS.filter((m) => !isDeepSeek(m) || deepseekConfigured());
+const listingModels = (): ModelId[] => LISTING_MODELS.filter((m) => !isGemini(m) || geminiConfigured());
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
@@ -415,8 +415,8 @@ export function registerPlatformRoutes(app: Express) {
     }
     const { municipality, listingId, listingUrl, radarUrl } = parsed.data;
     const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : listingModels();
-    if (models.some(isDeepSeek) && !deepseekConfigured()) {
-      res.status(503).json({ error: "DeepSeek is not configured. Set DEEPSEEK_API_KEY on the server." });
+    if (models.some(isGemini) && !geminiConfigured()) {
+      res.status(503).json({ error: "Gemini is not configured. Set GEMINI_API_KEY on the server." });
       return;
     }
     const images: AgentImage[] = parsed.data.images.map((i) => ({ base64: i.imageBase64, mediaType: i.mediaType }));
