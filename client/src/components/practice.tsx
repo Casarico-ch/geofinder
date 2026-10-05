@@ -147,6 +147,33 @@ export interface ListingInfo {
   kind: string | null;
   rooms: string | null;
   price: string | null;
+  radarUrl?: string;
+  sourceUrl?: string | null;
+}
+
+// The listing in Radar and on the web, for the person reading the results.
+function ListingLinks({ info }: { info?: ListingInfo }) {
+  if (!info?.radarUrl && !info?.sourceUrl) return null;
+  return (
+    <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {info.radarUrl && (
+        <Button asChild variant="outline" size="sm" className="h-6 px-2 text-xs">
+          <a href={info.radarUrl} target="_blank" rel="noreferrer">
+            Radar
+            <ExternalLink className="ml-1 h-3 w-3" />
+          </a>
+        </Button>
+      )}
+      {info.sourceUrl && (
+        <Button asChild variant="outline" size="sm" className="h-6 px-2 text-xs">
+          <a href={info.sourceUrl} target="_blank" rel="noreferrer">
+            Listing
+            <ExternalLink className="ml-1 h-3 w-3" />
+          </a>
+        </Button>
+      )}
+    </span>
+  );
 }
 
 const ICON: Record<Result["outcome"], { icon: typeof CheckCircle2; className: string }> = {
@@ -306,11 +333,14 @@ export function ListingsPanel({
                     <TableCell className="align-top pt-3">
                       {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                     </TableCell>
-                    <TableCell className="max-w-72">
+                    <TableCell className="max-w-96">
                       <p className="text-sm font-medium truncate">{info?.title ?? `Listing #${pid}`}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {[info?.place, info?.kind, info?.rooms ? `${info.rooms} rooms` : null, `#${pid}`].filter(Boolean).join(" · ")}
-                      </p>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[info?.place, info?.kind, info?.rooms ? `${info.rooms} rooms` : null, `#${pid}`].filter(Boolean).join(" · ")}
+                        </p>
+                        <ListingLinks info={info} />
+                      </div>
                     </TableCell>
                     {models.map((m) => (
                       <TableCell key={m}>
@@ -330,7 +360,10 @@ export function ListingsPanel({
                   {isOpen && (
                     <TableRow className="hover:bg-transparent">
                       <TableCell colSpan={models.length + 4} className="bg-muted/40 whitespace-normal">
-                        {info?.price && <p className="text-xs text-muted-foreground mb-2">{info.price}</p>}
+                        <div className="flex flex-wrap items-center gap-3 mb-2">
+                          {info?.price && <p className="text-xs text-muted-foreground">{info.price}</p>}
+                          <ListingLinks info={info} />
+                        </div>
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                           {models.map((m) => (
                             <RunCard key={m} model={m} r={runs.find((r) => r.model === m)} />

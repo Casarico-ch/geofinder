@@ -97,7 +97,7 @@ export default function Practice() {
           <div className="space-y-1">
             <h2 className="text-base font-semibold">Start a practice round</h2>
             <p className="text-sm text-muted-foreground">
-              Every search model looks for listings picked at random across Switzerland whose building Radar already knows,
+              Every search model looks for houses (never flats) picked at random across Switzerland whose building Radar already knows,
               with the address hidden. Each model gets CHF 1 and 5 minutes per listing; a run that reaches either without an
               answer counts as a failure. The goal: 100% accuracy, then faster and cheaper.
             </p>

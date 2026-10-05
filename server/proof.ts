@@ -50,14 +50,14 @@ export function listingFacts(text: string | undefined): ListingFacts {
   const line = (re: RegExp) => t.match(re)?.[1];
   const landM2 = num(line(/^Land area m²:\s*([\d'’.,\s]+)$/im));
   const livingM2 = num(line(/^Living area m²:\s*([\d'’.,\s]+)$/im));
-  const type = `${line(/^Type:\s*(.+)$/im) ?? ""} ${line(/^Category:\s*(.+)$/im) ?? ""} ${line(/^Subtype:\s*(.+)$/im) ?? ""}`.toLowerCase();
+  const type = `${line(/^Type:\s*(.+)$/im) ?? ""} ${line(/^Category:\s*(.+)$/im) ?? ""} ${line(/^Subtype:\s*(.+)$/im) ?? ""}`.toLowerCase().replace(/_/g, " "); // "semi_detached_house"
   const sharedLand = /\b(?:PPE|copropri[ée]t[ée]|Stockwerkeigentum|STWE|condominio)\b/i.test(t);
   const multi =
     /multi|immeuble|mehrfamilien|rendite|investment|apartment building|plurifamiliale/.test(type) ||
     /\b(?:deux|trois|quatre|2|3|4)\s+(?:logements|appartements|Wohnungen|unités)\b/i.test(t);
   const house = /\bhouse\b|maison|villa|chalet|einfamilienhaus|\bhaus\b/.test(type);
   const rooms = num(line(/^Rooms:\s*([\d.,]+)$/im));
-  const building = /\bbuilding\b|multi_family|multi-family|immeuble|mehrfamilien|rendite|investment|plurifamiliale/.test(type);
+  const building = /\bbuilding\b|multi[ -]family|immeuble|mehrfamilien|rendite|investment|plurifamiliale/.test(type);
   const flat = /apartment|appartement|wohnung|duplex|attique|attika|penthouse|loft|maisonette/.test(type);
   const kind = building ? "building" : house && !multi ? "house" : flat ? "flat" : null;
   const year = num(line(/^Year built:\s*(\d{4})/im));
