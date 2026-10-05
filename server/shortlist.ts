@@ -368,9 +368,17 @@ async function rankByListing(
             Math.abs(ratio - 1) <= PLOT_FIT ? [p] : ratio >= 0.4 && ratio < 1 ? await plotGroupFor(p, l!.landM2!).catch(() => null) : null;
           if (group) {
             const total = Math.round(group.reduce((t, x) => t + x.areaM2, 0));
-            score.set(b, score.get(b)! - 4);
-            strong.add(b);
-            why.set(b, `plot ${group.map((x) => x.number).join(" + ")}: ${total} m² ✓`);
+            // Two plots that add up to the listed land only lift a house: in a
+            // village of small plots some pair adds up by chance (Vétroz 130 +
+            // 167 = 297 for 299, Sierre 757 for 757 — both wrong houses).
+            if (group.length > 1) {
+              score.set(b, score.get(b)! - 2);
+              why.set(b, `plots ${group.map((x) => x.number).join(" + ")}: ${total} m² (two plots: possible, not proof)`);
+            } else {
+              score.set(b, score.get(b)! - 4);
+              strong.add(b);
+              why.set(b, `plot ${group[0].number}: ${total} m² ✓`);
+            }
           } else if (Math.abs(p.areaM2 - l!.landM2!) / l!.landM2! > 0.15) score.set(b, score.get(b)! + 1);
         } else {
           const flats = await flatsOf(b.egid).catch(() => []);

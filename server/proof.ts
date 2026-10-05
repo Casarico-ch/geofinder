@@ -212,7 +212,8 @@ export async function plotGroupFor(own: Plot, landM2: number): Promise<Plot[] | 
  * 5-minute search that is what kept nine right picks from being answers.
  */
 export function decisive(rows: FactRow[], plots: Plot[], landM2: number | null, landAltM2: number[] = []): boolean {
-  if (landM2 == null || !plots.length || rows.some((r) => r.verdict === "mismatch")) return false;
+  // One plot only: several that add up are a lead, never proof on their own.
+  if (landM2 == null || plots.length !== 1 || rows.some((r) => r.verdict === "mismatch")) return false;
   const total = plots.reduce((s, p) => s + p.areaM2, 0);
   return [landM2, ...landAltM2].some((a) => Math.abs(total - a) / a <= PLOT_DECISIVE);
 }
@@ -321,11 +322,15 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
     const total = plots.reduce((s, p) => s + p.areaM2, 0);
     // The closest of the land sizes the listing gives (the stated one, or one from the description).
     const off = plots.length ? Math.min(...[l.landM2, ...(l.landAltM2 ?? [])].map((a) => Math.abs(total - a) / a)) : null;
+    // Several plots that add up are a lead, never a match on their own (shortlist.ts).
+    const several = plots.length > 1;
     rows.push({
       fact: "Plot area",
       listing: `${l.landM2} m²${l.landAltM2?.length ? ` (description: ${l.landAltM2.join(" / ")} m²)` : ""}`,
-      building: plots.length ? `${plots.map((p) => p.number).join(" + ")}: ${Math.round(total)} m²` : "plot not found",
-      verdict: off == null ? "unknown" : off <= PLOT_MATCH ? "match" : off <= PLOT_CLOSE ? "unknown" : "mismatch",
+      building: plots.length
+        ? `${plots.map((p) => p.number).join(" + ")}: ${Math.round(total)} m²${several && off != null && off <= PLOT_MATCH ? " (two plots: possible, not proof; confirm the house in the photos)" : ""}`
+        : "plot not found",
+      verdict: off == null ? "unknown" : off <= PLOT_MATCH ? (several ? "unknown" : "match") : off <= PLOT_CLOSE ? "unknown" : "mismatch",
       hard: off != null && off > PLOT_CLOSE,
     });
   }
