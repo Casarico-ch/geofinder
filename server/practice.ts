@@ -134,6 +134,15 @@ const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 15);
 // The register proof is off in practice unless PRACTICE_PROOF=on: a house two
 // runs name independently counts as confirmed instead (summarize, "agreed").
 const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
+/**
+ * The limits and rules every search runs under, practice and real requests
+ * alike (Daniel, 05.10: "bring the changes to production, practice works
+ * amazing"): CHF 2, 15 minutes, no register-proof gate (the sanity checks,
+ * the top-150 look and twin picks instead).
+ */
+export function runLimits(): { budgetUsd: number; maxMinutes: number; noProof?: true } {
+  return { budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, ...(PRACTICE_PROOF ? {} : { noProof: true as const }) };
+}
 // A doubtful answer, or a "not sure", gets a second, independent search by
 // stronger settings (Daniel, 05.10), each recheck model on its own so they can
 // be compared: PRACTICE_RECHECK_MODELS, comma-separated; PRACTICE_RECHECK=off
@@ -143,11 +152,11 @@ const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
 // shown beside the answer contradict the listing, or the plot is more than 1%
 // off. Measured on 05.10 over rmuvmodoa2bc9 and its re-run: that catches all
 // 12 wrong answers and 26 of 86 right ones.
-const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high")
+export const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-const RECHECK = process.env.PRACTICE_RECHECK !== "off";
+export const RECHECK = process.env.PRACTICE_RECHECK !== "off";
 const DOUBT =
   /not (fully )?(proven|confirmed|certain|settled|checked|exact)|uncertain|moderate|tentative|alternative|did not (check|settle|verify|compare|confirm)|not confirm|could not|could be|inferred|unsure|probably|likely|runner-up|not match|does not (fit|match)|mismatch/i;
 const PLOT_OFF = 0.01;

@@ -1,8 +1,9 @@
 // =============================================================================
 // consensus — when a listing's models disagree, who checks what.
 //
-// Every listing search — Radar's through /v1, the website's New search and Run
-// again — gets these cross-checks here (platform.ts crossCheckIfSplit). Radar
+// Since 05.10 listing searches no longer run these cross-checks: one search
+// runs, and a doubtful answer is searched again (platform.ts recheckIfDoubtful).
+// Kept for the cross-check prompt's checks (scripts/check-proof.ts). Radar
 // used to run its own copy (radar: server/address-search/consensus.ts); that
 // copy is being removed, so GeoFinder is the one place they are decided:
 //   * neither found an exact address      → nothing to check

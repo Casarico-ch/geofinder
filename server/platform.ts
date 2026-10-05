@@ -15,10 +15,10 @@ import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
-import { type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import { RECHECK, RECHECK_MODELS, recheckWhy, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
+import { type Candidate } from "./consensus";
 import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import {
@@ -46,13 +46,11 @@ import {
   watchListingRequest,
 } from "./requests";
 
-// The models every listing request runs on, side by side; the listing counts
-// as Found only when they all land on one address (Requests page). Gemini is
-// left out while GEMINI_API_KEY is unset, so a missing key never blocks Radar.
-const LISTING_MODELS: ModelId[] = (
-  // Sonnet 5.5 and Opus 5.5 only (Daniel, 05.10: "remove gemini").
-  process.env.GEOFINDER_MODELS ?? "claude-sonnet-5-5,claude-opus-5-5"
-)
+// The search every listing request runs, exactly as the practice track runs
+// it (Daniel, 05.10: "practice works amazing"): one Sonnet 5.5 at low effort,
+// then Opus 5.5 high searches again when its answer is doubtful or not sure
+// (recheckIfDoubtful). Gemini is left out while GEMINI_API_KEY is unset.
+const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "sonnet-5-5-low")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
@@ -200,7 +198,7 @@ export async function startListingRequest(
   record.source = source;
   record.results = [];
   for (const model of models) {
-    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl }, model);
+    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl, ...runLimits() }, model);
     record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
@@ -282,70 +280,36 @@ export function verifyText(
 
 const CHECKS_ACROSS_RUNS = 2;
 
-// After the searches of a listing settle, the other model tries to break each
-// address they disagree on (consensus.ts), and every exact address an earlier
-// run of the same listing gave and this one does not is checked too, so three
-// runs cannot end with three "sure" answers side by side. This covers Radar's
-// searches as well: Radar no longer sends checks of its own.
-async function crossCheckIfSplit(req: PlatformRequest): Promise<boolean> {
+/**
+ * Once a listing's search has settled: an answer that is doubtful or not sure
+ * (practice.ts recheckWhy) is searched again, independently, by the recheck
+ * model. The recheck is marked check: true, so its answer is the request's
+ * answer (Requests page, Radar's outcome.ts): an exact house it names wins,
+ * and a "not sure" from it overrules the first search's guess. Returns true
+ * when it started one, so the request keeps running until it settles.
+ */
+async function recheckIfDoubtful(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
-  if (req.kind !== "listing" || results.some((m) => m.check)) return false;
-  const searches = results.filter((m) => m.status === "done");
-  const checks: (Check & { fromJob?: string })[] = planChecks(searches).map((c) => ({
-    ...c,
-    fromJob: searches.find((m) => m.model === c.candidateFrom)?.jobId,
-  }));
-  checks.push(...earlierClaims(req, searches));
-  if (checks.length === 0) return false;
-  const src = getJob(searches[0].jobId);
+  if (!RECHECK || req.kind !== "listing" || results.some((m) => m.check)) return false;
+  const doubtful = results.filter((m) => m.status === "done" && recheckWhy(m.answer));
+  if (!doubtful.length) return false;
+  const src = getJob(doubtful[0].jobId);
   const images = src ? await loadListingPhotos(src.runDir) : [];
   if (!src || images.length === 0) return false;
-  for (const c of checks) {
-    const from = c.fromJob ? getJob(c.fromJob) : undefined;
-    const { seed, claim, reopened } = seedForCheck(from?.search, c.candidate);
-    const listingText = verifyText(src.input.listingText ?? "", c.candidate, c.candidateFrom, claim, reopened);
-    const job = await createJob({ ...src.input, listingText }, c.verifier);
-    results.push({ model: c.verifier, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
+  for (const model of RECHECK_MODELS) {
+    const job = await createJob({ ...src.input, ...runLimits() }, model);
+    results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
-      await runInvestigation(job, images, listingText, seed.shortlisted.length ? seed : undefined);
-    })().catch((err) => console.error(`[platform] cross-check ${job.id} crashed:`, err));
+      await runInvestigation(job, images, src.input.listingText);
+    })().catch((err) => console.error(`[platform] recheck ${job.id} crashed:`, err));
   }
   req.status = "running";
   return true;
 }
 
-// Exact addresses earlier runs of this listing gave that no search of this run
-// agrees with, each checked by one of this run's models.
-function earlierClaims(
-  req: PlatformRequest,
-  searches: { model: KnownModel; jobId: string; answer: Answer | null }[],
-): (Check & { fromJob?: string })[] {
-  const id = req.input.listingId;
-  if (!id || searches.length === 0) return [];
-  const now = searches.map((m) => ({ model: m.model, at: exactAddressOf(m.answer) }));
-  const seen = now.flatMap((n) => (n.at ? [n.at] : []));
-  const out: (Check & { fromJob?: string })[] = [];
-  const earlier = listRequests()
-    .filter((r) => r.id !== req.id && r.kind === "listing" && r.input.listingId === id && r.createdAt < req.createdAt)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  for (const r of earlier) {
-    for (const m of r.results ?? []) {
-      if (out.length >= CHECKS_ACROSS_RUNS) return out;
-      const at = m.status === "done" ? exactAddressOf(m.answer) : null;
-      if (!at || seen.some((s) => sameAddress(s, at))) continue;
-      seen.push(at);
-      // The model of this run that did not already land on it checks it.
-      const verifier = (now.find((n) => n.at == null) ?? now.find((n) => n.model !== m.model) ?? now[0]).model;
-      const verifierModel = runnableModel(verifier);
-      out.push({ verifier: verifierModel, candidate: at, candidateFrom: m.model, fromJob: m.jobId });
-    }
-  }
-  return out;
-}
-
 export function registerPlatformRoutes(app: Express) {
-  onListingSettled(crossCheckIfSplit);
+  onListingSettled(recheckIfDoubtful);
   app.use("/v1", requireApiKey);
 
   app.post("/v1/property", async (req: Request, res: Response) => {
@@ -727,6 +691,18 @@ export function registerPlatformRoutes(app: Express) {
     }
     const record = await createRequestFromJobs(jobs as NonNullable<(typeof jobs)[number]>[]);
     res.status(201).json({ requestId: record.id });
+  });
+
+  // The website's search page: the request a run belongs to, and its recheck
+  // (recheckIfDoubtful), whose answer is the one that counts.
+  app.get("/api/requests/for-job/:jobId", (req: Request, res: Response) => {
+    const record = listRequests().find((r) => (r.results ?? []).some((m) => m.jobId === req.params.jobId));
+    const check = record?.results?.find((m) => m.check);
+    res.json({
+      requestId: record?.id ?? null,
+      requestStatus: record?.status ?? null,
+      recheck: check ? { jobId: check.jobId, model: check.model, status: check.status, answer: check.answer } : null,
+    });
   });
 
   app.get("/api/requests/:id", (req: Request, res: Response) => {
