@@ -334,6 +334,56 @@ export function builtCentre(buildings: GwrBuilding[]): { lat: number; lon: numbe
 }
 
 // The register building at a point (an answer's pin), or null.
+export interface Flat {
+  floor: number | null; // 0 = ground floor, 5 = 5th upper floor, -1 = first basement (wstwk)
+  rooms: number | null; // wazim: whole rooms, kitchen not counted, so a listed 3.5 is 3 here
+  areaM2: number | null; // warea
+}
+
+// wstwk: 3100 ground floor, 3101–3199 upper floors, 3401–3419 basements.
+function floorOf(code: unknown): number | null {
+  const n = Number(code);
+  if (n >= 3100 && n <= 3199) return n - 3100;
+  if (n >= 3401 && n <= 3419) return -(n - 3400);
+  return null;
+}
+
+// Every flat the register lists in a building (one find call, by EGID).
+// Cached; an empty list on failure, so the check just reads "unknown".
+const flatCache = new Map<string, Promise<Flat[]>>();
+export function flatsOf(egid: string | number): Promise<Flat[]> {
+  const key = String(Number(egid));
+  let hit = flatCache.get(key);
+  if (!hit) {
+    hit = loadFlats(key).catch(() => {
+      flatCache.delete(key);
+      return [];
+    });
+    flatCache.set(key, hit);
+  }
+  return hit;
+}
+
+async function loadFlats(egid: string): Promise<Flat[]> {
+  const j = await getJson(
+    `${API}/find?layer=ch.bfs.gebaeude_wohnungs_register&searchText=${egid}&searchField=egid&returnGeometry=false&contains=false`,
+    20_000,
+  );
+  const num = (v: unknown) => (typeof v === "number" && v > 0 ? v : null);
+  const seen = new Set<string>();
+  const out: Flat[] = [];
+  for (const r of j.results ?? []) {
+    const a = r.attributes ?? {};
+    const ewid: unknown[] = Array.isArray(a.ewid) ? a.ewid : [];
+    ewid.forEach((id, i) => {
+      if (seen.has(String(id)) || (a.wstat?.[i] != null && Number(a.wstat[i]) !== 3004)) return; // 3004 = existing
+      seen.add(String(id));
+      out.push({ floor: floorOf(a.wstwk?.[i]), rooms: num(a.wazim?.[i]), areaM2: num(a.warea?.[i]) });
+    });
+  }
+  return out;
+}
+
 export async function buildingAt(lat: number, lon: number): Promise<GwrBuilding | null> {
   const d = 0.002;
   const j = await getJson(

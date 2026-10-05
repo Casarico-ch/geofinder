@@ -20,8 +20,8 @@ import {
 import { RunFiles } from "./files";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
-import { buildingAt, normalizeCommune } from "./gwr";
-import { annotateFit, factRows, fitText, listingFacts, plotAt, plotByEgrid, strongFit, type Plot } from "./proof";
+import { buildingAt, flatsOf, normalizeCommune } from "./gwr";
+import { annotateFit, factRows, fitText, listingFacts, plotAt, plotByEgrid, strongFit, type ListingFacts, type Plot } from "./proof";
 import { shortlistBuildings } from "./shortlist";
 import { renderContactSheet } from "./sheet";
 import {
@@ -390,7 +390,7 @@ Your first message carries a SEARCH PLAN: the commune confidence and the ring of
 Treat each commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
 1. Read the building's HARD structural attributes off the photos: the levels the register counts (a two-storey block + single-storey wing reads as ~3; a semi-basement "rez inférieur" + two storeys + attic is 4), the number of dwellings when the listing says it ("PPE de deux logements" = 2), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
 2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It enumerates every building in the commune and filters SAFELY so the target cannot be dropped (floors and dwellings matched ±1, footprint wide, and NO era filter). Never hand-write this filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. Two things to get right when you pass estimates: (a) footprintM2 is the MAIN building's GROUND footprint, NOT the listing's living area — a "262 m² house" over ~3 levels is only ~90–130 m² on the ground; (b) estimate floors generously — a two-storey block with a habitable attic is registered as 3. Then treat the returned list as your candidate set and do NOT re-filter it by era or exact floors — that is exactly how the right house gets discarded.
-3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer.
+3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer. For a FLAT, the register lists every flat in a building with its storey, rooms and m², and inspect_candidate checks the listing's flat against them: in a row of look-alike blocks or entrances, inspect every one — the entrances without a flat of that size on that floor are out, and that is often what names the address.
 4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
 5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
 
@@ -1327,7 +1327,8 @@ async function inspectCandidate(
   if (!c) return `error: ${input.egid ?? "that point"} is not on your checklist and no register building of a shortlisted commune was found there — pass an EGID from your checklist, or lat/lon on the building (shortlist its commune first if it is in another one).`;
   const facts = listingFacts(job.input.listingText);
   const plot = c.plot ?? (await plotAt(c.lat, c.lon)) ?? undefined;
-  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plot ? [plot] : [] });
+  const flats = await flatsFor(facts, c.egid);
+  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plot ? [plot] : [], flats });
   Object.assign(c, { plot, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
   await saveSearch(job, search);
   const sheetNo = String(job.steps.filter((st) => st.title.startsWith("close look")).length + 1).padStart(2, "0");
@@ -1433,11 +1434,13 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
   if (!claim) return { proof: null, blocking, soft };
 
   const plots = await plotsOf(a, claim);
-  const rows = factRows(listingFacts(job.input.listingText), {
+  const facts = listingFacts(job.input.listingText);
+  const rows = factRows(facts, {
     floors: claim.floors,
     dwellings: claim.dwellings,
     footprintM2: claim.footprintM2,
     plots,
+    flats: await flatsFor(facts, claim.egid),
   });
   for (const r of rows.filter((x) => x.verdict === "mismatch")) {
     const line = `${r.fact} does not fit: the listing says ${r.listing}, the building has ${r.building}.`;
@@ -1454,6 +1457,11 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
     blocking,
     soft,
   };
+}
+
+// The register's flats, when the listing is a flat with a living area to find among them.
+function flatsFor(facts: ListingFacts, egid: string | number) {
+  return facts.livingM2 != null && facts.dwellings !== 1 ? flatsOf(egid) : Promise.resolve(undefined);
 }
 
 // The plots an answer covers: the ones it names (by EGRID), else the one under its building.
