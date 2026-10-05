@@ -24,7 +24,7 @@ export default function AdminHeader({ subtitle }: { subtitle: string }) {
         <div className="flex-1" />
         {NAV.map((n) => (
           <Link key={n.href} href={n.href}>
-            <Button variant="ghost" size="sm" className={`px-2 sm:px-3 ${location === n.href ? "text-primary" : ""}`}>
+            <Button variant="ghost" size="sm" className={`px-2 sm:px-3 ${location === n.href || (n.href !== "/" && location.startsWith(`${n.href}/`)) ? "text-primary" : ""}`}>
               {n.label}
             </Button>
           </Link>

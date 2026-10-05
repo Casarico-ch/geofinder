@@ -9,6 +9,7 @@ import AddressFinder from "./pages/AddressFinder";
 import Requests from "./pages/Requests";
 import Usage from "./pages/Usage";
 import Practice from "./pages/Practice";
+import PracticeRound from "./pages/PracticeRound";
 
 function Router() {
   return (
@@ -20,6 +21,7 @@ function Router() {
       <Route path={"/requests"} component={Requests} />
       <Route path={"/usage"} component={Usage} />
       <Route path={"/practice"} component={Practice} />
+      <Route path={"/practice/:id"} component={PracticeRound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>

@@ -14,7 +14,7 @@ import { z } from "zod";
 import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, setLesson } from "./lessons";
-import { deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import { type RoundSummary, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, type Check, exactAddressOf, planChecks, sameAddress } from "./consensus";
@@ -430,23 +430,27 @@ export function registerPlatformRoutes(app: Express) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
       }
     });
-    app.get(`${base}/rounds`, async (_req: Request, res: Response) => {
-      // Each round with where its learning stands; lesson tests ride inside their round.
-      // A round's total cost counts its own runs and the tests of its lessons.
-      const summaries = await listRounds();
+    // A round as the page shows it: its summary, where its learning stands, and
+    // its total cost — its own runs plus the tests of its lessons.
+    const roundView = async (r: RoundSummary, all: RoundSummary[]) => {
       const lessons = await loadLessons();
-      const testCost = (id: string) =>
-        summaries
-          .filter((t) => t.trialOf && lessons.some((l) => l.id === t.trialOf && l.fromRound === id))
-          .reduce((a, t) => a + t.costUsd, 0);
-      const rounds = await Promise.all(
-        summaries.map(async (r) => {
-          const round = await getRound(r.id);
-          const tests = Math.round(testCost(r.id) * 100) / 100;
-          return { ...r, testsCostUsd: tests, totalCostUsd: Math.round((r.costUsd + tests) * 100) / 100, learning: round ? await learningOf(round) : null };
-        }),
-      );
-      res.json({ rounds });
+      const tests =
+        Math.round(
+          all
+            .filter((t) => t.trialOf && lessons.some((l) => l.id === t.trialOf && l.fromRound === r.id))
+            .reduce((a, t) => a + t.costUsd, 0) * 100,
+        ) / 100;
+      const round = await getRound(r.id);
+      return {
+        ...r,
+        testsCostUsd: tests,
+        totalCostUsd: Math.round((r.costUsd + tests) * 100) / 100,
+        learning: round ? await learningOf(round) : null,
+      };
+    };
+    app.get(`${base}/rounds`, async (_req: Request, res: Response) => {
+      const all = await listRounds();
+      res.json({ rounds: await Promise.all(all.map((r) => roundView(r, all))) });
     });
     app.get(`${base}/rounds/:id`, async (req: Request, res: Response) => {
       const round = await getRound(req.params.id);
@@ -454,7 +458,7 @@ export function registerPlatformRoutes(app: Express) {
         res.status(404).json({ error: "No such round" });
         return;
       }
-      res.json({ summary: summarize(round), results: round.results });
+      res.json({ summary: await roundView(summarize(round), await listRounds()), results: round.results });
     });
     app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
       const round = await pauseRound(req.params.id);
