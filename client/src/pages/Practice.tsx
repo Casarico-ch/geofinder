@@ -8,12 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChevronRight, Loader2, Pause, Play, Trash2 } from "lucide-react";
-
-const SIZES = [5, 10, 20, 50, 100];
 
 // The test track: GeoFinder searches listings whose building Radar already
 // knows (address hidden), every answer is scored, and each round teaches it.
@@ -57,13 +55,16 @@ export default function Practice() {
     }
   };
 
+  const n = Number(size);
+  const validSize = Number.isInteger(n) && n >= 1 && n <= 200;
+
   const start = async () => {
     setStarting(true);
     try {
       const res = await fetch("/api/practice/rounds", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ limit: Number(size) }),
+        body: JSON.stringify({ limit: n }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -107,21 +108,20 @@ export default function Practice() {
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="practice-size">Listings</Label>
-              <Select value={size} onValueChange={setSize}>
-                <SelectTrigger id="practice-size" className="w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SIZES.map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="practice-size">Listings (1–200)</Label>
+              <Input
+                id="practice-size"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={200}
+                step={1}
+                className="w-32"
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+              />
             </div>
-            <Button onClick={start} disabled={starting}>
+            <Button onClick={start} disabled={starting || !validSize}>
               {starting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
               Start practice round
             </Button>
