@@ -57,11 +57,15 @@ export interface Answer {
   // Why an exact answer counts as proven (proof.ts): the listing's facts
   // against the building's, and how much of the checklist was ruled out.
   proof?: AnswerProof;
+  // Practice: two attached twins at one street number could not be told
+  // apart, so the one whose plot is closest to the listing was named.
+  twinPick?: { other: string };
 }
 
 export interface AnswerProof {
   egid: string | null;
-  facts: { fact: string; listing: string; building: string; verdict: "match" | "mismatch" | "unknown" }[];
+  // off: for the plot, how far the house's plot is from the listed land (0.035 = 3.5%).
+  facts: { fact: string; listing: string; building: string; verdict: "match" | "mismatch" | "unknown"; off?: number }[];
   ruledOut: number; // candidates rejected with a reason
   total: number; // candidates on the checklist
 }
@@ -113,6 +117,8 @@ export const MODELS = [
   "sonnet-5-5-max-plain",
   "gemini-3-8-flash-low",
   "opus-5-5-high",
+  "sonnet-5-5-high",
+  "opus-5-5-low",
 ] as const;
 export type ModelId = (typeof MODELS)[number];
 
@@ -131,6 +137,8 @@ export const VARIANTS: Record<string, { model: string; effort: Effort; plain: bo
   "gemini-3-8-flash-low": { model: "gemini-3.8-flash", effort: "low", plain: false },
   // The second look at a doubtful answer (practice.ts recheck; Daniel, 05.10).
   "opus-5-5-high": { model: "claude-opus-5-5", effort: "high", plain: false },
+  "sonnet-5-5-high": { model: "claude-sonnet-5-5", effort: "high", plain: false },
+  "opus-5-5-low": { model: "claude-opus-5-5", effort: "low", plain: false },
 };
 /** The API model behind an investigator id. */
 export const apiModel = (m: string): string => VARIANTS[m]?.model ?? m;
@@ -154,6 +162,8 @@ const PRICING: Record<KnownModel, { in: number; cacheRead: number; cacheWrite: n
   "sonnet-5-5-low-3": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "sonnet-5-5-max-plain": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "opus-5-5-high": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
+  "opus-5-5-low": { in: 4, cacheRead: 0.2, cacheWrite: 5, out: 20 },
+  "sonnet-5-5-high": { in: 2, cacheRead: 0.2, cacheWrite: 2.5, out: 10 },
   "gemini-3-8-flash-low": { in: 0.75, cacheRead: 0.075, cacheWrite: 0.75, out: 3.75 },
   "claude-fable-5": { in: 10, cacheRead: 1.0, cacheWrite: 12.5, out: 50 },
   "claude-fable-5-1": { in: 10, cacheRead: 0.25, cacheWrite: 12.5, out: 50 },

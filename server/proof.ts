@@ -266,6 +266,8 @@ export interface FactRow {
   verdict: FactVerdict;
   /** A mismatch that blocks an exact answer (not just one to explain). */
   hard?: boolean;
+  /** Plot only: how far the plot is from the listed land, as a share (0.035 = 3.5%). */
+  off?: number;
 }
 
 export interface BuildingFacts {
@@ -338,6 +340,7 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
         : "plot not found",
       verdict: off == null ? "unknown" : off <= PLOT_MATCH ? (several ? "unknown" : "match") : off <= PLOT_CLOSE ? "unknown" : "mismatch",
       hard: off != null && off > PLOT_CLOSE,
+      ...(off != null ? { off: Math.round(off * 1000) / 1000 } : {}),
     });
   }
   return rows;

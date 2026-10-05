@@ -28,7 +28,7 @@ import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promise
 import path from "node:path";
 import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { exactAddressOf, houseNumberOf, streetOf } from "./consensus";
-import { createJob, deleteJob, elapsedMs, costUsd, getJob, requestPause, type Answer, type Job, type ModelId } from "./jobs";
+import { createJob, deleteJob, elapsedMs, costUsd, getJob, MODELS, requestPause, type Answer, type Job, type ModelId } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
 import { keptLessons, type Kpis } from "./lessons-store";
 import { buildingByEgid } from "./gwr";
@@ -95,7 +95,10 @@ export interface PracticeResult {
   // The answer named a house but its own explanation doubted it, so a stronger
   // model searched the listing again on its own (recheck below).
   doubt?: boolean;
+  doubtWhy?: string; // what made it doubtful (recheckWhy)
   recheck?: boolean; // this run is that second search
+  twinPick?: string; // named one of two attached twins; the other one
+
 }
 
 export interface PracticeRound {
@@ -131,15 +134,31 @@ const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 15);
 // The register proof is off in practice unless PRACTICE_PROOF=on: a house two
 // runs name independently counts as confirmed instead (summarize, "agreed").
 const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
-// A named house whose explanation doubts it gets a second, independent search
-// by a stronger model (Daniel, 05.10: "Opus 5.5 high"). On 05.10 all 6 wrong
-// answers of rmuvmodoa2bc9 carried one of these words, against 11 of 80 right
-// ones. PRACTICE_RECHECK=off stops it.
-const RECHECK_MODEL: ModelId = "opus-5-5-high";
+// A doubtful answer, or a "not sure", gets a second, independent search by
+// stronger settings (Daniel, 05.10), each recheck model on its own so they can
+// be compared: PRACTICE_RECHECK_MODELS, comma-separated; PRACTICE_RECHECK=off
+// stops it. Doubtful: the explanation doubts the house, the register facts
+// shown beside the answer contradict the listing, or the plot is more than 1%
+// off. Measured on 05.10 over rmuvmodoa2bc9 and its re-run: that catches all
+// 12 wrong answers and 26 of 86 right ones.
+const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high,sonnet-5-5-high,opus-5-5-low")
+  .split(",")
+  .map((m) => m.trim())
+  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
 const RECHECK = process.env.PRACTICE_RECHECK !== "off";
 const DOUBT =
-  /not (fully )?(proven|confirmed|certain|settled|checked|exact)|uncertain|moderate|tentative|alternative|did not (check|settle|verify|compare)|could not|unsure|probably|likely|not match|does not (fit|match)|mismatch/i;
-export const doubtful = (a: Answer | null): boolean => !!a && !!exactAddressOf(a) && DOUBT.test(a.reasoning ?? "");
+  /not (fully )?(proven|confirmed|certain|settled|checked|exact)|uncertain|moderate|tentative|alternative|did not (check|settle|verify|compare|confirm)|not confirm|could not|could be|inferred|unsure|probably|likely|runner-up|not match|does not (fit|match)|mismatch/i;
+const PLOT_OFF = 0.01;
+/** Why a finished answer is searched again, or null. */
+export function recheckWhy(a: Answer | null): string | null {
+  if (!a) return null;
+  if (!exactAddressOf(a)) return "not sure";
+  if (DOUBT.test(a.reasoning ?? "")) return "doubt in its explanation";
+  const facts = a.proof?.facts ?? [];
+  if (facts.some((f) => f.verdict === "mismatch")) return "a register fact contradicts the listing";
+  if (facts.some((f) => f.fact === "Plot area" && (f.off ?? 0) > PLOT_OFF)) return "plot more than 1% off";
+  return null;
+}
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function radar(): { url: string; secret: string } {
@@ -426,8 +445,9 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         await save(round);
         await saveListingPhotos(job.runDir, images);
         await runInvestigation(job, images, c.listingText);
-        const again = recheckFor(round, r, getJob(job.id)?.answer ?? null);
-        if (again) queue.push(again);
+        const answer = getJob(job.id)?.answer ?? null;
+        if (answer?.twinPick) r.twinPick = answer.twinPick.other;
+        queue.push(...recheckFor(round, r, answer));
       } catch (err) {
         r.outcome = "error";
         r.error = err instanceof Error ? err.message : String(err);
@@ -443,15 +463,18 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
   await save(round);
 }
 
-/** A doubtful answer's second search, added to the round once per listing. */
-function recheckFor(round: PracticeRound, r: PracticeResult, answer: Answer | null): PracticeResult | null {
-  if (!RECHECK || r.recheck || !doubtful(answer)) return null;
-  r.doubt = true;
-  if (round.results.some((x) => x.recheck && x.propertyId === r.propertyId)) return null;
-  if (!round.models.includes(RECHECK_MODEL)) round.models.push(RECHECK_MODEL);
-  const again: PracticeResult = { ...r, jobId: null, model: RECHECK_MODEL, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, rank: undefined, rankOf: undefined, doubt: undefined, recheck: true, twin: undefined, twinChecked: undefined, error: undefined };
-  round.results.push(again);
-  return again;
+/** A doubtful answer's second searches, one per recheck model, added once per listing. */
+function recheckFor(round: PracticeRound, r: PracticeResult, answer: Answer | null): PracticeResult[] {
+  const why = RECHECK && !r.recheck ? recheckWhy(answer) : null;
+  if (!why) return [];
+  Object.assign(r, { doubt: true, doubtWhy: why });
+  if (round.results.some((x) => x.recheck && x.propertyId === r.propertyId)) return [];
+  return RECHECK_MODELS.map((model) => {
+    if (!round.models.includes(model)) round.models.push(model);
+    const again: PracticeResult = { propertyId: r.propertyId, jobId: null, model, truth: r.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: r.sourceUrl, recheck: true };
+    round.results.push(again);
+    return again;
+  });
 }
 
 export interface RoundSummary {
@@ -487,7 +510,7 @@ export interface RoundSummary {
   ranks: { measured: number; top10: number; top120: number; median: number | null };
   // Doubtful answers searched again: how many the second look turned right,
   // turned from wrong to not sure, or turned from right to something else.
-  rechecks: { done: number; fixed: number; caught: number; broke: number };
+  rechecks: RecheckStats & { byModel: (RecheckStats & { model: string; costUsd: number })[] };
 }
 
 export function summarize(round: PracticeRound): RoundSummary {
@@ -527,16 +550,40 @@ export function summarize(round: PracticeRound): RoundSummary {
   };
 }
 
+// Per recheck: fixed = the first answer was not right and the recheck is;
+// caught = a wrong answer became "not sure"; broke = a right one got lost.
+interface RecheckStats { done: number; fixed: number; caught: number; broke: number }
 function recheckStats(round: PracticeRound): RoundSummary["rechecks"] {
-  const out = { done: 0, fixed: 0, caught: 0, broke: 0 };
+  const per = new Map<string, RecheckStats & { model: string; costUsd: number }>();
   for (const again of round.results) {
     if (!again.recheck || again.outcome === "running" || again.outcome === "error") continue;
     const first = round.results.find((x) => x.doubt && x.propertyId === again.propertyId);
     if (!first) continue;
+    const m = per.get(again.model) ?? { model: again.model, done: 0, fixed: 0, caught: 0, broke: 0, costUsd: 0 };
+    per.set(again.model, m);
+    m.costUsd = Math.round((m.costUsd + (again.costUsd ?? 0)) * 100) / 100;
+    const k: keyof RecheckStats | null =
+      first.outcome !== "right" && again.outcome === "right" ? "fixed"
+      : first.outcome === "wrong" && again.outcome !== "wrong" ? "caught"
+      : first.outcome === "right" && again.outcome !== "right" ? "broke"
+      : null;
+    m.done++;
+    if (k) m[k]++;
+  }
+  // The round's total counts each listing once, whichever recheck model saved it.
+  return { ...listingTotals(round), byModel: Array.from(per.values()) };
+}
+
+/** Per listing that was rechecked: did ANY recheck fix it, and did all lose it? */
+function listingTotals(round: PracticeRound): RecheckStats {
+  const out: RecheckStats = { done: 0, fixed: 0, caught: 0, broke: 0 };
+  for (const first of round.results.filter((x) => x.doubt)) {
+    const agains = round.results.filter((x) => x.recheck && x.propertyId === first.propertyId && x.outcome !== "running" && x.outcome !== "error");
+    if (!agains.length) continue;
     out.done++;
-    if (first.outcome === "wrong" && again.outcome === "right") out.fixed++;
-    else if (first.outcome === "wrong" && again.outcome !== "wrong") out.caught++;
-    else if (first.outcome === "right" && again.outcome !== "right") out.broke++;
+    if (first.outcome !== "right" && agains.some((a) => a.outcome === "right")) out.fixed++;
+    else if (first.outcome === "wrong" && agains.some((a) => a.outcome !== "wrong")) out.caught++;
+    else if (first.outcome === "right" && agains.every((a) => a.outcome !== "right")) out.broke++;
   }
   return out;
 }
