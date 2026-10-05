@@ -398,7 +398,8 @@ async function rankByListing(
         const nb = await neighbourhoodAt(b.lat, b.lon).catch(() => null);
         const fit = nb ? neighbourFit(clues, nb) : null;
         if (!fit) continue;
-        score.set(b, score.get(b)! + (fit.score >= 0.85 ? -3 : fit.score >= 0.6 ? -1.5 : fit.score < 0.3 ? 1 : 0));
+        // A bonus only: a misread photo must never push the right house down.
+        score.set(b, score.get(b)! - (fit.score >= 0.85 ? 3 : fit.score >= 0.7 ? 2 : fit.score >= 0.55 ? 1 : 0));
         if (fit.score >= 0.6) why.set(b, [why.get(b), fit.why].filter(Boolean).join(", "));
       }
     };

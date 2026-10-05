@@ -168,16 +168,24 @@ function fitOne(c: NeighbourClue, house: Shape, around: Shape[], front: number):
   let best = 0;
   for (const n of near) {
     let got = 0, of = 0;
-    if (c.distanceM != null) { of++; if (Math.abs(gapOf(house, n) - c.distanceM) <= Math.max(6, c.distanceM * 0.6)) got++; }
+    if (c.distanceM != null) {
+      of++;
+      const err = Math.abs(gapOf(house, n) - c.distanceM);
+      got += err <= Math.max(5, c.distanceM * 0.4) ? 1 : err <= Math.max(10, c.distanceM) ? 0.5 : 0;
+    }
     if (c.size) {
       of++;
       const r = n.areaM2 / house.areaM2;
-      if ((c.size === "smaller" && r < 0.8) || (c.size === "similar" && r >= 0.6 && r <= 1.6) || (c.size === "bigger" && r > 1.25)) got++;
+      // Near a class boundary a misjudged size still earns half.
+      const lr = Math.log(r);
+      const want = c.size === "smaller" ? -0.7 : c.size === "bigger" ? 0.7 : 0;
+      got += Math.abs(lr - want) <= 0.45 ? 1 : Math.abs(lr - want) <= 0.9 ? 0.5 : 0;
     }
     if (c.height) {
       of++;
       const d = n.heightM - house.heightM;
-      if ((c.height === "lower" && d < -1.5) || (c.height === "similar" && Math.abs(d) <= 3) || (c.height === "taller" && d > 1.5)) got++;
+      const want = c.height === "lower" ? -4 : c.height === "taller" ? 4 : 0;
+      got += Math.abs(d - want) <= 3 ? 1 : Math.abs(d - want) <= 6 ? 0.5 : 0;
     }
     if (c.roof) { of++; if ((c.roof === "flat") === n.flat) got++; }
     if (c.ridge && !house.flat && !n.flat) {
