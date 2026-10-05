@@ -57,10 +57,10 @@ const LISTING_MODELS: ModelId[] = (
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
 const listingModels = (): ModelId[] => LISTING_MODELS.filter((m) => !isGemini(m) || geminiConfigured());
-// Practice rounds (Daniel, 05.10): three Sonnet 5.5 at low effort (jobs.ts
-// VARIANTS); Flash found 1 house of 20 the Sonnets missed and made most of the
-// wrong answers. Real requests keep LISTING_MODELS.
-const PRACTICE_MODELS: ModelId[] = (process.env.PRACTICE_MODELS ?? "sonnet-5-5-low,sonnet-5-5-low-2,sonnet-5-5-low-3")
+// Practice rounds (Daniel, 05.10): one Sonnet 5.5 at low effort (jobs.ts
+// VARIANTS). Three identical runs either all found a house or none did: the
+// ranking decides, not luck. Real requests keep LISTING_MODELS.
+const PRACTICE_MODELS: ModelId[] = (process.env.PRACTICE_MODELS ?? "sonnet-5-5-low")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
