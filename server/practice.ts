@@ -97,6 +97,7 @@ export interface PracticeRound {
   reviewed?: boolean; // the reviewer has read it (lessons.ts)
   skipped?: { propertyId: number; reason: string }[]; // listings left out: their answer key contradicts them
   rerunOf?: string; // the round whose listings it searches again
+  noProof?: boolean; // answers recorded without the register proof; agreement is the check
   reviewError?: string; // why the reviewer could not
   split: "practice" | "test";
   models: ModelId[];
@@ -113,6 +114,9 @@ const BUDGET_CHF = Number(process.env.PRACTICE_BUDGET_CHF ?? 1);
 const USD_PER_CHF = Number(process.env.USD_PER_CHF ?? 1.25);
 // And 5 minutes (Daniel, 05.10): "find the right house fast".
 const MAX_MINUTES = Number(process.env.PRACTICE_MAX_MINUTES ?? 5);
+// The register proof is off in practice unless PRACTICE_PROOF=on: a house two
+// runs name independently counts as confirmed instead (summarize, "agreed").
+const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function radar(): { url: string; secret: string } {
@@ -317,6 +321,7 @@ export async function startRound(
     ...(opts.trialOf ? { trialOf: opts.trialOf } : {}),
     ...(skipped.length ? { skipped } : {}),
     ...(opts.rerunOf ? { rerunOf: opts.rerunOf } : {}),
+    ...(PRACTICE_PROOF ? {} : { noProof: true }),
     results: [],
   };
   for (const c of cases)
@@ -352,7 +357,7 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [] },
+          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof },
           r.model,
         );
         r.jobId = job.id;
@@ -397,6 +402,11 @@ export interface RoundSummary {
   avgCostUsd: number | null;
   costUsd: number; // every run of the round so far, running ones included
   lostAt: Record<string, number>;
+  noProof: boolean;
+  // Listings where two or more runs named the same house, and how many of those were right.
+  agreed: number;
+  agreedRight: number;
+  agreedWrong: number;
 }
 
 export function summarize(round: PracticeRound): RoundSummary {
@@ -429,7 +439,32 @@ export function summarize(round: PracticeRound): RoundSummary {
     avgCostUsd: avg(done.map((r) => r.costUsd ?? 0)),
     costUsd: Math.round(round.results.reduce((a, r) => a + (r.costUsd ?? 0), 0) * 100) / 100,
     lostAt: lost,
+    noProof: !!round.noProof,
+    ...agreement(round),
   };
+}
+
+/** Per listing: did two runs name the same house, and was it the right one? */
+function agreement(round: PracticeRound): { agreed: number; agreedRight: number; agreedWrong: number } {
+  const out = { agreed: 0, agreedRight: 0, agreedWrong: 0 };
+  const byListing = new Map<number, PracticeResult[]>();
+  for (const r of round.results) if (r.outcome === "right" || r.outcome === "wrong") byListing.set(r.propertyId, [...(byListing.get(r.propertyId) ?? []), r]);
+  for (const runs of Array.from(byListing.values())) {
+    const groups = new Map<string, PracticeResult[]>();
+    for (const r of runs) {
+      const st = r.answer ? streetOf(r.answer) : null;
+      const no = r.answer ? houseNumberOf(r.answer) : null;
+      if (!st || !no) continue;
+      const k = `${st.toLowerCase()} ${no}`;
+      groups.set(k, [...(groups.get(k) ?? []), r]);
+    }
+    const best = Array.from(groups.values()).filter((g) => g.length >= 2).sort((a, b) => b.length - a.length)[0];
+    if (!best) continue;
+    out.agreed++;
+    if (best[0].outcome === "right") out.agreedRight++;
+    else out.agreedWrong++;
+  }
+  return out;
 }
 
 export async function getRound(id: string): Promise<PracticeRound | null> {

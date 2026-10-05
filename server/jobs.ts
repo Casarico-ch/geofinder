@@ -209,6 +209,9 @@ export interface Job {
     maxMinutes?: number;
     // The practice lessons this run reads, in place of the kept ones (a lesson's test).
     lessons?: string[];
+    // Practice: an exact answer is recorded without the register proof; a
+    // second run naming the same house is the check instead (Daniel, 05.10).
+    noProof?: boolean;
   };
   lessons?: string[]; // the practice lessons in its system prompt, fixed at start
   overBudget?: boolean; // stopped by input.budgetUsd or input.maxMinutes

@@ -914,7 +914,11 @@ async function runLoop(
           // Unproven, it goes back with what is missing (up to 3 times); near
           // the limit, or after that, it is recorded as a ranked shortlist.
           let final = answer;
-          if (answer.found && EXACT.has(answer.confidence)) {
+          if (answer.found && EXACT.has(answer.confidence) && job.input.noProof) {
+            // No proof gate: recorded as given, with the register facts beside it for the reader.
+            const pr = await proveAnswer(job, answer).catch(() => null);
+            if (pr?.proof) final = { ...answer, proof: pr.proof };
+          } else if (answer.found && EXACT.has(answer.confidence)) {
             const search = searchOf(job);
             const pr = await proveAnswer(job, answer);
             const asks = [...pr.blocking, ...((search.foundGates ?? 0) === 0 ? pr.soft : [])];
