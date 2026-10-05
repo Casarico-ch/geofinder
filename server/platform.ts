@@ -461,10 +461,20 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       // What each listing is, from the text its searches were given (address hidden).
-      const listings: Record<number, { title: string | null; place: string | null; kind: string | null; rooms: string | null; price: string | null }> = {};
+      type Info = { title: string | null; place: string | null; kind: string | null; rooms: string | null; price: string | null; radarUrl: string; sourceUrl: string | null };
+      const listings: Record<number, Info> = {};
+      const radarBase = (process.env.RADAR_PUBLIC_URL || "https://app.casarico.ch").replace(/\/+$/, "");
       for (const r of round.results) {
         const text = (r.jobId ? getJob(r.jobId)?.input.listingText : undefined) ?? "";
-        if (listings[r.propertyId] || !text) continue;
+        const links = { radarUrl: `${radarBase}/properties?property=${r.propertyId}`, sourceUrl: r.sourceUrl ?? null };
+        if (listings[r.propertyId]) {
+          listings[r.propertyId].sourceUrl ??= links.sourceUrl;
+          continue;
+        }
+        if (!text) {
+          listings[r.propertyId] = { title: null, place: null, kind: null, rooms: null, price: null, ...links };
+          continue;
+        }
         const line = (k: string) => text.match(new RegExp(`^${k}:\\s*(.+)$`, "im"))?.[1]?.trim() ?? null;
         listings[r.propertyId] = {
           title: line("Title"),
@@ -472,6 +482,7 @@ export function registerPlatformRoutes(app: Express) {
           kind: line("Subtype") ?? line("Category") ?? line("Type"),
           rooms: line("Rooms"),
           price: line("Price"),
+          ...links,
         };
       }
       // Why each miss never had the right house on its checklist — withheld while

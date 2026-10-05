@@ -41,6 +41,9 @@ export interface PracticeCase {
   listingText: string;
   imageUrls: string[];
   truth: { egid: number; address: string; postalCode: string | null; town: string | null };
+  // For the person reading the results, never for the search: the public page
+  // can show the address (radar keeps them out of listingText).
+  links?: { radar: string; source: string | null };
 }
 
 export type Outcome = "right" | "wrong" | "unsure" | "over_budget" | "error" | "running";
@@ -80,6 +83,7 @@ export interface PracticeResult {
   costUsd: number | null;
   steps: number | null;
   error?: string;
+  sourceUrl?: string | null; // the public listing, for the results page only
 }
 
 export interface PracticeRound {
@@ -294,7 +298,9 @@ export async function startRound(
   if (ids) cases = ids.map((id) => all.find((c) => c.propertyId === id)).filter((c): c is PracticeCase => !!c);
   else {
     cases = [];
-    for (const c of sampleCases(all, all.length)) {
+    // Houses only (Daniel, 05.10): a flat's building is found, then the flat
+    // inside it is a different question.
+    for (const c of sampleCases(all.filter((c) => listingFacts(c.listingText).kind === "house"), Infinity)) {
       if (cases.length >= limit) break;
       const trouble = await keyTrouble(c, all);
       if (trouble) skipped.push({ propertyId: c.propertyId, reason: trouble });
@@ -316,7 +322,7 @@ export async function startRound(
   for (const c of cases)
     for (const model of models)
       if (!opts.pairs || opts.pairs.some((p) => p.propertyId === c.propertyId && p.model === model))
-        round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null });
+        round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: c.links?.source ?? null });
   rounds.set(round.id, round);
   await save(round);
   void drive(round, cases).catch((err) => console.error(`[practice] round ${round.id} crashed:`, err));
