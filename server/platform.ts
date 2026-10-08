@@ -16,6 +16,7 @@ import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
+import { listingFacts } from "./proof";
 import { RECHECK, RECHECK_MODELS, recheckWhy, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
@@ -55,7 +56,18 @@ const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "sonnet-5-5-l
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-const listingModels = (): ModelId[] => LISTING_MODELS.filter((m) => !isGemini(m) || geminiConfigured());
+// A house whose listing states no land area has no plot to match, and Sonnet
+// low finds it far less often: 7 of 20 in practice round rmuzs78j27ebf
+// (08.10) against 15 of 20 for Opus 5.5 high. Those start with Opus high.
+const NO_LAND_MODELS: ModelId[] = (process.env.GEOFINDER_NO_LAND_MODELS ?? "opus-5-5-high")
+  .split(",")
+  .map((m) => m.trim())
+  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+const listingModels = (listingText: string | undefined): ModelId[] => {
+  const f = listingFacts(listingText);
+  const models = f.kind === "house" && f.landM2 == null && NO_LAND_MODELS.length ? NO_LAND_MODELS : LISTING_MODELS;
+  return models.filter((m) => !isGemini(m) || geminiConfigured());
+};
 // Practice rounds (Daniel, 05.10): one Sonnet 5.5 at low effort (jobs.ts
 // VARIANTS). Three identical runs either all found a house or none did: the
 // ranking decides, not luck. Real requests keep LISTING_MODELS.
@@ -557,7 +569,7 @@ export function registerPlatformRoutes(app: Express) {
       return;
     }
     const { municipality, listingId, listingUrl, radarUrl } = parsed.data;
-    const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : listingModels();
+    const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : listingModels(parsed.data.listingText);
     if (models.some(isGemini) && !geminiConfigured()) {
       res.status(503).json({ error: "Gemini is not configured. Set GEMINI_API_KEY on the server." });
       return;
