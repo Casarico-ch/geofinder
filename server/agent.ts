@@ -217,7 +217,7 @@ const TOOLS = [
   {
     name: "shortlist_buildings",
     description:
-      "Enumerate EVERY home in a Swiss commune — any canton (Geneva from the SITG cadastre, everywhere else from the federal building register GWR), new builds (planned or being built) and buildings with shops or offices included — RANKED, nothing removed. The ranking uses what the LISTING states (the plot of its land area for a house, a flat of its living area for a flat, year built, homes in the building); candidates that fit on every checked fact come first and say so. Your estimates (floors, footprint, dwellings) only reorder, so a wrong guess costs places, not the house. Every candidate returned goes into your checklist; look at them with view_candidates and record a verdict with mark_candidates. Call again with the same commune for the next page. Do NOT re-filter the result by era or exact floors.",
+      "Enumerate EVERY home in a Swiss commune — any canton (from the federal building register GWR), new builds (planned or being built) and buildings with shops or offices included — RANKED, nothing removed. The ranking uses what the LISTING states (the plot of its land area for a house, a flat of its living area for a flat, year built, homes in the building); candidates that fit on every checked fact come first and say so. Your estimates (floors, footprint, dwellings) only reorder, so a wrong guess costs places, not the house. Every candidate returned goes into your checklist; look at them with view_candidates and record a verdict with mark_candidates. Call again with the same commune for the next page. Do NOT re-filter the result by era or exact floors.",
     input_schema: {
       type: "object",
       properties: {
