@@ -11,10 +11,11 @@
 //   - era is NOT a parameter at all,
 //   - attached/detached is decided by shared-wall geometry, not eyeballing.
 // The result is a shortlist that still contains the target; view_candidates,
-// render_roofs + the eyeball then narrow it. Geneva comes from SITG (footprint
-// polygons, so attached/detached is measured); every other canton from the
-// federal building register (gwr.ts) — no footprint geometry there, so
-// `attached` is unknown, but floors/dwellings/footprint follow the same rules.
+// render_roofs + the eyeball then narrow it. Every canton, Geneva included,
+// comes from the federal building register (gwr.ts) — no footprint geometry
+// there, so `attached` is unknown, but floors/dwellings/footprint follow the
+// same rules. Geneva's SITG (footprint polygons, attached/detached measured)
+// is only the fallback when the register has no homes for the commune.
 // =============================================================================
 import { plotAt, plotGroupFor, type ListingFacts } from "./proof";
 import { neighbourFit, neighbourhoodAt } from "./neighbours";
@@ -217,13 +218,21 @@ function capNote(max: number, again: boolean, unseenLeft: number, near?: { lat: 
 export async function shortlistBuildings(opts: ShortlistOptions): Promise<ShortlistResult> {
   const commune = opts.commune.trim();
   const resolved = await resolveCommune(commune);
+  // Geneva too (08.10): its SITG list ranked by the model's guesses alone,
+  // without the listing's facts or a ranked list for the top-150 look, and
+  // missed the house in Veyrier and Vessy. The register covers Geneva; SITG
+  // stays the fallback for a commune the register returns no homes for.
   if (resolved && resolved.canton !== "GE") return shortlistFromRegister(resolved, opts);
+  if (resolved) {
+    const fromRegister = await shortlistFromRegister(resolved, opts).catch(() => null);
+    if (fromRegister?.residential) return fromRegister;
+  }
   const geneva = await shortlistGeneva({ ...opts, commune: resolved?.name ?? commune });
   if (resolved) geneva.bfs = resolved.bfs;
   return geneva;
 }
 
-// Every canton but Geneva: the federal building register.
+// Every canton, Geneva included: the federal building register.
 //
 // RANKED, NOT FILTERED (05.10, replayed on 131 missed practice runs): the
 // model's floors / homes / footprint guesses removed the right house in 45 of
