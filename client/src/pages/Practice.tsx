@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ChevronRight, Loader2, Pause, Play, Trash2 } from "lucide-react";
@@ -19,6 +20,7 @@ export default function Practice() {
   const [rounds, setRounds] = useState<Round[] | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [size, setSize] = useState("20");
+  const [land, setLand] = useState<"stated" | "none">("stated");
   const [starting, setStarting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Round | null>(null);
@@ -64,7 +66,7 @@ export default function Practice() {
       const res = await fetch("/api/practice/rounds", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ limit: n }),
+        body: JSON.stringify({ limit: n, noLand: land === "none" }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -97,7 +99,7 @@ export default function Practice() {
           <div className="space-y-1">
             <h2 className="text-base font-semibold">Start a practice round</h2>
             <p className="text-sm text-muted-foreground">
-              Every search model looks for houses (never flats, always with a land area) picked at random across Switzerland whose building Radar already knows,
+              Every search model looks for houses (never flats; with a land area, or only houses without one) picked at random across Switzerland whose building Radar already knows,
               with the address hidden. Each model gets CHF 2 and 15 minutes per listing; a run that reaches either without an
               answer counts as a failure. The goal: 100% accuracy, then faster and cheaper.
             </p>
@@ -120,6 +122,18 @@ export default function Practice() {
                 value={size}
                 onChange={(e) => setSize(e.target.value)}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="practice-land">Houses</Label>
+              <Select value={land} onValueChange={(v) => setLand(v as "stated" | "none")}>
+                <SelectTrigger id="practice-land" className="w-56">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stated">With a land area</SelectItem>
+                  <SelectItem value="none">Without a land area</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <Button onClick={start} disabled={starting || !validSize}>
               {starting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
@@ -167,6 +181,7 @@ export default function Practice() {
                     <TableCell className="whitespace-nowrap">
                       <ChevronRight className="inline h-4 w-4 mr-1 text-muted-foreground" />
                       {when(r.createdAt)}{" "}
+                      {r.noLand && <Badge variant="outline">No land area</Badge>}{" "}
                       {r.paused ? (
                         <Badge variant="outline">Paused</Badge>
                       ) : r.running > 0 ? (

@@ -391,12 +391,14 @@ export function registerPlatformRoutes(app: Express) {
     // compares their approaches on the same listings.
     limit: z.number().int().min(1).max(200).default(20),
     models: z.array(z.enum(MODELS)).min(1).max(MODELS.length).optional(),
+    // Houses whose listing states no land area (practice.ts startRound).
+    noLand: z.boolean().default(false),
   });
   for (const base of ["/v1/practice", "/api/practice"]) {
     app.post(`${base}/rounds`, async (req: Request, res: Response) => {
       const parsed = roundSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
-        res.status(400).json({ error: `Expected { split?: "practice"|"test", limit?: 1-200, models?: [${MODELS.join(", ")}] }` });
+        res.status(400).json({ error: `Expected { split?: "practice"|"test", limit?: 1-200, models?: [${MODELS.join(", ")}], noLand?: boolean }` });
         return;
       }
       try {
@@ -405,7 +407,7 @@ export function registerPlatformRoutes(app: Express) {
           res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
           return;
         }
-        const round = await startRound(parsed.data.split, parsed.data.limit, models);
+        const round = await startRound(parsed.data.split, parsed.data.limit, models, { noLand: parsed.data.noLand });
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
@@ -493,7 +495,7 @@ export function registerPlatformRoutes(app: Express) {
           res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
           return;
         }
-        const round = await startRound(src.split, ids.length, PRACTICE_MODELS, { propertyIds: ids, rerunOf: src.id });
+        const round = await startRound(src.split, ids.length, PRACTICE_MODELS, { propertyIds: ids, rerunOf: src.id, noLand: src.noLand });
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });

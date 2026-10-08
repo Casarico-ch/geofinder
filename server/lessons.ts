@@ -179,6 +179,7 @@ export async function testLesson(lesson: Lesson): Promise<void> {
     pairs,
     lessons: [...(await keptLessons()), lesson.text],
     trialOf: lesson.id,
+    noLand: base.noLand,
   });
   Object.assign(lesson, { status: "testing", trialRound: trial.id, pairs, before: kpisOf(base, pairs) });
   await saveLessons();
