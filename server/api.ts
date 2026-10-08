@@ -22,6 +22,7 @@ import {
 } from "./agent";
 import { exportJobHtml } from "./export";
 import { runLimits } from "./practice";
+import { listingModels } from "./platform";
 import { claudeConfigured, poolOn, poolStatus } from "./claude-pool";
 import { geminiConfigured, isGemini } from "./gemini";
 import { analyzeBuildPotential } from "./potential";
@@ -143,7 +144,8 @@ export function registerApiRoutes(app: Express) {
           radarUrl: parsed.data.radarUrl,
           ...runLimits(),
         },
-        parsed.data.model,
+        // No model chosen: the one a request for this listing gets (Opus first for a house with no land area).
+        parsed.data.model ?? listingModels(listingText)[0],
       );
 
       if (images && images.length > 0) {

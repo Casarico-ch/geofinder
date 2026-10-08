@@ -21,7 +21,7 @@ import { RECHECK, RECHECK_MODELS, recheckWhy, runLimits, type RoundSummary, allR
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate } from "./consensus";
-import { MODELS, costUsd, createJob, runnableModel, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
+import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
 import {
@@ -63,7 +63,7 @@ const NO_LAND_MODELS: ModelId[] = (process.env.GEOFINDER_NO_LAND_MODELS ?? "opus
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-const listingModels = (listingText: string | undefined): ModelId[] => {
+export const listingModels = (listingText: string | undefined): ModelId[] => {
   const f = listingFacts(listingText);
   const models = f.kind === "house" && f.landM2 == null && NO_LAND_MODELS.length ? NO_LAND_MODELS : LISTING_MODELS;
   return models.filter((m) => !isGemini(m) || geminiConfigured());
@@ -627,7 +627,8 @@ export function registerPlatformRoutes(app: Express) {
     const prefix = src.input.municipality?.trim() ? `Municipality / commune: ${src.input.municipality.trim()}\n\n` : "";
     const text = src.input.listingText ?? "";
     const listingText = prefix && text.startsWith(prefix) ? text.slice(prefix.length) : text;
-    const models = Array.from(new Set((searches.length ? searches : jobs).map((j) => runnableModel(j.model))));
+    // The models a new request for this listing would get (listingModels), as practice runs it.
+    const models = listingModels(listingText);
     try {
       const record = await startListingRequest(
         {
