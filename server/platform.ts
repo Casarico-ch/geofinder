@@ -20,7 +20,7 @@ import { listingFacts } from "./proof";
 import { RECHECK, RECHECK_MODELS, recheckWhy, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { type Candidate } from "./consensus";
+import { type Candidate, exactAddressOf, sameAddress } from "./consensus";
 import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
@@ -306,23 +306,61 @@ async function recheckIfDoubtful(req: PlatformRequest): Promise<boolean> {
   if (!RECHECK || req.kind !== "listing" || results.some((m) => m.check)) return false;
   const doubtful = results.filter((m) => m.status === "done" && recheckWhy(m.answer));
   if (!doubtful.length) return false;
-  const src = getJob(doubtful[0].jobId);
+  return searchAgain(req, doubtful[0].jobId, RECHECK_MODELS, {});
+}
+
+// Daniel, 08.10: an address goes back to Radar only when two searches named
+// the same house on their own (Radar's outcome.ts decide). In practice two runs
+// that named the same house were right 56 times of 62. So once the searches
+// and any recheck have settled, an exact answer no second run agrees with gets
+// one more independent search: GEOFINDER_CONFIRM_MODELS (Opus 5.5 high), or
+// GEOFINDER_CONFIRM=off to stop it.
+const CONFIRM = process.env.GEOFINDER_CONFIRM !== "off";
+const CONFIRM_MODELS: ModelId[] = (process.env.GEOFINDER_CONFIRM_MODELS ?? "opus-5-5-high")
+  .split(",")
+  .map((m) => m.trim())
+  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+
+/** Do two finished runs name the same house? */
+export function twoAgree(results: { status: string; answer: Answer | null }[]): boolean {
+  const exact = results.filter((m) => m.status === "done").map((m) => exactAddressOf(m.answer)).filter((c): c is Candidate => !!c);
+  return exact.some((a, i) => exact.slice(i + 1).some((b) => sameAddress(a, b)));
+}
+
+async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
+  const results = req.results ?? [];
+  if (!CONFIRM || !CONFIRM_MODELS.length || req.kind !== "listing" || results.some((m) => m.confirm)) return false;
+  const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
+  if (!found.length || twoAgree(results)) return false;
+  // The latest exact answer's run holds the listing (a recheck copies the first search's input).
+  return searchAgain(req, found[found.length - 1].jobId, CONFIRM_MODELS, { confirm: true });
+}
+
+/** One more independent search of the same listing, marked check: true. */
+async function searchAgain(req: PlatformRequest, fromJobId: string, models: ModelId[], mark: { confirm?: true }): Promise<boolean> {
+  const results = req.results ?? [];
+  const src = getJob(fromJobId);
   const images = src ? await loadListingPhotos(src.runDir) : [];
   if (!src || images.length === 0) return false;
-  for (const model of RECHECK_MODELS) {
+  for (const model of models) {
     const job = await createJob({ ...src.input, ...runLimits() }, model);
-    results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true });
+    results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true, ...mark });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
       await runInvestigation(job, images, src.input.listingText);
-    })().catch((err) => console.error(`[platform] recheck ${job.id} crashed:`, err));
+    })().catch((err) => console.error(`[platform] search again ${job.id} crashed:`, err));
   }
   req.status = "running";
   return true;
 }
 
+/** After a listing's runs settle: a doubtful answer is searched again, then an unconfirmed one. */
+async function afterSettled(req: PlatformRequest): Promise<boolean> {
+  return (await recheckIfDoubtful(req)) || (await confirmUnlessAgreed(req));
+}
+
 export function registerPlatformRoutes(app: Express) {
-  onListingSettled(recheckIfDoubtful);
+  onListingSettled(afterSettled);
   app.use("/v1", requireApiKey);
 
   app.post("/v1/property", async (req: Request, res: Response) => {

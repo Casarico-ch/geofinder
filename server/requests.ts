@@ -27,6 +27,7 @@ export interface ModelResult {
   tokens?: number; // total tokens of the run, filled in when listing
   startedAt?: string; // when the run was created, filled in when listing
   check?: boolean; // a cross-check of another model's answer, not a search of its own
+  confirm?: boolean; // the second search that must name the same house (platform.ts confirmUnlessAgreed)
 }
 
 export interface PlatformRequest {
