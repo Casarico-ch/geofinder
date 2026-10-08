@@ -414,7 +414,8 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       try {
-        const models = parsed.data.models ?? PRACTICE_MODELS;
+        // A no-land round starts like a real no-land request: with Opus (NO_LAND_MODELS).
+        const models = parsed.data.models ?? (parsed.data.noLand ? NO_LAND_MODELS : PRACTICE_MODELS);
         if (models.some(isGemini) && !geminiConfigured()) {
           res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
           return;
@@ -503,11 +504,12 @@ export function registerPlatformRoutes(app: Express) {
           res.status(400).json({ error: "No failed listing to run again." });
           return;
         }
-        if (PRACTICE_MODELS.some(isGemini) && !geminiConfigured()) {
+        const rerunModels = src.noLand ? NO_LAND_MODELS : PRACTICE_MODELS;
+        if (rerunModels.some(isGemini) && !geminiConfigured()) {
           res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
           return;
         }
-        const round = await startRound(src.split, ids.length, PRACTICE_MODELS, { propertyIds: ids, rerunOf: src.id, noLand: src.noLand });
+        const round = await startRound(src.split, ids.length, rerunModels, { propertyIds: ids, rerunOf: src.id, noLand: src.noLand });
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
