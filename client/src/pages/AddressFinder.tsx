@@ -775,7 +775,7 @@ export default function AddressFinder() {
       // 1) Create one job per selected model on tiny metadata requests — each
       //    returns in milliseconds.
       const jobIds = await Promise.all(
-        models.map(async (model) => {
+        models.map(async () => {
           const res = await fetch("/api/geo/investigate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -783,7 +783,7 @@ export default function AddressFinder() {
               imageCount: files.length,
               listingText: description || undefined,
               municipality: municipality || undefined,
-              model,
+              // The server picks the model as for any request (server/platform.ts listingModels).
             }),
           });
           const body = await res.json().catch(() => null);
