@@ -44,6 +44,7 @@ export interface Round {
   accuracy: number | null;
   split: string;
   models: string[];
+  noLand?: boolean;
   total: number;
   right: number;
   wrong: number;

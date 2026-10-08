@@ -114,6 +114,7 @@ export interface PracticeRound {
   skipped?: { propertyId: number; reason: string }[]; // listings left out: their answer key contradicts them
   rerunOf?: string; // the round whose listings it searches again
   noProof?: boolean; // answers recorded without the register proof; agreement is the check
+  noLand?: boolean; // houses whose listing states no land area, so no plot match (Daniel, 08.10)
   reviewError?: string; // why the reviewer could not
   split: "practice" | "test";
   models: ModelId[];
@@ -377,7 +378,7 @@ export async function startRound(
   limit: number,
   models: ModelId[],
   // A lesson's test: the same listings as the round it is compared with, and its own lessons.
-  opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string; rerunOf?: string } = {},
+  opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string; rerunOf?: string; noLand?: boolean } = {},
 ): Promise<PracticeRound> {
   const all = await fetchCases(split, Infinity);
   const ids = opts.pairs ? Array.from(new Set(opts.pairs.map((p) => p.propertyId))) : opts.propertyIds;
@@ -391,10 +392,13 @@ export async function startRound(
     cases = [];
     // Houses only (Daniel, 05.10): a flat's building is found, then the flat
     // inside it is a different question. And only houses whose listing states
-    // a land area: the plot match is the search's strongest clue.
+    // a land area: the plot match is the search's strongest clue. A "no land"
+    // round takes the houses without one instead, as real requests get them
+    // (Vessy 6664606, 08.10: no land area, wrong house).
     const usable = (c: PracticeCase) => {
       const f = listingFacts(c.listingText);
-      return f.kind === "house" && f.landM2 != null && !f.sharedLand;
+      if (f.kind !== "house") return false;
+      return opts.noLand ? f.landM2 == null : f.landM2 != null && !f.sharedLand;
     };
     for (const c of sampleCases(all.filter(usable), Infinity)) {
       if (cases.length >= limit) break;
@@ -414,6 +418,7 @@ export async function startRound(
     ...(skipped.length ? { skipped } : {}),
     ...(opts.rerunOf ? { rerunOf: opts.rerunOf } : {}),
     ...(PRACTICE_PROOF ? {} : { noProof: true }),
+    ...(opts.noLand ? { noLand: true } : {}),
     results: [],
   };
   for (const c of cases)
@@ -512,6 +517,7 @@ export interface RoundSummary {
   costUsd: number; // every run of the round so far, running ones included
   lostAt: Record<string, number>;
   noProof: boolean;
+  noLand: boolean;
   // Listings where two or more runs named the same house, and how many of those were right.
   agreed: number;
   agreedRight: number;
@@ -555,6 +561,7 @@ export function summarize(round: PracticeRound): RoundSummary {
     costUsd: Math.round(round.results.reduce((a, r) => a + (r.costUsd ?? 0), 0) * 100) / 100,
     lostAt: lost,
     noProof: !!round.noProof,
+    noLand: !!round.noLand,
     ...agreement(round),
     ranks: rankStats(round),
     rechecks: recheckStats(round),
