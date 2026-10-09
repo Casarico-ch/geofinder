@@ -90,7 +90,7 @@ export interface PracticeResult {
   // long that list was; null when it was not on any list the run asked for.
   rank?: number | null;
   rankOf?: number | null;
-  // The answer was the attached twin of the right house (twins.ts): counted as found.
+  // The answer was the attached twin of the right house (twins.ts): still wrong, flagged.
   twin?: boolean;
   twinChecked?: boolean;
   // The answer named a house but its own explanation doubted it, so a stronger
@@ -146,6 +146,23 @@ const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
  */
 export function runLimits(): { budgetUsd: number; maxMinutes: number; noProof?: true } {
   return { budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, ...(PRACTICE_PROOF ? {} : { noProof: true as const }) };
+}
+
+// The confirming search and the tie-breaker stop sooner (Daniel, 09.10): a
+// confirm that ran to the limit spent $2.55 for nothing (Laufen-Uhwiesen),
+// and a tie-breaker compares a few named houses, it does not search a commune.
+// Stopped by its limit, it names a house only if it had already marked one
+// as its match (agent.ts answerAtLimit); otherwise nothing is confirmed.
+const CONFIRM_CHF = Number(process.env.CONFIRM_BUDGET_CHF ?? 1.5);
+const CONFIRM_MINUTES = Number(process.env.CONFIRM_MAX_MINUTES ?? 10);
+const TIEBREAK_CHF = Number(process.env.TIEBREAK_BUDGET_CHF ?? 1.2);
+const TIEBREAK_MINUTES = Number(process.env.TIEBREAK_MAX_MINUTES ?? 8);
+const pick = (l: { budgetUsd: number; maxMinutes: number }) => ({ budgetUsd: l.budgetUsd, maxMinutes: l.maxMinutes });
+export function stepLimits(step: "search" | "confirm" | "tieBreak"): { budgetUsd: number; maxMinutes: number; noProof?: true } {
+  const base = runLimits();
+  if (step === "confirm") return { ...base, budgetUsd: CONFIRM_CHF * USD_PER_CHF, maxMinutes: CONFIRM_MINUTES };
+  if (step === "tieBreak") return { ...base, budgetUsd: TIEBREAK_CHF * USD_PER_CHF, maxMinutes: TIEBREAK_MINUTES };
+  return base;
 }
 // A doubtful answer, or a "not sure", gets a second, independent search by
 // stronger settings (Daniel, 05.10), each recheck model on its own so they can
@@ -386,8 +403,9 @@ function refresh(round: PracticeRound): boolean {
   return open;
 }
 
-// A wrong answer that is the right house's attached twin counts as found
-// (Daniel, 05.10): the two halves are the same house for every later use.
+// A wrong answer that is the right house's attached twin is flagged twin. It
+// counted as found until 09.10; now it stays wrong (Daniel): Radar would show
+// the neighbour's house number (Kronenwis 32 for 35, Reichenburg).
 const twinChecks = new Set<PracticeResult>();
 async function checkTwin(round: PracticeRound, r: PracticeResult): Promise<void> {
   if (twinChecks.has(r)) return;
@@ -396,7 +414,7 @@ async function checkTwin(round: PracticeRound, r: PracticeResult): Promise<void>
     const egid = r.jobId ? getJob(r.jobId)?.answer?.proof?.egid : null;
     if (egid != null) {
       const twins = await twinsOf(egid);
-      if (twins.some((t) => fingerprint("egid", t) === r.truth.egid)) Object.assign(r, { outcome: "right", twin: true, lostAt: null });
+      if (twins.some((t) => fingerprint("egid", t) === r.truth.egid)) r.twin = true;
     }
     r.twinChecked = true;
     await save(round);
@@ -493,7 +511,7 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         const tie = named.length >= 2 ? await tieBreakSetup(c.listingText, named) : null;
         const listingText = tie ? tie.text : c.listingText;
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) },
+          { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, ...pick(stepLimits(tie ? "tieBreak" : r.confirm ? "confirm" : "search")), lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) },
           r.model,
         );
         r.jobId = job.id;

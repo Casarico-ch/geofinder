@@ -18,7 +18,64 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Lightbulb, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, Lightbulb, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
+
+// Why each miss happened, grouped by cause (server: review.ts).
+interface ReviewGroup {
+  cause: string;
+  title: string;
+  code: boolean;
+  fix: string;
+  items: { propertyId: number; evidence: string }[];
+  task: string;
+}
+
+function ReviewPanel({ groups, listings }: { groups: ReviewGroup[]; listings: Record<number, ListingInfo> }) {
+  if (!groups.length)
+    return <p className="text-sm text-muted-foreground">Nothing to review yet: every finished listing was confirmed right, or the round is still running.</p>;
+  const copy = async (g: ReviewGroup) => {
+    try {
+      await navigator.clipboard.writeText(g.task);
+      toast.success("Task copied — paste it into a coding session");
+    } catch {
+      toast.error("Could not copy");
+    }
+  };
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Every listing not confirmed right, by cause. A cause marked Code needs a change in the code, not in the prompt: copy its task into a coding session.
+      </p>
+      {groups.map((g) => (
+        <Card key={g.cause} className="p-4 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">{g.title}</p>
+              <Badge variant="outline">{g.items.length}</Badge>
+              <Badge variant={g.code ? "default" : "secondary"}>{g.code ? "Code" : "Prompt"}</Badge>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void copy(g)}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              Copy task
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Likely fix: {g.fix}.</p>
+          <ul className="space-y-1">
+            {g.items.map((i) => (
+              <li key={i.propertyId} className="text-xs">
+                <a className="inline-flex items-center gap-1 font-medium hover:underline" href={listings[i.propertyId]?.radarUrl} target="_blank" rel="noreferrer">
+                  {listings[i.propertyId]?.place ?? `#${i.propertyId}`}
+                  <ExternalLink className="h-3 w-3" />
+                </a>{" "}
+                <span className="text-muted-foreground">{i.evidence}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 1000) / 10}%` : "—");
 const usd = (v: number | null | undefined) => (v == null ? "—" : `$${v.toFixed(2)}`);
@@ -45,6 +102,7 @@ export default function PracticeRound() {
   const [results, setResults] = useState<Result[] | null>(null);
   const [listingInfo, setListingInfo] = useState<Record<number, ListingInfo>>({});
   // What Radar would show per listing: a house only when two runs name it (server: practice.ts listingVerdict).
+  const [review, setReview] = useState<ReviewGroup[]>([]);
   const [verdicts, setVerdicts] = useState<Record<number, "running" | "confirmed_right" | "confirmed_wrong" | "not_confirmed">>({});
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [missing, setMissing] = useState(false);
@@ -61,6 +119,7 @@ export default function PracticeRound() {
         setResults(body.results);
         setListingInfo(body.listings ?? {});
         setVerdicts(body.verdicts ?? {});
+        setReview(body.review ?? []);
       }
       if (ls.ok) setLessons(((await ls.json()).lessons as Lesson[]).filter((l) => l.fromRound === id));
     } catch {
@@ -249,8 +308,12 @@ export default function PracticeRound() {
         <Tabs defaultValue="listings" className="space-y-4">
           <TabsList>
             <TabsTrigger value="listings">Listings {listings.total}</TabsTrigger>
+            <TabsTrigger value="review">Review {review.reduce((a, g) => a + g.items.length, 0)}</TabsTrigger>
             {!round.trialOf && <TabsTrigger value="lessons">Lessons {lessons.length}</TabsTrigger>}
           </TabsList>
+          <TabsContent value="review">
+            <ReviewPanel groups={review} listings={listingInfo} />
+          </TabsContent>
           <TabsContent value="listings">
             <ListingsPanel results={results} models={round.models} listings={listingInfo} />
           </TabsContent>

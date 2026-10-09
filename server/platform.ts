@@ -17,11 +17,12 @@ import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
 import { listingFacts } from "./proof";
-import { CONFIRM_MODELS, listingVerdict, RECHECK, RECHECK_MODELS, recheckWhy, wantsConfirm, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import { CONFIRM_MODELS, listingVerdict, stepLimits, RECHECK, RECHECK_MODELS, recheckWhy, wantsConfirm, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, exactAddressOf } from "./consensus";
 import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
+import { reviewRound } from "./review";
 import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type Job, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
@@ -346,7 +347,8 @@ async function searchAgain(
   if (!src || images.length === 0) return false;
   const listingText = tie ? tie.text : src.input.listingText;
   for (const model of models) {
-    const job = await createJob({ ...src.input, listingText, ...runLimits(), ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) }, model);
+    const limits = stepLimits(tie ? "tieBreak" : mark.confirm ? "confirm" : "search");
+    const job = await createJob({ ...src.input, listingText, ...limits, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) }, model);
     results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true, ...mark });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
@@ -528,7 +530,9 @@ export function registerPlatformRoutes(app: Express) {
       const results = round.results.map((r) => ({ ...r, why: searching.has(r.propertyId) ? null : missReasonNow(r) }));
       // What Radar would show for each listing: a house only when two runs name it.
       const verdicts = Object.fromEntries(Array.from(new Set(round.results.map((r) => r.propertyId)), (pid) => [pid, listingVerdict(round, pid)]));
-      res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings, verdicts });
+      // Why each miss happened, grouped by cause, with a task to paste (review.ts).
+      const review = reviewRound(round, Object.fromEntries(Object.entries(listings).map(([id, i]) => [Number(id), i.place])), searching);
+      res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings, verdicts, review });
     });
     // The same listings again, under today's code, lessons and investigators
     // (PRACTICE_MODELS): a before/after on exactly the same houses.

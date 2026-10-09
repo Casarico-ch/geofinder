@@ -497,35 +497,26 @@ function placeKey(m: ModelResult): string | null {
   return plots.length ? plots.join("+") : fold(foundLabel(m.answer)).replace(/\s+/g, " ").trim();
 }
 
-// What one attempt's room settled on. A single model finding an address is not
-// enough: "found" means every voice agrees on one exact place.
-//   * no cross-check: every finished model names the same exact place
-//   * cross-checks ran: exactly one place survived them — a check that tries
-//     to prove an answer wrong and still confirms it settles the split
-// Anything else (two places, or a find the others did not reach or could not
-// confirm) is still doubt in the room: conflicting.
 type Consensus = { kind: "found"; hit: ModelResult } | { kind: "none" } | { kind: "conflict"; places: string[] };
 
+// What one attempt settled on, as Radar reads it (radar outcome.ts decide;
+// Daniel, 08.10): an address counts only when two runs named the same exact
+// place on their own. One run alone, or runs naming different houses, leave
+// it not confirmed.
 function consensusOf(results: ModelResult[]): Consensus {
   const done = results.filter((m) => m.status === "done");
-  const searches = done.filter((m) => !m.check);
-  const checks = done.filter((m) => m.check);
+  const byPlace = new Map<string, ModelResult[]>();
   const labels = new Map<string, string>();
   for (const m of done) {
     const k = placeKey(m);
-    if (k && m.answer && !labels.has(k)) labels.set(k, foundLabel(m.answer));
+    if (!k || !m.answer) continue;
+    byPlace.set(k, [...(byPlace.get(k) ?? []), m]);
+    if (!labels.has(k)) labels.set(k, foundLabel(m.answer));
   }
   if (labels.size === 0) return { kind: "none" };
-  const voices = checks.length ? checks : searches;
-  const named = new Set(voices.map(placeKey).filter((k): k is string => !!k));
-  const agreed = checks.length ? named.size === 1 : named.size === 1 && voices.every((m) => placeKey(m));
-  if (agreed) {
-    const key = Array.from(named)[0];
-    return { kind: "found", hit: voices.find((m) => placeKey(m) === key)! };
-  }
-  const places = Array.from(labels.values());
-  if (places.length === 1) places.push("not confirmed");
-  return { kind: "conflict", places };
+  const agreed = Array.from(byPlace.values()).find((ms) => ms.length >= 2);
+  if (agreed) return { kind: "found", hit: agreed[0] };
+  return { kind: "conflict", places: Array.from(labels.values()) };
 }
 
 // The places a listing's attempts agreed on — more than one means re-runs
@@ -630,14 +621,14 @@ function outcomeOf(r: PlatformRequest): Outcome {
   if (running)
     return { label: attemptsOf(r).length > 1 ? "Re-running" : "Searching", tone: "bg-primary/10 text-primary" };
   if (results.some((m) => m.status === "paused")) return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
-  const conflicting = { label: "Conflicting", tone: "bg-amber-500/10 text-amber-700" };
+  const conflicting = { label: "Not confirmed", tone: "bg-amber-500/10 text-amber-700" };
   const across = attemptPlaces(r);
   if (across.length > 1) return { ...conflicting, detail: across.join(" vs ") };
   const latest = attemptsOf(r).at(-1);
   const c = latest ? consensusOf(latest.results) : ({ kind: "none" } as const);
   if (c.kind === "conflict") return { ...conflicting, detail: c.places.join(" vs ") };
   if (c.kind === "found" && c.hit.answer)
-    return { label: "Found", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(c.hit.answer) };
+    return { label: "Confirmed", tone: "bg-emerald-500/10 text-emerald-700", detail: foundLabel(c.hit.answer) };
   return { label: "Not found", tone: "bg-muted text-muted-foreground" };
 }
 
