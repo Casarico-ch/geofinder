@@ -325,6 +325,12 @@ export function claimedEntry(
   at: { lat: number | null; lon: number | null; address: string | null },
 ): LedgerEntry | null {
   const all = Object.values(s.candidates);
+  // The address named wins over the nearest pin: a planned house is not on the
+  // aerial, so its pin can land nearer the built house next door
+  // (Châtel-sur-Montsalvens, 09.10: Route de Biffé 4 named, Biffé 2 proved).
+  const want = at.address ? addressKey(at.address) : "";
+  const named = want ? all.filter((c) => c.address && addressKey(c.address) === want) : [];
+  if (named.length === 1) return named[0];
   if (at.lat != null && at.lon != null) {
     let best: LedgerEntry | null = null, bestD = 25;
     for (const c of all) {
@@ -333,8 +339,7 @@ export function claimedEntry(
     }
     if (best) return best;
   }
-  const want = at.address ? addressKey(at.address) : "";
-  return (want && all.find((c) => c.address && addressKey(c.address) === want)) || null;
+  return named[0] ?? null;
 }
 
 // "Gryfelblatte 58, 3920 Zermatt" → "gryfelblatte 58".
