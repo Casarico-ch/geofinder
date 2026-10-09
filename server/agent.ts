@@ -904,7 +904,8 @@ async function runLoop(
           // planned communes never shortlisted) is turned back ONCE — giving up
           // with the answer still unviewed is how run c5bc3cfd was lost. Near
           // the step/time limit it always goes through.
-          const gate = !answer.found && !nearLimit(i + 1) && !isPlain(job) ? prematureGiveUp(job.search) : null;
+          // A tie-breaker compares two houses; its "neither" is an answer, not giving up.
+          const gate = !answer.found && !nearLimit(i + 1) && !isPlain(job) && !job.input.tieBreak ? prematureGiveUp(job.search) : null;
           if (gate && job.search) {
             job.search.submitGated = true;
             await saveSearch(job, job.search);
@@ -918,7 +919,7 @@ async function runLoop(
           let final = answer;
           // Practice: an answer short of an exact house is first tried as a
           // twin pick, then sent back while the top of the ranked list is unseen.
-          if (job.input.noProof && !(answer.found && EXACT.has(answer.confidence)) && !isPlain(job)) {
+          if (job.input.noProof && !(answer.found && EXACT.has(answer.confidence)) && !isPlain(job) && !job.input.tieBreak) {
             const pick = await twinPick(job, answer).catch(() => null);
             if (pick) {
               final = pick;
