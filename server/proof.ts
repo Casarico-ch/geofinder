@@ -383,8 +383,14 @@ function flatRow(l: ListingFacts, living: number, flats: Flat[]): FactRow {
  * Every fact the register can speak to fits, and at least one does: such a
  * candidate may not be dismissed from a 90 m contact-sheet tile.
  */
+// One home and a living area inside the wide band fit nearly every house in a
+// commune: with no land area, 120 of Leytron's first 120 were STRONG FIT, so no
+// contact sheet could reject any, and the confirming search gave up on the
+// checklist and spent its budget on map tiles (Ovronnaz 6661901, 09.10).
+const WEAK_FACTS = new Set(["Homes in the building", "Living area"]);
+
 export function strongFit(rows: FactRow[]): boolean {
-  return rows.some((r) => r.verdict === "match") && !rows.some((r) => r.verdict === "mismatch");
+  return rows.some((r) => r.verdict === "match" && !WEAK_FACTS.has(r.fact)) && !rows.some((r) => r.verdict === "mismatch");
 }
 
 /** One line for the model: "fits: homes 1 ✓, living ✓, plot 1681 331 m² ✓". */
@@ -404,10 +410,11 @@ export async function annotateFit<
 >(l: ListingFacts, cands: T[], maxPlots = 100): Promise<(T & { strongFit: boolean; fit: string; plot?: Plot; plotGroup?: Plot[] })[]> {
   const out = cands.map((c) => {
     const rows = factRows(l, { floors: c.floors, dwellings: c.dwellings ?? null, footprintM2: c.footprintM2 });
-    return { ...c, strongFit: strongFit(rows), fit: fitText(rows), plot: undefined as Plot | undefined, plotGroup: undefined as Plot[] | undefined };
+    const open = !rows.some((r) => r.verdict === "mismatch"); // the register rules nothing out: its plot is worth a look
+    return { ...c, strongFit: strongFit(rows), fit: fitText(rows), open, plot: undefined as Plot | undefined, plotGroup: undefined as Plot[] | undefined };
   });
   if (l.landM2 == null || l.sharedLand) return out;
-  const wanted = out.filter((c) => c.strongFit || !c.fit).slice(0, maxPlots);
+  const wanted = out.filter((c) => c.open).slice(0, maxPlots);
   let next = 0;
   const worker = async () => {
     while (next < wanted.length) {
