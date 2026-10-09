@@ -87,7 +87,7 @@ The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the
 website (everything except `/v1`) behind a password prompt.
 
-Magic feedback: anyone on the website can press Space then M to record a spoken note
+Magic feedback: anyone on the website can press Alt+Shift+M (Mac: Option ⌥ + Shift + M) to record a spoken note
 about the screen; the review screen pins it to the page and "Send to Rico" files a card on
 the Rico cockpit board. The server forwards both calls (`/api/magic-feedback`,
 `/api/magic-feedback/confirm`) with `MAGIC_FEEDBACK_KEY` (the cockpit's

@@ -50,7 +50,7 @@ async function startServer() {
     });
   }
 
-  // Magic feedback (Space then M) — behind the same gate as the rest of the
+  // Magic feedback (Alt+Shift+M) — behind the same gate as the rest of the
   // website, and before registerApiRoutes so its own 15mb body limit applies.
   registerMagicFeedbackRoutes(app);
   registerApiRoutes(app);

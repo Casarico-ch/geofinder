@@ -1,7 +1,7 @@
 // =============================================================================
 // Magic feedback — the pure half (no DOM globals, no React, no network).
 //
-// Press Space then M quickly: the mic records, the screen is captured, the
+// Press Alt+Shift+M (Mac: Option ⌥ + Shift + M): the mic records, the screen is captured, the
 // visible elements are mapped, you talk and point. On stop, the Rico cockpit
 // turns what you said into numbered notes pinned on the page; you review them
 // and "Send to Rico" files a card on the cockpit board under GeoFinder.
@@ -13,7 +13,6 @@
 // half lives in magic-feedback-widget.ts.
 // =============================================================================
 
-export const CHORD_WINDOW_MS = 600; // how long after Space the M has to land
 export const MAX_RECORD_MS = 2 * 60 * 1000;
 export const MAX_ELEMENTS = 60;
 export const MOUSE_SAMPLE_MS = 100;
@@ -51,47 +50,43 @@ export interface ReviewNote {
   y: number;
 }
 
-// ---- the chord ---------------------------------------------------------------
+// ---- the shortcut --------------------------------------------------------------
 
-export type ChordAction = "start" | "stop" | null;
+export type ShortcutAction = "start" | "stop" | null;
+
+export interface ShortcutKey {
+  code?: string;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  isComposing?: boolean;
+  repeat?: boolean;
+}
 
 /**
- * Space then M within CHORD_WINDOW_MS. The same chord stops a recording.
- * Time is passed in, so the state machine is checkable without a clock.
- * Inside an editable field nothing arms: typing a space and an m in a text
- * box must never start the mic.
+ * Alt+Shift+M (Mac: Option ⌥ + Shift + M) starts a recording; the same combo
+ * stops it. Daniel, 09.10.2026: Space-chords fired while typing words starting
+ * with f/m; ⌘F/⌘M were rejected because macOS uses them for find/minimize.
+ * Matched on event.code, never event.key: Option on a Mac and Swiss layouts
+ * change event.key. A modifier combo is never typed by accident, so it fires
+ * inside text fields too.
  */
-export function createChord(windowMs = CHORD_WINDOW_MS) {
-  let armedAt = -Infinity;
-  return {
-    key(
-      e: { code?: string; key?: string },
-      now: number,
-      opts: { editable: boolean; active: boolean }
-    ): ChordAction {
-      if (opts.editable) {
-        armedAt = -Infinity;
-        return null;
-      }
-      if (
-        e.key === "Shift" ||
-        e.key === "Control" ||
-        e.key === "Alt" ||
-        e.key === "Meta"
-      )
-        return null;
-      if (e.code === "Space" || e.key === " ") {
-        armedAt = now;
-        return null;
-      }
-      if ((e.key === "m" || e.key === "M") && now - armedAt <= windowMs) {
-        armedAt = -Infinity;
-        return opts.active ? "stop" : "start";
-      }
-      armedAt = -Infinity;
-      return null;
-    },
-  };
+export function shortcutAction(
+  e: ShortcutKey,
+  active: boolean
+): ShortcutAction {
+  if (
+    e.code !== "KeyM" ||
+    !e.altKey ||
+    !e.shiftKey ||
+    e.metaKey ||
+    e.ctrlKey ||
+    e.isComposing ||
+    e.repeat
+  )
+    return null;
+  return active ? "stop" : "start";
 }
 
 // ---- what counts as private on the page ---------------------------------------
