@@ -70,7 +70,9 @@ import {
   VARIANTS,
   apiModel,
 } from "./jobs";
-import { cluesText, coerceLocation } from "./locate";
+import { DIRECTIONS, cluesText, coerceLocation, type Direction } from "./locate";
+import { shapeAt } from "./neighbours";
+import { viewFrom } from "./view";
 import { GEMINI_LABEL, onLogin, poolOn } from "./claude-pool";
 import { keptLessons, lessonsBlock } from "./lessons-store";
 import { houseNumberOf, streetOf } from "./consensus";
@@ -97,7 +99,7 @@ const EFFORT: (typeof EFFORTS)[number] = (EFFORTS as readonly string[]).includes
 // Tools that only read or fetch, and touch no search state: several of them in
 // one turn run at the same time. write_file and the checklist tools run alone,
 // in order, so "write fetch.mjs, then run it" still works.
-const PARALLEL_TOOLS = new Set(["bash", "read_file", "render_roofs"]);
+const PARALLEL_TOOLS = new Set(["bash", "read_file", "render_roofs", "view_from"]);
 
 export interface AgentImage {
   base64: string;
@@ -293,6 +295,20 @@ const TOOLS = [
     },
   },
   {
+    name: "view_from",
+    description:
+      "What a candidate house can actually SEE, from swisstopo's terrain model out to 25 km: per direction, the skyline (how high and how far), whether the ground falls away in front (a view down), a slope blocking the view close by, and a dead-flat surface in view below (a lake, or a valley floor). Use it when the photos show a view — through a window, from a terrace or a balcony: a lake below to the south, mountains far off, a hillside right in front. Look-alike houses a few hundred metres apart see very different things. Pass the candidate (EGID from your checklist, or lat/lon) and the directions the photos look in, if you know them (all 8 otherwise).",
+    input_schema: {
+      type: "object",
+      properties: {
+        egid: { type: "string" },
+        lat: { type: "number" },
+        lon: { type: "number" },
+        directions: { type: "array", items: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] } },
+      },
+    },
+  },
+  {
     name: "render_roofs",
     description:
       "Given your shortlist of candidate buildings (each with lat/lon), render each one's REAL roof from swissBUILDINGS3D — swisstopo's national 3D building models — as a clean two-angle oblique 3D view, and get the images back to LOOK at. Use this in the confirm step to separate near-identical row houses: compare each candidate's roof SHAPE against the roof in the listing photos — hip vs gable, ridge direction, the step down to a lower wing. Pure built structure; vegetation is irrelevant here. Pass 2–12 candidates. Covers all of Switzerland.",
@@ -396,7 +412,7 @@ Treat each commune as a FINITE, listable set of buildings, not a map to eyeball.
 2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It ranks EVERY home in the commune (new builds and buildings with shops included) by what the listing states — the plot of its land area, a flat of its living area, year built, homes in the building — and removes none; your estimates only reorder. Candidates marked as fitting on every checked fact come first: look at those first. Never hand-write a filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. When you pass estimates: footprintM2 is THIS building's GROUND footprint (for a flat or a semi-detached house the register often holds only its own part of the block), NOT the listing's living area; and estimate floors generously. If the house is not in the first page, call again for the next one before leaving the commune.
 3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer. For a FLAT, the register lists every flat in a building with its storey, rooms and m², and inspect_candidate checks the listing's flat against them: in a row of look-alike blocks or entrances, inspect every one — the entrances without a flat of that size on that floor are out, and that is often what names the address.
 4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
-5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses.
+5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses. When the photos show a view (through a window, from a terrace or balcony), call view_from on your best candidates: a lake below, mountains far off or a slope right in front tells houses a few hundred metres apart. When the photos include a FLOOR PLAN, read its outer dimensions, its shape (rectangle, L) and which side the garden or terrace faces, and compare them with each candidate's outline in inspect_candidate.
 
 PROOF — what the code accepts as an exact address
 An exact (street/building) answer is recorded only when: it is a candidate you inspected with inspect_candidate and marked match; no other candidate is marked match; every shortlisted candidate has a verdict and none is left "possible" (settle each one: inspect it, then reject it with the visible difference, or match) — EXCEPT when your answer is decisive: its plot, or its plot together with neighbouring plots, matches the listing's land area within 2% and no register fact contradicts it; then the rest of the checklist need not be settled, so submit it at once; and the listing's facts do not contradict it (a single house in a 2-dwelling building, a living area the building cannot hold, a plot of a different size). Until then submit_answer sends it back with what is missing. If you cannot get there, submit found=false at block confidence with your ranked candidates and what would separate them.
@@ -1352,6 +1368,18 @@ export async function dispatchTool(
   }
 
   if (name === "inspect_candidate") return inspectCandidate(job, input);
+  if (name === "view_from") {
+    const c = input.egid != null ? searchOf(job).candidates[String(input.egid).trim()] : undefined;
+    const lat = c?.lat ?? (typeof input.lat === "number" ? input.lat : null);
+    const lon = c?.lon ?? (typeof input.lon === "number" ? input.lon : null);
+    if (lat == null || lon == null) return "error: pass an EGID from your checklist, or lat/lon.";
+    const dirs = (Array.isArray(input.directions) ? input.directions : [])
+      .map((d) => String(d).trim().toUpperCase())
+      .filter((d): d is Direction => (DIRECTIONS as readonly string[]).includes(d));
+    const view = await viewFrom(lat, lon, dirs.length ? dirs : undefined);
+    await addStep(job, { kind: "read", title: `view from ${c?.address ?? `${lat.toFixed(5)},${lon.toFixed(5)}`}`, detail: view });
+    return `View from ${c?.address ?? "that point"} (eye 6 m above ground):\n${view}\nCompare it with what the photos show through the windows and from the terrace.`;
+  }
 
   if (name === "render_roofs") {
     const raw = Array.isArray(input.candidates) ? input.candidates : [];
@@ -1409,6 +1437,18 @@ export function rejectionProblem(
 }
 
 // inspect_candidate: the fact sheet, a tight aerial and the roof of one house.
+// A 3D building's outline in words, for a floor plan: its length and width
+// along its long axis, the axis direction, and how far it fills that rectangle.
+function outlineText(sh: { areaM2: number; axisDeg: number; hull: number[][]; heightM: number }): string {
+  const rad = (sh.axisDeg * Math.PI) / 180;
+  const along = sh.hull.map(([x, y]) => x * Math.sin(rad) + y * Math.cos(rad));
+  const across = sh.hull.map(([x, y]) => x * Math.cos(rad) - y * Math.sin(rad));
+  const L = Math.max(...along) - Math.min(...along), W = Math.max(...across) - Math.min(...across);
+  const names = ["N–S", "NNE–SSW", "NE–SW", "ENE–WSW", "E–W", "ESE–WNW", "SE–NW", "SSE–NNW"];
+  const axis = names[Math.round(sh.axisDeg / 22.5) % 8];
+  return `${L.toFixed(1)} × ${W.toFixed(1)} m, long side ${axis}, about ${Math.round(sh.areaM2)} m² from above, ${sh.heightM.toFixed(1)} m high`;
+}
+
 async function inspectCandidate(
   job: Job,
   input: Record<string, unknown>,
@@ -1429,6 +1469,7 @@ async function inspectCandidate(
   const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plotGroup ?? (plot ? [plot] : []), flats });
   Object.assign(c, { plot, plotGroup, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
   await saveSearch(job, search);
+  const outline = await shapeAt(c.lat, c.lon).then((sh) => (sh ? outlineText(sh) : null)).catch(() => null);
   const sheetNo = String(job.steps.filter((st) => st.title.startsWith("close look")).length + 1).padStart(2, "0");
   const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [];
   const sheet = text(
@@ -1436,6 +1477,7 @@ async function inspectCandidate(
       `Close look at ${c.egid} | ${c.address ?? "?"}, ${c.commune} (verdict so far: ${c.verdict}).`,
       `Register: floors ${c.floors ?? "?"}, dwellings ${c.dwellings ?? "?"}, footprint ${c.footprintM2 ?? "?"} m².`,
       `Plot: ${plot ? `${plot.number}${plot.egrid ? ` (${plot.egrid})` : ""}, ${plot.areaM2} m²` : "not found"}.`,
+      outline ? `Outline (swissBUILDINGS3D, from above): ${outline} — compare it with a floor plan in the photos, if there is one.` : "Outline: not in swissBUILDINGS3D.",
       rows.length
         ? `Against the listing:\n${rows.map((r) => `- ${r.fact}: listing ${r.listing}, building ${r.building} → ${r.verdict}`).join("\n")}`
         : "The listing states no homes / living area / land area to check against.",
