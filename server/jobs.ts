@@ -236,6 +236,8 @@ export interface Job {
     // Practice: an exact answer is recorded without the register proof; a
     // second run naming the same house is the check instead (Daniel, 05.10).
     noProof?: boolean;
+    // The tie-breaker: compares the two houses named in its task (tiebreak.ts), no commune search.
+    tieBreak?: boolean;
   };
   lessons?: string[]; // the practice lessons in its system prompt, fixed at start
   overBudget?: boolean; // stopped by input.budgetUsd or input.maxMinutes

@@ -21,6 +21,7 @@ import { CONFIRM_MODELS, listingVerdict, RECHECK, RECHECK_MODELS, recheckWhy, wa
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, exactAddressOf } from "./consensus";
+import { tieBreakPair, tieBreakSetup } from "./tiebreak";
 import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
@@ -315,24 +316,39 @@ async function recheckIfDoubtful(req: PlatformRequest): Promise<boolean> {
 async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
   if (req.kind !== "listing") return false;
-  if (!wantsConfirm(results.map((m) => ({ done: m.status === "done", answer: m.answer, confirm: m.confirm })))) return false;
+  const runs = results.map((m) => ({ m, done: m.status === "done", answer: m.answer, confirm: m.confirm }));
+  if (!wantsConfirm(runs)) return false;
+  // After a confirming search that named another house: the tie-breaker compares the two (tiebreak.ts).
+  const pair = tieBreakPair(runs);
+  if (pair) {
+    const [a, b] = pair.map((r) => getJob(r.m.jobId));
+    const setup = a && b ? tieBreakSetup(a.input.listingText, a, b) : null;
+    if (a && setup) return searchAgain(req, a.id, CONFIRM_MODELS, { confirm: true }, setup);
+  }
   const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
   // The latest exact answer's run holds the listing (a recheck copies the first search's input).
   return searchAgain(req, found[found.length - 1].jobId, CONFIRM_MODELS, { confirm: true });
 }
 
-/** One more independent search of the same listing, marked check: true. */
-async function searchAgain(req: PlatformRequest, fromJobId: string, models: ModelId[], mark: { confirm?: true }): Promise<boolean> {
+/** One more independent search of the same listing, marked check: true; a tie-breaker gets its compare task and two-house checklist. */
+async function searchAgain(
+  req: PlatformRequest,
+  fromJobId: string,
+  models: ModelId[],
+  mark: { confirm?: true },
+  tie?: { text: string; seed: Pick<SearchState, "shortlisted" | "candidates"> },
+): Promise<boolean> {
   const results = req.results ?? [];
   const src = getJob(fromJobId);
   const images = src ? await loadListingPhotos(src.runDir) : [];
   if (!src || images.length === 0) return false;
+  const listingText = tie ? tie.text : src.input.listingText;
   for (const model of models) {
-    const job = await createJob({ ...src.input, ...runLimits() }, model);
+    const job = await createJob({ ...src.input, listingText, ...runLimits(), ...(tie ? { tieBreak: true } : {}) }, model);
     results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true, ...mark });
     void (async () => {
       await saveListingPhotos(job.runDir, images);
-      await runInvestigation(job, images, src.input.listingText);
+      await runInvestigation(job, images, listingText, tie?.seed);
     })().catch((err) => console.error(`[platform] search again ${job.id} crashed:`, err));
   }
   req.status = "running";

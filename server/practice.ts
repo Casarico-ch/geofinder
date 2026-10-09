@@ -34,6 +34,7 @@ import { keptLessons, type Kpis } from "./lessons-store";
 import { buildingByEgid } from "./gwr";
 import { listingFacts } from "./proof";
 import { twinsOf } from "./twins";
+import { tieBreakPair, tieBreakSetup } from "./tiebreak";
 
 export interface PracticeCase {
   propertyId: number;
@@ -98,6 +99,7 @@ export interface PracticeResult {
   doubtWhy?: string; // what made it doubtful (recheckWhy)
   recheck?: boolean; // this run is that second search
   confirm?: boolean; // a confirming or tie-breaking search (wantsConfirm)
+  tieBreakOf?: [string, string]; // the tie-breaker: the two runs (job ids) whose houses it compares (tiebreak.ts)
   twinPick?: string; // named one of two attached twins; the other one
 
 }
@@ -486,14 +488,18 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
       try {
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
+        // The tie-breaker compares the two houses it was given, as real requests do (tiebreak.ts).
+        const [ja, jb] = (r.tieBreakOf ?? []).map((id) => getJob(id));
+        const tie = ja && jb ? tieBreakSetup(c.listingText, ja, jb) : null;
+        const listingText = tie ? tie.text : c.listingText;
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText: c.listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof },
+          { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true } : {}) },
           r.model,
         );
         r.jobId = job.id;
         await save(round);
         await saveListingPhotos(job.runDir, images);
-        await runInvestigation(job, images, c.listingText);
+        await runInvestigation(job, images, listingText, tie?.seed);
         const answer = getJob(job.id)?.answer ?? null;
         if (answer?.twinPick) r.twinPick = answer.twinPick.other;
         queue.push(...recheckFor(round, r, answer));
@@ -532,11 +538,14 @@ function confirmFor(round: PracticeRound, propertyId: number): PracticeResult[] 
   if (round.trialOf) return []; // a lesson test compares the same runs before and after
   const runs = round.results.filter((x) => x.propertyId === propertyId);
   if (!runs.length || runs.some((x) => x.outcome === "running")) return [];
-  if (!wantsConfirm(runs.map(settled))) return [];
+  const states = runs.map(settled);
+  if (!wantsConfirm(states)) return [];
+  const pair = tieBreakPair(states);
+  const tieBreakOf = pair && pair[0].r.jobId && pair[1].r.jobId ? ([pair[0].r.jobId, pair[1].r.jobId] as [string, string]) : undefined;
   const first = runs[0];
   return CONFIRM_MODELS.map((model) => {
     if (!round.models.includes(model)) round.models.push(model);
-    const again: PracticeResult = { propertyId, jobId: null, model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, confirm: true };
+    const again: PracticeResult = { propertyId, jobId: null, model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, confirm: true, ...(tieBreakOf ? { tieBreakOf } : {}) };
     round.results.push(again);
     return again;
   });
