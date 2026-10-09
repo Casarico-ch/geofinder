@@ -327,11 +327,21 @@ export function twoAgree(results: { status: string; answer: Answer | null }[]): 
   return exact.some((a, i) => exact.slice(i + 1).some((b) => sameAddress(a, b)));
 }
 
+// Daniel, 09.10: when the confirming search names a different house, a third
+// Opus searches as tie-breaker; whichever two agree is kept (Radar), and if it
+// names a third house or is not sure, nothing is kept.
+const MAX_CONFIRMS = 2;
+
 async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
-  if (!CONFIRM || !CONFIRM_MODELS.length || req.kind !== "listing" || results.some((m) => m.confirm)) return false;
+  if (!CONFIRM || !CONFIRM_MODELS.length || req.kind !== "listing") return false;
+  const confirms = results.filter((m) => m.confirm);
+  if (confirms.length >= MAX_CONFIRMS) return false;
   const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
   if (!found.length || twoAgree(results)) return false;
+  // A tie-breaker only when the last confirming search named another house:
+  // a "not sure" leaves nothing to break.
+  if (confirms.length && !confirms.some((m) => m.status === "done" && exactAddressOf(m.answer))) return false;
   // The latest exact answer's run holds the listing (a recheck copies the first search's input).
   return searchAgain(req, found[found.length - 1].jobId, CONFIRM_MODELS, { confirm: true });
 }
