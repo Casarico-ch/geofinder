@@ -260,10 +260,18 @@ export async function fetchCases(split: "practice" | "test", max: number): Promi
  * keyed to one three-home farmhouse.
  */
 export async function keyTrouble(c: PracticeCase, all: PracticeCase[]): Promise<string | null> {
+  // One photo is the agent's portrait or a logo (Benken 5340677, 09.10): with no
+  // picture of the house and no area, both runs can only say "not sure".
+  if (c.imageUrls.length <= 1) return "one photo only: nothing of the house to compare";
   const b = await buildingByEgid(c.truth.egid).catch(() => null);
   if (!b) return "the register has no building under its answer key";
   const f = listingFacts(c.listingText);
   const thisYear = new Date().getFullYear();
+  // A new house on the plot of an old one (Bulle 690034, 09.10: a villa for 2027
+  // keyed to a 3-home building from before 1919): the register still holds the
+  // old building and the aerial shows it, so nothing can name the new one.
+  if (f.newBuild && b.status === 1004 && (b.year == null || b.year < thisYear - 3))
+    return `a new build, keyed to an existing building${b.year ? ` from ${b.year}` : ""} it replaces`;
   if (f.year && b.year && b.status === 1004 && f.year < thisYear - 1 && Math.abs(f.year - b.year) > 5)
     return `built ${f.year} in the listing, ${b.year} in the register`;
   if (f.kind === "flat" && b.dwellings != null && b.dwellings <= 1)
