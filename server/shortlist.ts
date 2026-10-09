@@ -317,7 +317,9 @@ const PLOT_DEEP = Number(process.env.SHORTLIST_PLOT_DEEP ?? 6000);
 const PLOT_WORKERS = 48;
 const PLOT_FIT = 0.05, FLAT_FIT_M2 = 3;
 // Neighbour checks are local arithmetic once a 3D tile (~4×3 km) is cached.
-const NEIGHBOUR_DEEP = Number(process.env.SHORTLIST_NEIGHBOUR_DEEP ?? 400);
+// 1500, was 400 (Daniel, 09.10): without a land area the right house can sit far
+// below the top 400 (Laténa #723 of 3794), where the photos' neighbours never reached it.
+const NEIGHBOUR_DEEP = Number(process.env.SHORTLIST_NEIGHBOUR_DEEP ?? 1500);
 
 /**
  * The listing's own facts, in order of strength: a plot of the listed land
@@ -342,6 +344,13 @@ async function rankByListing(
   const flat = l?.livingM2 != null && l.kind === "flat";
   if (plot) used.push(`plot ${l!.landM2} m²`);
   if (flat) used.push(`a flat of ${l!.livingM2} m²`);
+  // A house's living area and rooms against its one home in the register (Daniel,
+  // 09.10): with no land area, the plot cannot rank the commune. In Veyrier 88% of
+  // single-home buildings state a living area, and 1 in 4 is within 10% of 140 m².
+  const houseLiving = l?.kind === "house" && l.livingM2 != null ? l.livingM2 : null;
+  const houseRooms = l?.kind === "house" && l.rooms != null ? l.rooms : null;
+  if (houseLiving) used.push(`living area ${houseLiving} m²`);
+  if (houseRooms) used.push(`${houseRooms} rooms`);
 
   const thisYear = new Date().getFullYear();
   const cheap = (b: GwrBuilding): number => {
@@ -357,6 +366,18 @@ async function rankByListing(
     // A flat on the 5th floor needs a building of at least 6 levels.
     if (l?.kind === "flat" && l.floor != null && l.floor > 0 && b.floors != null) s += b.floors > l.floor ? -1 : 2;
     if (l?.units && b.dwellings != null) s += Math.abs(b.dwellings - l.units) <= 1 ? -2 : 1;
+    // Listed net area against the register's: within 5% counts most, within 15%
+    // counts, past 35% is a doubt (Laténa, Pré-du-Pont 28: 154 m² listed, 159 in the register).
+    if (houseLiving && b.livingM2) {
+      const off = Math.abs(b.livingM2 - houseLiving) / houseLiving;
+      s += off <= 0.05 ? -3 : off <= 0.15 ? -2 : off <= 0.35 ? 0 : 1;
+    }
+    // The register leaves the kitchen out (and Geneva's listings count it): a
+    // listed 6 is the register's 5 or 6, a listed 4.5 its 4 or 5.
+    if (houseRooms && b.rooms) {
+      const d = houseRooms - b.rooms;
+      s += d >= -0.5 && d <= 1.5 ? -1 : Math.abs(d) > 2.5 ? 1 : 0;
+    }
     // The model's estimates: a nudge, so a wrong guess costs places, not the house.
     if (!inRange(b.floors, opts.floors, 1, 1)) s += 1;
     if (!inRange(b.dwellings, opts.dwellings, 1, 1)) s += 1;

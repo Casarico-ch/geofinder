@@ -322,7 +322,7 @@ async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
   const pair = tieBreakPair(runs);
   if (pair) {
     const [a, b] = pair.map((r) => getJob(r.m.jobId));
-    const setup = a && b ? tieBreakSetup(a.input.listingText, a, b) : null;
+    const setup = a && b ? await tieBreakSetup(a.input.listingText, a, b) : null;
     if (a && setup) return searchAgain(req, a.id, CONFIRM_MODELS, { confirm: true }, setup);
   }
   const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
@@ -336,7 +336,7 @@ async function searchAgain(
   fromJobId: string,
   models: ModelId[],
   mark: { confirm?: true },
-  tie?: { text: string; seed: Pick<SearchState, "shortlisted" | "candidates"> },
+  tie?: { text: string; seed: Pick<SearchState, "shortlisted" | "candidates">; egids: string[] },
 ): Promise<boolean> {
   const results = req.results ?? [];
   const src = getJob(fromJobId);
@@ -344,7 +344,7 @@ async function searchAgain(
   if (!src || images.length === 0) return false;
   const listingText = tie ? tie.text : src.input.listingText;
   for (const model of models) {
-    const job = await createJob({ ...src.input, listingText, ...runLimits(), ...(tie ? { tieBreak: true } : {}) }, model);
+    const job = await createJob({ ...src.input, listingText, ...runLimits(), ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) }, model);
     results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true, ...mark });
     void (async () => {
       await saveListingPhotos(job.runDir, images);

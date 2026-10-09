@@ -176,7 +176,7 @@ const TOOLS = [
             },
             landmarks: {
               type: "array",
-              description: "Distinctive things visible from the house: a church or chapel, a named peak, a lake, a village. Direction is where it lies SEEN FROM THE HOUSE (map compass: work it out from the sun, shadows, the slope or known geography). Omit name for an unnamed local church.",
+              description: "Distinctive things visible from the house: a church or chapel, a named peak, a lake, a village. Direction is where it lies SEEN FROM THE HOUSE (map compass: work it out from the sun, shadows, the slope or known geography). Omit name for an unnamed local church. ALSO every place the listing's DESCRIPTION names near the house — a sports centre, a school, the station, a shop, the lake shore ('à proximité du centre sportif du Grand-Donzel', '5 Gehminuten zum Bahnhof'): kind 'other' (or 'place' for a village or quarter), its proper name, distance_m from what the text says (a walking minute ≈ 80 m, 'proximité' ≈ 300 m) and no direction unless the text gives one.",
               items: {
                 type: "object",
                 properties: {
@@ -186,7 +186,7 @@ const TOOLS = [
                   distance_m: { type: "number", description: "rough distance from the house, if the photos allow it" },
                   confidence: { type: "string", enum: ["sure", "likely", "guess"] },
                 },
-                required: ["kind", "direction", "confidence"],
+                required: ["kind", "confidence"],
               },
             },
             neighbours: {
@@ -913,6 +913,22 @@ async function runLoop(
             results.push({ type: "tool_result", tool_use_id: tu.id, content: gate, is_error: true });
             continue;
           }
+          // The tie-breaker may name a third house only once it rejected both A and B (tiebreak.ts).
+          if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence) && !nearLimit(i + 1)) {
+            const search = searchOf(job);
+            const named = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
+            const ab = (job.input.tieBreakEgids ?? []).map((e) => search.candidates[e]).filter((c): c is LedgerEntry => !!c);
+            const third = !named || !ab.some((c) => c.egid === named.egid);
+            const open = ab.filter((c) => c.verdict !== "rejected");
+            if (third && open.length && (search.thirdGates ?? 0) < 2) {
+              search.thirdGates = (search.thirdGates ?? 0) + 1;
+              await saveSearch(job, search);
+              const msg = `Not recorded — you named a third house while ${open.map((c) => c.address ?? `EGID ${c.egid}`).join(" and ")} ${open.length > 1 ? "are" : "is"} not rejected. Inspect ${open.length > 1 ? "them" : "it"} and mark each match or rejected with the visible difference; a third house counts only once A and B are both rejected.`;
+              await addStep(job, { kind: "note", title: "Answer sent back — A and B not both rejected", detail: msg });
+              results.push({ type: "tool_result", tool_use_id: tu.id, content: msg, is_error: true });
+              continue;
+            }
+          }
           // An exact address is recorded only once it is proven (proveAnswer).
           // Unproven, it goes back with what is missing (up to 3 times); near
           // the limit, or after that, it is recorded as a ranked shortlist.
@@ -1468,6 +1484,8 @@ const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"
 // had the right house in the top 150 of their ranked list, unseen. A run may
 // not stop short of an exact answer before it has viewed or judged them.
 const TOP_LOOK = 150;
+// Big communes (Daniel, 09.10): past 2000 homes the top 300 must be seen.
+const TOP_LOOK_BIG = 300, BIG_LIST = 2000;
 function unseenTop(search: SearchState): string | null {
   const calls = (search.calls ?? []).filter((c) => c.order?.length);
   if (!calls.length) return null;
@@ -1478,7 +1496,7 @@ function unseenTop(search: SearchState): string | null {
       .filter((c) => c.viewed || c.verdict !== "unchecked")
       .map((c) => String(Number(c.egid))),
   );
-  const top = list.slice(0, TOP_LOOK);
+  const top = list.slice(0, list.length > BIG_LIST ? TOP_LOOK_BIG : TOP_LOOK);
   const unseen = top.filter((e) => !seen.has(String(e)));
   if (!unseen.length) return null;
   const first = top.findIndex((e) => !seen.has(String(e))) + 1;

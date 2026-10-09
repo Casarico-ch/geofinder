@@ -238,6 +238,7 @@ export interface Job {
     noProof?: boolean;
     // The tie-breaker: compares the two houses named in its task (tiebreak.ts), no commune search.
     tieBreak?: boolean;
+    tieBreakEgids?: string[]; // its A and B: a third house is taken only once both are rejected
   };
   lessons?: string[]; // the practice lessons in its system prompt, fixed at start
   overBudget?: boolean; // stopped by input.budgetUsd or input.maxMinutes

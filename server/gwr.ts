@@ -40,6 +40,10 @@ export interface GwrBuilding {
   status: number | null; // gstat (1004 = existing)
   year: number | null; // gbauj
   postcode: number | null; // dplz4
+  // The one home of a single-home building: its living area (warea, m²) and
+  // rooms (wazim, kitchen not counted). Null for several homes or when unknown.
+  livingM2: number | null;
+  rooms: number | null;
 }
 
 async function getJson(url: string, ms = 60_000): Promise<any> {
@@ -250,7 +254,16 @@ function toBuilding(f: any): GwrBuilding | null {
     status: num(p.gstat),
     year: num(p.gbauj),
     postcode: num(p.dplz4),
+    livingM2: single(p.ganzwhg, p.warea),
+    rooms: single(p.ganzwhg, p.wazim),
   };
+}
+
+// A dwelling field of a single-home building: the register gives one value per home.
+function single(homes: unknown, v: unknown): number | null {
+  if (homes !== 1) return null;
+  const x = Array.isArray(v) ? (v.length === 1 ? v[0] : null) : v;
+  return typeof x === "number" && Number.isFinite(x) && x > 0 ? x : null;
 }
 
 /** One register building by its EGID (null when the register has no such building). */
