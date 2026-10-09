@@ -123,6 +123,7 @@ export interface Result {
   doubtWhy?: string;
   twinPick?: string; // named one of two attached twins; the other one
   recheck?: boolean; // that second search
+  confirm?: boolean; // a confirming or tie-breaking search
   rank?: number | null; // where the right house sat on the run's ranked list
   rankOf?: number | null;
 }
@@ -253,6 +254,14 @@ const SHORT: Record<string, string> = {
   "claude-opus-5-5": "Opus",
   "gemini-3.1-pro-preview": "Gem Pro",
   "gemini-3.8-flash": "Gem Flash",
+  "opus-5-5-high": "Opus high",
+};
+
+// The steps after the first search, each in a column of its own (several are Opus high).
+const STEP_LABEL: Record<string, string> = {
+  recheck: "Recheck",
+  confirm: "Confirm",
+  tiebreak: "Tie-break",
 };
 
 /** One run in one cell: the outcome as an icon, time and cost under it. */
@@ -278,11 +287,11 @@ function RunCell({ r }: { r?: Result }) {
 }
 
 /** One run in full, inside an opened listing. */
-function RunCard({ model, r }: { model: string; r?: Result }) {
+function RunCard({ label, r }: { label: string; r?: Result }) {
   return (
     <div className="rounded-lg border bg-card p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">{MODEL_LABEL[model] ?? model}</p>
+        <p className="text-sm font-medium">{label}</p>
         {r && (
           <Badge variant="outline" className={`border-transparent font-normal ${OUTCOME[r.outcome].className}`}>
             {OUTCOME[r.outcome].label}
@@ -364,6 +373,15 @@ export function ListingsPanel({
     setSort(sort?.by !== by ? { by, dir: "desc" } : sort.dir === "desc" ? { by, dir: "asc" } : null);
   const ids = Array.from(new Set(results.map((r) => r.propertyId)));
   const runsOf = (pid: number) => results.filter((r) => r.propertyId === pid);
+  // One column per first-search model, then one per later step: recheck, confirm, tie-break.
+  const stepOf = (r: Result) =>
+    r.confirm ? (runsOf(r.propertyId).filter((x) => x.confirm)[0] === r ? "confirm" : "tiebreak") : r.recheck ? "recheck" : r.model;
+  const steps = [
+    ...models.filter((m) => results.some((r) => !r.recheck && !r.confirm && r.model === m)),
+    ...Object.keys(STEP_LABEL).filter((k) => results.some((r) => stepOf(r) === k)),
+  ];
+  const labelOf = (step: string) => STEP_LABEL[step] ?? SHORT[step] ?? MODEL_LABEL[step] ?? step;
+  const runAt = (runs: Result[], step: string) => runs.find((r) => stepOf(r) === step);
   const costOf = (pid: number) => runsOf(pid).reduce((a, r) => a + (r.costUsd ?? 0), 0);
   // The best rank any run gave the right house; off the list sorts after every rank.
   const rankOf = (pid: number): number | null => {
@@ -410,9 +428,9 @@ export function ListingsPanel({
             <TableRow>
               <TableHead className="w-8" />
               <TableHead>Listing</TableHead>
-              {models.map((m) => (
+              {steps.map((m) => (
                 <TableHead key={m} className="whitespace-nowrap">
-                  {SHORT[m] ?? MODEL_LABEL[m] ?? m}
+                  {labelOf(m)}
                 </TableHead>
               ))}
               <TableHead className="text-right">Found by</TableHead>
@@ -438,7 +456,7 @@ export function ListingsPanel({
           <TableBody>
             {shown.length === 0 && (
               <TableRow>
-                <TableCell colSpan={models.length + 5} className="text-muted-foreground">
+                <TableCell colSpan={steps.length + 5} className="text-muted-foreground">
                   No listing here.
                 </TableCell>
               </TableRow>
@@ -464,9 +482,9 @@ export function ListingsPanel({
                         <ListingLinks info={info} />
                       </div>
                     </TableCell>
-                    {models.map((m) => (
+                    {steps.map((m) => (
                       <TableCell key={m}>
-                        <RunCell r={runs.find((r) => r.model === m)} />
+                        <RunCell r={runAt(runs, m)} />
                       </TableCell>
                     ))}
                     <TableCell className="text-right">
@@ -484,14 +502,14 @@ export function ListingsPanel({
                   </TableRow>
                   {isOpen && (
                     <TableRow className="hover:bg-transparent">
-                      <TableCell colSpan={models.length + 5} className="bg-muted/40 whitespace-normal">
+                      <TableCell colSpan={steps.length + 5} className="bg-muted/40 whitespace-normal">
                         <div className="flex flex-wrap items-center gap-3 mb-2">
                           {info?.price && <p className="text-xs text-muted-foreground">{info.price}</p>}
                           <ListingLinks info={info} />
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                          {models.map((m) => (
-                            <RunCard key={m} model={m} r={runs.find((r) => r.model === m)} />
+                          {steps.map((m) => (
+                            <RunCard key={m} label={labelOf(m)} r={runAt(runs, m)} />
                           ))}
                         </div>
                       </TableCell>
