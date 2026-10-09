@@ -59,6 +59,7 @@ export interface SearchState {
   foundGates?: number; // times an unproven exact answer was turned back
   neighboursAsked?: boolean; // record_signature came without neighbours once already
   unsureGates?: number; // practice: a not-exact answer sent back with the top of the list unseen
+  thirdGates?: number; // tie-breaker: a third house sent back while A or B was not rejected
   sanityGates?: number; // practice: answers turned back for no street address or a plot far off
   // Every shortlist_buildings call and the estimates it filtered with, so a
   // miss can be traced to the filter that dropped the house (miss.ts).

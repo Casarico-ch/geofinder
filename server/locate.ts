@@ -27,7 +27,10 @@ export type ClueConfidence = "sure" | "likely" | "guess";
 export interface LandmarkClue {
   kind: "church" | "peak" | "lake" | "place" | "other";
   name?: string; // "Matterhorn", "Église de Saint-Sulpice" — omit for an unnamed church
-  direction: Direction; // where it is, seen FROM the house
+  // Where it is, seen FROM the house. Omitted for a place the description names
+  // near the house ("à proximité du centre sportif", "5 min from the station"):
+  // then only the distance is scored (Daniel, 09.10).
+  direction?: Direction;
   distanceM?: number; // rough distance from the house, if the photos allow it
   confidence: ClueConfidence;
 }
@@ -121,7 +124,7 @@ export function scoreHouse(
     for (const p of lm.points) {
       const d = metres(house, p);
       if (lm.clue.kind === "church" && !lm.clue.name && d > 3_000) continue; // an unnamed church is a local one
-      const fit = directionFit(bearing(house, p), lm.clue.direction) * distanceFit(d, lm.clue.distanceM);
+      const fit = (lm.clue.direction ? directionFit(bearing(house, p), lm.clue.direction) : 1) * distanceFit(d, lm.clue.distanceM);
       if (fit > best || !bestAt) [best, bestAt] = [fit, p];
     }
     const w = WEIGHT[lm.clue.confidence];
@@ -343,13 +346,14 @@ export function coerceLocation(v: unknown): LocationClues | undefined {
       .map((x) => (x ?? {}) as Record<string, unknown>)
       .flatMap((x): LandmarkClue[] => {
         const direction = dir(x.direction);
-        if (!direction) return [];
         const kind = (kinds as readonly string[]).includes(String(x.kind)) ? (x.kind as LandmarkClue["kind"]) : "other";
         const name = typeof x.name === "string" && x.name.trim() ? x.name.trim() : undefined;
         const distanceM = typeof x.distance_m === "number" && x.distance_m > 0 ? x.distance_m : undefined;
+        // Without a direction, only a named place at a stated distance says anything.
+        if (!direction && !(name && distanceM)) return [];
         return [{ kind, name, direction, distanceM, confidence: conf(x.confidence) }];
       })
-      .slice(0, 6);
+      .slice(0, 8);
     if (!out.landmarks.length) delete out.landmarks;
   }
   const nb = coerceNeighbours(o.neighbours);
@@ -361,6 +365,6 @@ export function cluesText(c: LocationClues): string {
   const parts: string[] = [];
   if (c.slope) parts.push(`slope falls ${c.slope.faces === "flat" ? "nowhere (flat)" : `to the ${c.slope.faces}`} (${c.slope.confidence})`);
   for (const l of c.landmarks ?? [])
-    parts.push(`${l.name ?? l.kind} to the ${l.direction}${l.distanceM ? ` ~${l.distanceM} m` : ""} (${l.confidence})`);
+    parts.push(`${l.name ?? l.kind}${l.direction ? ` to the ${l.direction}` : ""}${l.distanceM ? ` ~${l.distanceM} m` : ""} (${l.confidence})`);
   return parts.join("; ");
 }

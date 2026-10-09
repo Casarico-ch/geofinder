@@ -490,10 +490,10 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         if (!images.length) throw new Error("no photo could be loaded");
         // The tie-breaker compares the two houses it was given, as real requests do (tiebreak.ts).
         const [ja, jb] = (r.tieBreakOf ?? []).map((id) => getJob(id));
-        const tie = ja && jb ? tieBreakSetup(c.listingText, ja, jb) : null;
+        const tie = ja && jb ? await tieBreakSetup(c.listingText, ja, jb) : null;
         const listingText = tie ? tie.text : c.listingText;
         const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true } : {}) },
+          { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) },
           r.model,
         );
         r.jobId = job.id;
