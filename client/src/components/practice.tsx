@@ -118,7 +118,7 @@ export interface Result {
   costUsd: number | null;
   error?: string;
   why?: { code: string; text: string } | null; // why the right house was never on its checklist
-  twin?: boolean; // answered the attached twin of the right house: counted as found
+  twin?: boolean; // answered the attached twin of the right house: wrong, flagged
   doubt?: boolean; // doubtful or not sure, so it was searched again
   doubtWhy?: string;
   twinPick?: string; // named one of two attached twins; the other one
@@ -310,7 +310,7 @@ function RunCard({ label, r }: { label: string; r?: Result }) {
             {r.answer ?? "nothing"}
           </p>
           {r.twin && (
-            <p className="text-xs text-emerald-700">Counted as found: the attached twin of the right house.</p>
+            <p className="text-xs text-destructive">The attached twin of the right house: counted wrong, as Radar would show the neighbour's number.</p>
           )}
           {r.twinPick && (
             <p className="text-xs text-amber-700">Twin pick: could not tell it from its attached twin {r.twinPick}; named the one whose plot is closest.</p>
