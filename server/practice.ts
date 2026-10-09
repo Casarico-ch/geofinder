@@ -539,7 +539,12 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
 
 /** A doubtful answer's second searches, one per recheck model, added once per listing. */
 function recheckFor(round: PracticeRound, r: PracticeResult, answer: Answer | null): PracticeResult[] {
-  const why = RECHECK && !r.recheck ? recheckWhy(answer) : null;
+  // Only a first search is rechecked, never a confirm or tie-breaker, and never
+  // once a confirm has started (Bassersdorf, 09.10: the tie-breaker's doubt
+  // started a 4th search after two runs had already agreed). Real requests:
+  // platform.ts recheckIfDoubtful stops at any check: true run.
+  const confirming = round.results.some((x) => x.confirm && x.propertyId === r.propertyId);
+  const why = RECHECK && !r.recheck && !r.confirm && !confirming ? recheckWhy(answer) : null;
   if (!why) return [];
   Object.assign(r, { doubt: true, doubtWhy: why });
   if (round.results.some((x) => x.recheck && x.propertyId === r.propertyId)) return [];
