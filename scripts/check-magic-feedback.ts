@@ -4,10 +4,8 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import {
-  CHORD_WINDOW_MS,
   barCopy,
   confirmBody,
-  createChord,
   filedToast,
   formatClock,
   keptNotes,
@@ -15,6 +13,7 @@ import {
   maskClone,
   notesFromReply,
   popPlace,
+  shortcutAction,
 } from "../client/src/lib/magic-feedback";
 import {
   CONFIRM_TIMEOUT_MS,
@@ -43,54 +42,36 @@ const KEY = "test-magic-key-0123456789abcdef";
 // AbortSignal.timeout's timer does not hold the process open; this does, until the end.
 const keepAlive = setInterval(() => {}, 1000);
 
-// ---- the chord ----------------------------------------------------------------
-await check("Space then M inside the window starts", () => {
-  const c = createChord();
-  const o = { editable: false, active: false };
-  assert.equal(c.key({ code: "Space", key: " " }, 1000, o), null);
-  assert.equal(c.key({ key: "m" }, 1000 + CHORD_WINDOW_MS, o), "start");
-});
-await check("M too late does nothing", () => {
-  const c = createChord();
-  const o = { editable: false, active: false };
-  c.key({ code: "Space", key: " " }, 1000, o);
-  assert.equal(c.key({ key: "m" }, 1001 + CHORD_WINDOW_MS, o), null);
-});
-await check("M alone does nothing, and the chord does not fire twice", () => {
-  const c = createChord();
-  const o = { editable: false, active: false };
-  assert.equal(c.key({ key: "m" }, 10, o), null);
-  c.key({ code: "Space" }, 20, o);
-  assert.equal(c.key({ key: "M" }, 30, o), "start");
-  assert.equal(c.key({ key: "m" }, 40, o), null);
+// ---- the shortcut ---------------------------------------------------------------
+const combo = { code: "KeyM", altKey: true, shiftKey: true };
+await check("Alt+Shift+M starts, and the same combo stops", () => {
+  assert.equal(shortcutAction(combo, false), "start");
+  assert.equal(shortcutAction(combo, true), "stop");
 });
 await check(
-  "Shift between Space and M keeps it armed; another key disarms",
+  "matches event.code, not event.key (Option on Mac changes key)",
   () => {
-    const c = createChord();
-    const o = { editable: false, active: false };
-    c.key({ code: "Space" }, 0, o);
-    c.key({ key: "Shift" }, 10, o);
-    assert.equal(c.key({ key: "M" }, 20, o), "start");
-    c.key({ code: "Space" }, 100, o);
-    c.key({ key: "a" }, 110, o);
-    assert.equal(c.key({ key: "m" }, 120, o), null);
+    // what Option+Shift+M reports as event.key on a Mac
+    assert.equal(
+      shortcutAction({ ...combo, key: "Â" } as typeof combo, false),
+      "start"
+    );
+    assert.equal(shortcutAction({ ...combo, code: "KeyN" }, false), null);
   }
 );
-await check("never listens inside an editable field", () => {
-  const c = createChord();
-  const o = { editable: true, active: false };
-  assert.equal(c.key({ code: "Space" }, 0, o), null);
-  assert.equal(c.key({ key: "m" }, 10, o), null);
-  // armed outside, then M typed in a field: still nothing
-  c.key({ code: "Space" }, 100, { editable: false, active: false });
-  assert.equal(c.key({ key: "m" }, 110, o), null);
+await check("needs both Alt and Shift, and no Cmd or Ctrl", () => {
+  assert.equal(shortcutAction({ ...combo, altKey: false }, false), null);
+  assert.equal(shortcutAction({ ...combo, shiftKey: false }, false), null);
+  assert.equal(shortcutAction({ ...combo, metaKey: true }, false), null);
+  assert.equal(shortcutAction({ ...combo, ctrlKey: true }, false), null);
 });
-await check("the same chord stops a recording", () => {
-  const c = createChord();
-  const o = { editable: false, active: true };
-  c.key({ code: "Space" }, 0, o);
-  assert.equal(c.key({ key: "m" }, 50, o), "stop");
+await check("ignores composition and key repeat", () => {
+  assert.equal(shortcutAction({ ...combo, isComposing: true }, false), null);
+  assert.equal(shortcutAction({ ...combo, repeat: true }, false), null);
+});
+await check("Space then M no longer does anything", () => {
+  assert.equal(shortcutAction({ code: "Space" }, false), null);
+  assert.equal(shortcutAction({ code: "KeyM" }, false), null);
 });
 
 // ---- renumbering and the review screen -----------------------------------------
@@ -366,12 +347,10 @@ cockpit.post("/api/magic-feedback", (req, res) => {
     body: req.body,
   });
   if (req.body.shot === "limit") {
-    res
-      .status(429)
-      .json({
-        ok: false,
-        error: "Magic feedback has reached today's 60 recordings for geofinder",
-      });
+    res.status(429).json({
+      ok: false,
+      error: "Magic feedback has reached today's 60 recordings for geofinder",
+    });
     return;
   }
   res.json({

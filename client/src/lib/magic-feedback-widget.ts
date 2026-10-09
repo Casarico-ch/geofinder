@@ -1,5 +1,5 @@
 // =============================================================================
-// Magic feedback — the browser half: the chord listener, the screenshot, the
+// Magic feedback — the browser half: the shortcut listener, the screenshot, the
 // mic, the mouse path and clicks, the two calls to this app's own server
 // (/api/magic-feedback, /api/magic-feedback/confirm), and burning the pins
 // into the screenshot. The rules it follows are in magic-feedback.ts; the
@@ -14,9 +14,8 @@ import {
   MAX_RECORD_MS,
   MOUSE_SAMPLE_MS,
   confirmBody,
-  createChord,
+  shortcutAction,
   filedToast,
-  isEditable,
   labelFor,
   maskClone,
   notesFromReply,
@@ -120,7 +119,6 @@ export class MagicFeedbackWidget {
     notes: [],
   };
   private listeners = new Set<() => void>();
-  private chord = createChord();
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
@@ -144,7 +142,7 @@ export class MagicFeedbackWidget {
     this.listeners.forEach(fn => fn());
   }
 
-  /** Wires the chord. A scripted browser gets no listener at all. Returns the teardown. */
+  /** Wires the shortcut. A scripted browser gets no listener at all. Returns the teardown. */
   attach(): () => void {
     if (typeof navigator !== "undefined" && navigator.webdriver)
       return () => {};
@@ -157,10 +155,9 @@ export class MagicFeedbackWidget {
 
   private onKeyDown = (e: KeyboardEvent) => {
     const { phase } = this.state;
-    const action = this.chord.key(e, Date.now(), {
-      editable: isEditable(document.activeElement as HTMLElement | null),
-      active: phase === "recording",
-    });
+    const action = shortcutAction(e, phase === "recording");
+    if (!action) return;
+    e.preventDefault();
     if (action === "start" && phase === "idle") void this.start();
     else if (action === "stop" && phase === "recording") void this.stop();
   };

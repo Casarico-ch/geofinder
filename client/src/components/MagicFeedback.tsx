@@ -7,8 +7,8 @@ import { MagicFeedbackWidget } from "@/lib/magic-feedback-widget";
 import { cn } from "@/lib/utils";
 
 // Magic feedback for everyone on GeoFinder (Daniel, 03.10: "everyone on
-// GeoFinder can submit a magic feedback"). Space then M starts and stops a
-// recording; the review screen follows. Mounted once, at App level.
+// GeoFinder can submit a magic feedback"). Alt+Shift+M (Mac: ⌥⇧M) starts and
+// stops a recording; the review screen follows. Mounted once, at App level.
 export default function MagicFeedback() {
   const [widget] = useState(
     () =>
