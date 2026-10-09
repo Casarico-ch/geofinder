@@ -44,6 +44,8 @@ export default function PracticeRound() {
   const [round, setRound] = useState<Round | null>(null);
   const [results, setResults] = useState<Result[] | null>(null);
   const [listingInfo, setListingInfo] = useState<Record<number, ListingInfo>>({});
+  // What Radar would show per listing: a house only when two runs name it (server: practice.ts listingVerdict).
+  const [verdicts, setVerdicts] = useState<Record<number, "running" | "confirmed_right" | "confirmed_wrong" | "not_confirmed">>({});
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export default function PracticeRound() {
         setRound(body.summary);
         setResults(body.results);
         setListingInfo(body.listings ?? {});
+        setVerdicts(body.verdicts ?? {});
       }
       if (ls.ok) setLessons(((await ls.json()).lessons as Lesson[]).filter((l) => l.fromRound === id));
     } catch {
@@ -102,11 +105,14 @@ export default function PracticeRound() {
       // Found by the first search, or only by the recheck that followed it.
       firstFound: finished.filter((pid) => of(pid).some((r) => !r.recheck && r.outcome === "right")).length,
       secondFound: finished.filter((pid) => !of(pid).some((r) => !r.recheck && r.outcome === "right") && of(pid).some((r) => r.recheck && r.outcome === "right")).length,
+      // As Radar shows it: a house only when two runs named it.
+      confirmedRight: finished.filter((pid) => verdicts[pid] === "confirmed_right").length,
+      confirmedWrong: finished.filter((pid) => verdicts[pid] === "confirmed_wrong").length,
       // Every run of a listing together: its first search plus any recheck.
       minutes: finished.reduce((a, pid) => a + of(pid).reduce((b, r) => b + (r.minutes ?? 0), 0), 0),
       cost: finished.reduce((a, pid) => a + of(pid).reduce((b, r) => b + (r.costUsd ?? 0), 0), 0),
     };
-  }, [results]);
+  }, [results, verdicts]);
 
   // The same listings again under today's code: all of them, or only those no run found.
   const rerun = async (failed: boolean) => {
@@ -216,22 +222,23 @@ export default function PracticeRound() {
           </Button>
         </div>
 
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
           <Kpi label="All listings" value={String(listings.total)} hint={`${listings.finished} finished`} />
           <Kpi label="Found 1st trial" value={String(listings.firstFound)} hint="by the first search" />
           <Kpi label="Found 2nd trial" value={String(listings.secondFound)} hint="only by the recheck" />
           <Kpi
             label="Success rate"
-            value={pct(listings.firstFound + listings.secondFound, listings.finished)}
-            hint={`${listings.firstFound + listings.secondFound} found of ${listings.finished} · ${listings.withWrong} with a wrong answer`}
-            tone={!listings.finished ? undefined : listings.withWrong ? "bad" : "good"}
+            value={pct(listings.confirmedRight, listings.finished)}
+            hint={`${listings.confirmedRight} of ${listings.finished} confirmed by two searches, as Radar shows them · ${listings.confirmedWrong} confirmed wrong · ${listings.finished - listings.confirmedRight - listings.confirmedWrong} not confirmed`}
+            tone={!listings.finished ? undefined : listings.confirmedWrong ? "bad" : "good"}
           />
+          <Kpi label="Confirmed wrong" value={String(listings.confirmedWrong)} hint="two searches named the same wrong house" tone={listings.confirmedWrong ? "bad" : undefined} />
           <Kpi
             label="Avg time per listing"
             value={listings.finished ? `${Math.round((listings.minutes / listings.finished) * 10) / 10} min` : "—"}
-            hint="first search and recheck together"
+            hint="every search of the listing together"
           />
-          <Kpi label="Cost per listing" value={listings.finished ? usd(listings.cost / listings.finished) : "—"} hint="first search and recheck together" />
+          <Kpi label="Cost per listing" value={listings.finished ? usd(listings.cost / listings.finished) : "—"} hint="every search of the listing together" />
           <Kpi
             label="Total costs"
             value={usd(round.totalCostUsd)}

@@ -27,7 +27,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { exactAddressOf, houseNumberOf, streetOf } from "./consensus";
+import { exactAddressOf, houseNumberOf, sameAddress, streetOf, type Candidate } from "./consensus";
 import { createJob, deleteJob, elapsedMs, costUsd, getJob, MODELS, requestPause, type Answer, type Job, type ModelId } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
 import { keptLessons, type Kpis } from "./lessons-store";
@@ -97,6 +97,7 @@ export interface PracticeResult {
   doubt?: boolean;
   doubtWhy?: string; // what made it doubtful (recheckWhy)
   recheck?: boolean; // this run is that second search
+  confirm?: boolean; // a confirming or tie-breaking search (wantsConfirm)
   twinPick?: string; // named one of two attached twins; the other one
 
 }
@@ -171,6 +172,38 @@ export function recheckWhy(a: Answer | null): string | null {
   if (facts.some((f) => f.fact === "Plot area" && (f.off ?? 0) > PLOT_OFF)) return "plot more than 1% off";
   return null;
 }
+// Daniel, 08.10: an address counts only when two searches named the same house
+// on their own; 09.10: when the confirming search names another house, a third
+// Opus breaks the tie, and a "not sure" from it leaves nothing confirmed. Real
+// requests (platform.ts confirmUnlessAgreed) and practice rounds use this one
+// rule. GEOFINDER_CONFIRM_MODELS (Opus 5.5 high); GEOFINDER_CONFIRM=off stops it.
+export const CONFIRM = process.env.GEOFINDER_CONFIRM !== "off";
+export const CONFIRM_MODELS: ModelId[] = (process.env.GEOFINDER_CONFIRM_MODELS ?? "opus-5-5-high")
+  .split(",")
+  .map((m) => m.trim())
+  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+const MAX_CONFIRMS = 2;
+
+type Settled = { done: boolean; answer: Answer | null; confirm?: boolean };
+
+/** The two finished runs that name the same house, or null. */
+export function agreeingPair<T extends Settled>(runs: T[]): [T, T] | null {
+  const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
+  for (let i = 0; i < exact.length; i++)
+    for (let j = i + 1; j < exact.length; j++) if (sameAddress(exact[i][1], exact[j][1])) return [exact[i][0], exact[j][0]];
+  return null;
+}
+
+/** Once a listing's runs have all settled: should one more confirming search run? */
+export function wantsConfirm(runs: Settled[]): boolean {
+  if (!CONFIRM || !CONFIRM_MODELS.length) return false;
+  const confirms = runs.filter((r) => r.confirm);
+  if (confirms.length >= MAX_CONFIRMS) return false;
+  if (!runs.some((r) => r.done && exactAddressOf(r.answer)) || agreeingPair(runs)) return false;
+  // A tie-breaker only when the confirming search named another house: a "not sure" leaves nothing to break.
+  return !confirms.length || confirms.some((r) => r.done && !!exactAddressOf(r.answer));
+}
+
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 
 function radar(): { url: string; secret: string } {
@@ -469,6 +502,7 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         r.error = err instanceof Error ? err.message : String(err);
       }
       refresh(round);
+      queue.push(...confirmFor(round, r.propertyId));
       await save(round);
     }
   };
@@ -491,6 +525,36 @@ function recheckFor(round: PracticeRound, r: PracticeResult, answer: Answer | nu
     round.results.push(again);
     return again;
   });
+}
+
+/** A listing whose runs have all settled and no two agree: its confirming search, as real requests get. */
+function confirmFor(round: PracticeRound, propertyId: number): PracticeResult[] {
+  if (round.trialOf) return []; // a lesson test compares the same runs before and after
+  const runs = round.results.filter((x) => x.propertyId === propertyId);
+  if (!runs.length || runs.some((x) => x.outcome === "running")) return [];
+  if (!wantsConfirm(runs.map(settled))) return [];
+  const first = runs[0];
+  return CONFIRM_MODELS.map((model) => {
+    if (!round.models.includes(model)) round.models.push(model);
+    const again: PracticeResult = { propertyId, jobId: null, model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, confirm: true };
+    round.results.push(again);
+    return again;
+  });
+}
+
+function settled(r: PracticeResult): Settled & { r: PracticeResult } {
+  const job = r.jobId ? getJob(r.jobId) : undefined;
+  return { r, done: job?.status === "done", answer: job?.answer ?? null, confirm: r.confirm };
+}
+
+export type ListingVerdict = "running" | "confirmed_right" | "confirmed_wrong" | "not_confirmed";
+/** What Radar would show for this listing: a house only when two runs name it (radar outcome.ts decide). */
+export function listingVerdict(round: PracticeRound, propertyId: number): ListingVerdict {
+  const runs = round.results.filter((x) => x.propertyId === propertyId);
+  if (runs.some((x) => x.outcome === "running")) return "running";
+  const pair = agreeingPair(runs.map(settled));
+  if (!pair) return "not_confirmed";
+  return pair.some((p) => p.r.outcome === "right") ? "confirmed_right" : "confirmed_wrong";
 }
 
 export interface RoundSummary {

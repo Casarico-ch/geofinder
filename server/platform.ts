@@ -17,10 +17,10 @@ import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
 import { listingFacts } from "./proof";
-import { RECHECK, RECHECK_MODELS, recheckWhy, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import { CONFIRM_MODELS, listingVerdict, RECHECK, RECHECK_MODELS, recheckWhy, wantsConfirm, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { type Candidate, exactAddressOf, sameAddress } from "./consensus";
+import { type Candidate, exactAddressOf } from "./consensus";
 import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
@@ -310,38 +310,13 @@ async function recheckIfDoubtful(req: PlatformRequest): Promise<boolean> {
 }
 
 // Daniel, 08.10: an address goes back to Radar only when two searches named
-// the same house on their own (Radar's outcome.ts decide). In practice two runs
-// that named the same house were right 56 times of 62. So once the searches
-// and any recheck have settled, an exact answer no second run agrees with gets
-// one more independent search: GEOFINDER_CONFIRM_MODELS (Opus 5.5 high), or
-// GEOFINDER_CONFIRM=off to stop it.
-const CONFIRM = process.env.GEOFINDER_CONFIRM !== "off";
-const CONFIRM_MODELS: ModelId[] = (process.env.GEOFINDER_CONFIRM_MODELS ?? "opus-5-5-high")
-  .split(",")
-  .map((m) => m.trim())
-  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-
-/** Do two finished runs name the same house? */
-export function twoAgree(results: { status: string; answer: Answer | null }[]): boolean {
-  const exact = results.filter((m) => m.status === "done").map((m) => exactAddressOf(m.answer)).filter((c): c is Candidate => !!c);
-  return exact.some((a, i) => exact.slice(i + 1).some((b) => sameAddress(a, b)));
-}
-
-// Daniel, 09.10: when the confirming search names a different house, a third
-// Opus searches as tie-breaker; whichever two agree is kept (Radar), and if it
-// names a third house or is not sure, nothing is kept.
-const MAX_CONFIRMS = 2;
-
+// the same house on their own (Radar's outcome.ts decide); 09.10: a third Opus
+// breaks a tie. The rule is practice.ts wantsConfirm, shared with practice.
 async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
   const results = req.results ?? [];
-  if (!CONFIRM || !CONFIRM_MODELS.length || req.kind !== "listing") return false;
-  const confirms = results.filter((m) => m.confirm);
-  if (confirms.length >= MAX_CONFIRMS) return false;
+  if (req.kind !== "listing") return false;
+  if (!wantsConfirm(results.map((m) => ({ done: m.status === "done", answer: m.answer, confirm: m.confirm })))) return false;
   const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
-  if (!found.length || twoAgree(results)) return false;
-  // A tie-breaker only when the last confirming search named another house:
-  // a "not sure" leaves nothing to break.
-  if (confirms.length && !confirms.some((m) => m.status === "done" && exactAddressOf(m.answer))) return false;
   // The latest exact answer's run holds the listing (a recheck copies the first search's input).
   return searchAgain(req, found[found.length - 1].jobId, CONFIRM_MODELS, { confirm: true });
 }
@@ -533,7 +508,9 @@ export function registerPlatformRoutes(app: Express) {
         (await allRounds()).flatMap((x) => x.results.filter((r) => r.outcome === "running").map((r) => r.propertyId)),
       );
       const results = round.results.map((r) => ({ ...r, why: searching.has(r.propertyId) ? null : missReasonNow(r) }));
-      res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings });
+      // What Radar would show for each listing: a house only when two runs name it.
+      const verdicts = Object.fromEntries(Array.from(new Set(round.results.map((r) => r.propertyId)), (pid) => [pid, listingVerdict(round, pid)]));
+      res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings, verdicts });
     });
     // The same listings again, under today's code, lessons and investigators
     // (PRACTICE_MODELS): a before/after on exactly the same houses.
