@@ -74,7 +74,11 @@ export function listingFacts(text: string | undefined): ListingFacts {
   const rooms = num(line(/^Rooms:\s*([\d.,]+)$/im));
   const building = /\bbuilding\b|multi[ -]family|immeuble|mehrfamilien|rendite|investment|plurifamiliale/.test(type);
   const flat = /apartment|appartement|wohnung|duplex|attique|attika|penthouse|loft|maisonette/.test(type);
-  const kind = building ? "building" : house && !multi ? "house" : flat ? "flat" : null;
+  // A maisonette, duplex or penthouse is a flat even when the listing files it
+  // under "house" (Aarburg 750091, 09.10: ranked as a single house, confirmed wrong).
+  const sub = `${line(/^Subtype:\s*(.+)$/im) ?? ""} ${line(/^Classified subtype:\s*(.+)$/im) ?? ""}`.toLowerCase();
+  const flatSub = /maisonette|duplex|attique|attika|penthouse|loft|apartment|appartement|wohnung/.test(sub);
+  const kind = building ? "building" : flatSub ? "flat" : house && !multi ? "house" : flat ? "flat" : null;
   const detached = kind === "house" && /\bdetached\b|\bvilla\b|\bchalet\b|freistehend|individuelle/.test(type) && !/semi|terrace|row|mitoyen|reihen|doppel/.test(type);
   const year = num(line(/^Year built:\s*(\d{4})/im));
   const units = num(line(/^Units in (?:the )?building:\s*(\d+)/im));
@@ -92,10 +96,10 @@ export function listingFacts(text: string | undefined): ListingFacts {
     landM2: detached && landM2 != null && landM2 < DETACHED_MIN_LAND ? null : landM2,
     landAltM2: Array.from(new Set(landAltM2)).filter((a) => !detached || a >= DETACHED_MIN_LAND),
     livingM2,
-    dwellings: house && !multi ? 1 : null,
+    dwellings: kind === "house" ? 1 : null,
     sharedLand,
     rooms,
-    floor: house ? null : flatFloor(t),
+    floor: kind === "house" ? null : flatFloor(t),
     kind,
     year,
     units,

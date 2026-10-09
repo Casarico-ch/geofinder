@@ -34,7 +34,7 @@ import { keptLessons, type Kpis } from "./lessons-store";
 import { buildingByEgid } from "./gwr";
 import { listingFacts } from "./proof";
 import { twinsOf } from "./twins";
-import { tieBreakPair, tieBreakSetup } from "./tiebreak";
+import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
 
 export interface PracticeCase {
   propertyId: number;
@@ -99,7 +99,7 @@ export interface PracticeResult {
   doubtWhy?: string; // what made it doubtful (recheckWhy)
   recheck?: boolean; // this run is that second search
   confirm?: boolean; // a confirming or tie-breaking search (wantsConfirm)
-  tieBreakOf?: [string, string]; // the tie-breaker: the two runs (job ids) whose houses it compares (tiebreak.ts)
+  tieBreakOf?: string[]; // the tie-breaker: the runs (job ids) whose houses it compares, one per house (tiebreak.ts)
   twinPick?: string; // named one of two attached twins; the other one
 
 }
@@ -489,8 +489,8 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
         // The tie-breaker compares the two houses it was given, as real requests do (tiebreak.ts).
-        const [ja, jb] = (r.tieBreakOf ?? []).map((id) => getJob(id));
-        const tie = ja && jb ? await tieBreakSetup(c.listingText, ja, jb) : null;
+        const named = (r.tieBreakOf ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j);
+        const tie = named.length >= 2 ? await tieBreakSetup(c.listingText, named) : null;
         const listingText = tie ? tie.text : c.listingText;
         const job = await createJob(
           { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) },
@@ -540,8 +540,9 @@ function confirmFor(round: PracticeRound, propertyId: number): PracticeResult[] 
   if (!runs.length || runs.some((x) => x.outcome === "running")) return [];
   const states = runs.map(settled);
   if (!wantsConfirm(states)) return [];
-  const pair = tieBreakPair(states);
-  const tieBreakOf = pair && pair[0].r.jobId && pair[1].r.jobId ? ([pair[0].r.jobId, pair[1].r.jobId] as [string, string]) : undefined;
+  const named = tieBreakRuns(states);
+  const ids = (named ?? []).map((x) => x.r.jobId).filter((id): id is string => !!id);
+  const tieBreakOf = ids.length >= 2 ? ids : undefined;
   const first = runs[0];
   return CONFIRM_MODELS.map((model) => {
     if (!round.models.includes(model)) round.models.push(model);

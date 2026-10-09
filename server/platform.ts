@@ -21,8 +21,8 @@ import { CONFIRM_MODELS, listingVerdict, RECHECK, RECHECK_MODELS, recheckWhy, wa
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
 import { type Candidate, exactAddressOf } from "./consensus";
-import { tieBreakPair, tieBreakSetup } from "./tiebreak";
-import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type KnownModel, type ModelId } from "./jobs";
+import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
+import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type Job, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
 import {
@@ -318,12 +318,14 @@ async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
   if (req.kind !== "listing") return false;
   const runs = results.map((m) => ({ m, done: m.status === "done", answer: m.answer, confirm: m.confirm }));
   if (!wantsConfirm(runs)) return false;
-  // After a confirming search that named another house: the tie-breaker compares the two (tiebreak.ts).
-  const pair = tieBreakPair(runs);
-  if (pair) {
-    const [a, b] = pair.map((r) => getJob(r.m.jobId));
-    const setup = a && b ? await tieBreakSetup(a.input.listingText, a, b) : null;
-    if (a && setup) return searchAgain(req, a.id, CONFIRM_MODELS, { confirm: true }, setup);
+  // After a confirming search that named another house: the tie-breaker compares every named house (tiebreak.ts).
+  const named = tieBreakRuns(runs);
+  if (named) {
+    const jobs = named.map((r) => getJob(r.m.jobId)).filter((j): j is Job => !!j);
+    // The listing text without any task: a run that is not itself a confirm holds it.
+    const src = jobs.find((j) => !isCheckText(j.input.listingText)) ?? jobs[0];
+    const setup = src ? await tieBreakSetup(src.input.listingText, jobs) : null;
+    if (src && setup) return searchAgain(req, src.id, CONFIRM_MODELS, { confirm: true }, setup);
   }
   const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
   // The latest exact answer's run holds the listing (a recheck copies the first search's input).

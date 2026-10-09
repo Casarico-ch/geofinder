@@ -20,7 +20,7 @@ import {
 import { RunFiles } from "./files";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
-import { buildingAt, flatsOf, normalizeCommune } from "./gwr";
+import { buildingAt, buildingByEgid, flatsOf, normalizeCommune } from "./gwr";
 import {
   annotateFit,
   decisive,
@@ -913,20 +913,31 @@ async function runLoop(
             results.push({ type: "tool_result", tool_use_id: tu.id, content: gate, is_error: true });
             continue;
           }
-          // The tie-breaker may name a third house only once it rejected both A and B (tiebreak.ts).
+          // The tie-breaker may name another house only once it rejected every named one (tiebreak.ts).
           if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence) && !nearLimit(i + 1)) {
             const search = searchOf(job);
-            const named = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
-            const ab = (job.input.tieBreakEgids ?? []).map((e) => search.candidates[e]).filter((c): c is LedgerEntry => !!c);
-            const third = !named || !ab.some((c) => c.egid === named.egid);
-            const open = ab.filter((c) => c.verdict !== "rejected");
-            if (third && open.length && (search.thirdGates ?? 0) < 2) {
+            const picked = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
+            const named = (job.input.tieBreakEgids ?? []).map((e) => search.candidates[e]).filter((c): c is LedgerEntry => !!c);
+            const other = !picked || !named.some((c) => c.egid === picked.egid);
+            const open = named.filter((c) => c.verdict !== "rejected");
+            if (other && open.length && (search.thirdGates ?? 0) < 2) {
               search.thirdGates = (search.thirdGates ?? 0) + 1;
               await saveSearch(job, search);
-              const msg = `Not recorded — you named a third house while ${open.map((c) => c.address ?? `EGID ${c.egid}`).join(" and ")} ${open.length > 1 ? "are" : "is"} not rejected. Inspect ${open.length > 1 ? "them" : "it"} and mark each match or rejected with the visible difference; a third house counts only once A and B are both rejected.`;
-              await addStep(job, { kind: "note", title: "Answer sent back — A and B not both rejected", detail: msg });
+              const msg = `Not recorded — you named another house while ${open.map((c) => c.address ?? `EGID ${c.egid}`).join(" and ")} ${open.length > 1 ? "are" : "is"} not rejected. Inspect ${open.length > 1 ? "them" : "it"} and mark each match or rejected with the visible difference; another house counts only once every named one is rejected.`;
+              await addStep(job, { kind: "note", title: "Answer sent back — named houses not all rejected", detail: msg });
               results.push({ type: "tool_result", tool_use_id: tu.id, content: msg, is_error: true });
               continue;
+            }
+          }
+          // The tie-breaker's pick does not count while the register contradicts
+          // the listing (Daniel, 09.10): it is recorded as a candidate, not found.
+          if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence)) {
+            const search = searchOf(job);
+            const picked = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
+            const why = picked ? await registerContradiction(job, picked).catch(() => null) : null;
+            if (why) {
+              Object.assign(answer, { found: false, confidence: "block", reasoning: `${answer.reasoning}\n\nNot confirmed: the register contradicts the listing — ${why}.` });
+              await addStep(job, { kind: "note", title: "Pick not confirmed — the register contradicts it", detail: why });
             }
           }
           // An exact address is recorded only once it is proven (proveAnswer).
@@ -1504,6 +1515,25 @@ function unseenTop(search: SearchState): string | null {
     `Not recorded — ${unseen.length} of the top ${top.length} homes on the ${commune} ranked list have not been viewed yet (the first is #${first}). ` +
     `In past searches the right house was usually there. Get them with shortlist_buildings (same commune, next page), view them (view_candidates) and mark the ones that fit; then answer.`
   );
+}
+
+/**
+ * A tie-breaker's pick the building register contradicts, or null (Daniel,
+ * 09.10): more than 3 homes for a single house, a living area more than 35%
+ * off, rooms more than 2.5 off, or a plot more than 15% off the listed land.
+ */
+async function registerContradiction(job: Job, e: LedgerEntry): Promise<string | null> {
+  const l = listingFacts(job.input.listingText);
+  const b = await buildingByEgid(e.egid).catch(() => null);
+  const out: string[] = [];
+  if (l.kind === "house" && b?.dwellings != null && b.dwellings > 3) out.push(`${b.dwellings} homes in the building for a single house`);
+  if (l.kind === "house" && l.livingM2 && b?.livingM2 && Math.abs(b.livingM2 - l.livingM2) / l.livingM2 > 0.35)
+    out.push(`a living area of ${b.livingM2} m² for ${l.livingM2} m² listed`);
+  if (l.kind === "house" && l.rooms && b?.rooms && Math.abs(l.rooms - b.rooms) > 2.5) out.push(`${b.rooms} rooms for ${l.rooms} listed`);
+  const plot = e.plotGroup?.length ? e.plotGroup.reduce((t, p) => t + p.areaM2, 0) : e.plot?.areaM2;
+  if (l.kind === "house" && l.landM2 && !l.sharedLand && plot && Math.abs(plot - l.landM2) / l.landM2 > 0.15)
+    out.push(`a plot of ${Math.round(plot)} m² for ${l.landM2} m² listed`);
+  return out.length ? out.join("; ") : null;
 }
 
 /**
