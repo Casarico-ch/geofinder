@@ -859,6 +859,20 @@ export async function allRounds(): Promise<PracticeRound[]> {
 export async function settleRound(round: PracticeRound): Promise<boolean> {
   if (round.finishedAt || round.paused || round.deleted || driving.has(round.id)) return !!round.finishedAt;
   if (refresh(round) || round.results.some((r) => !r.jobId && r.outcome === "running")) return false;
+  // Searches that resumed after a restart finished with no drive() to queue
+  // their recheck and confirm (09.10: Oberried and Saas-Fee named a wrong house
+  // and no second search ever ran): queue them now.
+  const more: PracticeResult[] = [];
+  for (const r of round.results) {
+    const job = r.jobId ? getJob(r.jobId) : undefined;
+    if (job?.status === "done") more.push(...recheckFor(round, r, job.answer ?? null));
+  }
+  if (!more.length) for (const id of Array.from(new Set(round.results.map((r) => r.propertyId)))) more.push(...confirmFor(round, id));
+  if (more.length) {
+    await save(round);
+    await continueRound(round);
+    return false;
+  }
   round.finishedAt = new Date().toISOString();
   await save(round);
   return true;

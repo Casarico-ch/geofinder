@@ -367,16 +367,19 @@ async function rankByListing(
     if (l?.kind === "flat" && l.floor != null && l.floor > 0 && b.floors != null) s += b.floors > l.floor ? -1 : 2;
     if (l?.units && b.dwellings != null) s += Math.abs(b.dwellings - l.units) <= 1 ? -2 : 1;
     // Listed net area against the register's: within 5% counts most, within 15%
-    // counts, past 35% is a doubt (Laténa, Pré-du-Pont 28: 154 m² listed, 159 in the register).
+    // counts (Laténa, Pré-du-Pont 28: 154 m² listed, 159 in the register). A
+    // far-off area or room count is no doubt: the register often disagrees
+    // (Milvignes, Loclat 14: 130 m² and 4.5 rooms listed, 180 m² and 6 in the
+    // register; it fell from the top to #799 while that cost places).
     if (houseLiving && b.livingM2) {
       const off = Math.abs(b.livingM2 - houseLiving) / houseLiving;
-      s += off <= 0.05 ? -3 : off <= 0.15 ? -2 : off <= 0.35 ? 0 : 1;
+      s += off <= 0.05 ? -3 : off <= 0.15 ? -2 : 0;
     }
     // The register leaves the kitchen out (and Geneva's listings count it): a
     // listed 6 is the register's 5 or 6, a listed 4.5 its 4 or 5.
     if (houseRooms && b.rooms) {
       const d = houseRooms - b.rooms;
-      s += d >= -0.5 && d <= 1.5 ? -1 : Math.abs(d) > 2.5 ? 1 : 0;
+      s += d >= -0.5 && d <= 1.5 ? -1 : 0;
     }
     // The model's estimates: a nudge, so a wrong guess costs places, not the house.
     if (!inRange(b.floors, opts.floors, 1, 1)) s += 1;
