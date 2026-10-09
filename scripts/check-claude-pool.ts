@@ -9,6 +9,7 @@ for (const k of Object.keys(process.env)) if (/^CLAUDE_(OAUTH_TOKEN|CREDIT_KEY)/
 process.env.CLAUDE_CREDIT_KEY_2 = "sk-test-2";
 process.env.CLAUDE_CREDIT_KEY_1 = "sk-test-1";
 process.env.ANTHROPIC_API_KEY = "sk-paid";
+process.env.CLAUDE_OAUTH_TOKEN_1 = "sk-ant-oat01-test"; // must never be used next to credit keys
 process.env.CLAUDE_CREDIT_RECHECK_MS = "50";
 const { onLogin, poolStatus, isPoolVariable } = await import("../server/claude-pool");
 

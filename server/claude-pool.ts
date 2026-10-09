@@ -19,8 +19,9 @@
 // of each cycle. CLAUDE_CREDIT_KEY_1, _2, … are API keys from those credit-only
 // organizations (no payment method on them), and they are used before anything
 // else, one after the other: a key is used until Anthropic answers "credit
-// balance is too low", then the next one takes over. Then the subscription
-// logins above, if any; then ANTHROPIC_API_KEY, the paid key, last. The paid key
+// balance is too low", then the next one takes over; then ANTHROPIC_API_KEY,
+// the paid key, last. With credit keys set the subscription logins above are
+// ignored, so GeoFinder never spends the Claude Code usage. The paid key
 // only joins the line when credit keys are set, so a setup without them runs
 // exactly as before.
 //
@@ -71,13 +72,15 @@ function loginsFromEnv(env: NodeJS.ProcessEnv): Login[] {
   const credits = numbered(env, /^CLAUDE_CREDIT_KEY(?:_(\d+))?$/).map((k) =>
     makeLogin(k, "credit", new Anthropic({ apiKey: env[k]!.trim(), authToken: null, maxRetries: 0 })),
   );
-  const subscriptions = numbered(env, /^CLAUDE_OAUTH_TOKEN(?:_(\d+))?$/).map((k) =>
+  // With credit keys set, the subscription logins are never used: they are the
+  // Claude Code usage Daniel works with, and GeoFinder would drain it (09.10).
+  const subscriptions = (credits.length ? [] : numbered(env, /^CLAUDE_OAUTH_TOKEN(?:_(\d+))?$/).map((k) =>
     makeLogin(
       k,
       "subscription",
       new Anthropic({ apiKey: null, authToken: env[k]!.trim(), defaultHeaders: { "anthropic-beta": OAUTH_BETA }, maxRetries: 0 }),
     ),
-  );
+  ));
   const paid =
     credits.length && env.ANTHROPIC_API_KEY?.trim()
       ? [makeLogin("ANTHROPIC_API_KEY", "paid", new Anthropic({ apiKey: env.ANTHROPIC_API_KEY.trim(), authToken: null, maxRetries: 0 }))]
