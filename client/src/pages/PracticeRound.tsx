@@ -161,9 +161,8 @@ export default function PracticeRound() {
       finished: finished.length,
       foundByAny: finished.filter((pid) => of(pid).some((r) => r.outcome === "right")).length,
       withWrong: finished.filter((pid) => of(pid).some((r) => r.outcome === "wrong")).length,
-      // Found by the first search, or only by the recheck that followed it.
-      firstFound: finished.filter((pid) => of(pid).some((r) => !r.recheck && r.outcome === "right")).length,
-      secondFound: finished.filter((pid) => !of(pid).some((r) => !r.recheck && r.outcome === "right") && of(pid).some((r) => r.recheck && r.outcome === "right")).length,
+      // What Radar would show as found: two runs named the same house (practice.ts foundPair).
+      found: finished.filter((pid) => verdicts[pid] === "confirmed_right" || verdicts[pid] === "confirmed_wrong").length,
       // As Radar shows it: a house only when two runs named it.
       confirmedRight: finished.filter((pid) => verdicts[pid] === "confirmed_right").length,
       confirmedWrong: finished.filter((pid) => verdicts[pid] === "confirmed_wrong").length,
@@ -283,12 +282,11 @@ export default function PracticeRound() {
 
         <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
           <Kpi label="All listings" value={String(listings.total)} hint={`${listings.finished} finished`} />
-          <Kpi label="Found 1st trial" value={String(listings.firstFound)} hint="by the first search" />
-          <Kpi label="Found 2nd trial" value={String(listings.secondFound)} hint="only by the recheck" />
+          <Kpi label="Found" value={String(listings.found)} hint="what Radar would show as found" />
           <Kpi
             label="Success rate"
-            value={pct(listings.confirmedRight, listings.finished)}
-            hint={`${listings.confirmedRight} of ${listings.finished} confirmed by two searches, as Radar shows them · ${listings.confirmedWrong} confirmed wrong · ${listings.finished - listings.confirmedRight - listings.confirmedWrong} not confirmed`}
+            value={pct(listings.found, listings.total)}
+            hint={`${listings.found} of ${listings.total} found`}
             tone={!listings.finished ? undefined : listings.confirmedWrong ? "bad" : "good"}
           />
           <Kpi label="Confirmed wrong" value={String(listings.confirmedWrong)} hint="two searches named the same wrong house" tone={listings.confirmedWrong ? "bad" : undefined} />
