@@ -205,9 +205,9 @@ const MAX_CONFIRMS = 2;
 
 type Settled = { done: boolean; answer: Answer | null; confirm?: boolean };
 
-/** The two finished runs that name the same house, or null. */
-export function agreeingPair<T extends Settled>(runs: T[]): [T, T] | null {
-  const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
+/** The two finished runs that name the same house, or null. `parcel`: count parcel confidence too, as Radar does. */
+export function agreeingPair<T extends Settled>(runs: T[], opts: { parcel?: boolean } = {}): [T, T] | null {
+  const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer, opts)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
   for (let i = 0; i < exact.length; i++)
     for (let j = i + 1; j < exact.length; j++) if (sameAddress(exact[i][1], exact[j][1])) return [exact[i][0], exact[j][0]];
   return null;
@@ -339,7 +339,8 @@ export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: s
   if (job.status !== "done") return { outcome: "error", answer: null, lostAt: null };
   if (job.overBudget) return { outcome: "over_budget", answer: null, lostAt: lostAt(job, truth) };
   const a: Answer | null = job.answer;
-  const exact = exactAddressOf(a);
+  // Scored as Radar shows it: a parcel-confidence answer counts as found.
+  const exact = exactAddressOf(a, { parcel: true });
   const named = a?.address ?? a?.parcel ?? null;
   if (exact) {
     const right =
@@ -593,7 +594,7 @@ export type ListingVerdict = "running" | "confirmed_right" | "confirmed_wrong" |
 export function listingVerdict(round: PracticeRound, propertyId: number): ListingVerdict {
   const runs = round.results.filter((x) => x.propertyId === propertyId);
   if (runs.some((x) => x.outcome === "running")) return "running";
-  const pair = agreeingPair(runs.map(settled));
+  const pair = agreeingPair(runs.map(settled), { parcel: true });
   if (!pair) return "not_confirmed";
   return pair.some((p) => p.r.outcome === "right") ? "confirmed_right" : "confirmed_wrong";
 }
