@@ -16,14 +16,12 @@ import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
-import { listingFacts } from "./proof";
-import { CONFIRM_MODELS, listingVerdict, stepLimits, RECHECK, RECHECK_MODELS, recheckWhy, wantsConfirm, runLimits, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import { firstModels, foundPair, listingVerdict, nextSteps, startSearch, type Role, type Step, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
-import { loadListingPhotos, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
-import { type Candidate, exactAddressOf } from "./consensus";
-import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
+import { loadListingPhotos, type AgentImage } from "./agent";
+import { type Candidate } from "./consensus";
 import { reviewRound } from "./review";
-import { MODELS, costUsd, createJob, elapsedMs, getJob, listJobs, type Answer, type Job, type KnownModel, type ModelId } from "./jobs";
+import { MODELS, costUsd, elapsedMs, getJob, listJobs, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
 import {
@@ -50,33 +48,11 @@ import {
   watchListingRequest,
 } from "./requests";
 
-// The search every listing request runs, exactly as the practice track runs
-// it (Daniel, 05.10: "practice works amazing"): one Sonnet 5.5 at low effort,
-// then Opus 5.5 high searches again when its answer is doubtful or not sure
-// (recheckIfDoubtful). Gemini is left out while GEMINI_API_KEY is unset.
-const LISTING_MODELS: ModelId[] = (process.env.GEOFINDER_MODELS ?? "sonnet-5-5-low")
-  .split(",")
-  .map((m) => m.trim())
-  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-// A house whose listing states no land area has no plot to match, and Sonnet
-// low finds it far less often: 7 of 20 in practice round rmuzs78j27ebf
-// (08.10) against 15 of 20 for Opus 5.5 high. Those start with Opus high.
-const NO_LAND_MODELS: ModelId[] = (process.env.GEOFINDER_NO_LAND_MODELS ?? "opus-5-5-high")
-  .split(",")
-  .map((m) => m.trim())
-  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-export const listingModels = (listingText: string | undefined): ModelId[] => {
-  const f = listingFacts(listingText);
-  const models = f.kind === "house" && f.landM2 == null && NO_LAND_MODELS.length ? NO_LAND_MODELS : LISTING_MODELS;
-  return models.filter((m) => !isGemini(m) || geminiConfigured());
-};
-// Practice rounds (Daniel, 05.10): one Sonnet 5.5 at low effort (jobs.ts
-// VARIANTS). Three identical runs either all found a house or none did: the
-// ranking decides, not luck. Real requests keep LISTING_MODELS.
-const PRACTICE_MODELS: ModelId[] = (process.env.PRACTICE_MODELS ?? "sonnet-5-5-low")
-  .split(",")
-  .map((m) => m.trim())
-  .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+// Every listing request runs the practice track's search, the same code
+// (practice.ts firstModels, nextSteps, startSearch, foundPair; Daniel, 11.10:
+// "practice is the single source of truth").
+// The models a listing starts with: practice.ts firstModels, as practice runs it.
+export const listingModels = firstModels;
 
 // An address, coordinates (WGS84) or a commune + plot number. The last two
 // also find plots with no building and so no address.
@@ -161,8 +137,11 @@ function requireApiKey(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// What the platform sees: the record minus internal job ids.
+// What the platform sees: the record minus internal job ids. agrees: the two
+// runs that name the listing's house (practice.ts foundPair), the one rule
+// that says it was found; Radar reads it instead of deciding on its own.
 function publicView(r: PlatformRequest) {
+  const pair = foundPair((r.results ?? []).map((m) => ({ m, done: m.status === "done", answer: m.answer })));
   return {
     requestId: r.id,
     kind: r.kind,
@@ -180,6 +159,7 @@ function publicView(r: PlatformRequest) {
             status: m.status,
             answer: m.answer,
             ...(m.check ? { check: true } : {}),
+            agrees: !!pair && pair.some((p) => p.m === m),
           })),
         }),
     popetyCostChf: r.popetyCostChf,
@@ -188,8 +168,9 @@ function publicView(r: PlatformRequest) {
 }
 
 /**
- * Start a listing request: one investigation per model, side by side, grouped
- * as one request. Shared by /v1/address and the admin's "Run again".
+ * Start a listing request: the practice track's search of the listing
+ * (practice.ts), one first search per model, grouped as one request. Shared
+ * by /v1/address and the admin's "Run again".
  */
 export async function startListingRequest(
   input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string },
@@ -197,32 +178,49 @@ export async function startListingRequest(
   models: ModelId[],
   source: PlatformRequest["source"] = "platform",
 ) {
-  const { municipality, listingId, listingUrl, radarUrl } = input;
-  const listingText =
-    [municipality?.trim() && `Municipality / commune: ${municipality.trim()}`, input.listingText?.trim()]
-      .filter(Boolean)
-      .join("\n\n") || undefined;
-  const record = await createRequest("listing", {
-    listingText: input.listingText,
-    municipality,
-    imageCount: images.length,
-    listingId,
-    listingUrl,
-    radarUrl,
-  });
+  const { listingText, municipality, listingId, listingUrl, radarUrl } = input;
+  const record = await createRequest("listing", { listingText, municipality, imageCount: images.length, listingId, listingUrl, radarUrl });
   record.source = source;
   record.results = [];
-  for (const model of models) {
-    const job = await createJob({ municipality, listingText, imageCount: images.length, listingId, listingUrl, radarUrl, ...runLimits() }, model);
-    record.results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0 });
-    void (async () => {
-      await saveListingPhotos(job.runDir, images);
-      await runInvestigation(job, images, listingText);
-    })().catch((err) => console.error(`[platform] investigation ${job.id} crashed:`, err));
-  }
+  for (const model of models) await addRun(record, images, model, { role: "search" });
   await saveRequest(record);
   watchListingRequest(record);
   return record;
+}
+
+/** One search of the request's listing (practice.ts startSearch); a follow-up is marked check: true. */
+async function addRun(req: PlatformRequest, images: AgentImage[], model: ModelId, step: Pick<Step, "role" | "tieBreakOf">) {
+  const { listingText, municipality, listingId, listingUrl, radarUrl } = req.input;
+  const { job, finished } = await startSearch({ listingText, municipality, listingId, listingUrl, radarUrl }, images, model, step);
+  (req.results ??= []).push({
+    model,
+    jobId: job.id,
+    status: "running",
+    answer: null,
+    aiCostUsd: 0,
+    ...(step.role !== "search" ? { check: true } : {}),
+    ...(step.role === "confirm" ? { confirm: true } : {}),
+  });
+  finished.catch((err) => console.error(`[platform] investigation ${job.id} crashed:`, err));
+}
+
+const roleOf = (m: { check?: boolean; confirm?: boolean }): Role => (m.confirm ? "confirm" : m.check ? "recheck" : "search");
+const SETTLED = ["done", "error", "cancelled"];
+
+/** Each time one of the request's runs settles: start what practice.ts nextSteps says comes next. */
+async function afterSettled(req: PlatformRequest): Promise<boolean> {
+  if (req.kind !== "listing") return false;
+  const results = req.results ?? [];
+  const steps = nextSteps(
+    results.map((m) => ({ role: roleOf(m), jobId: m.jobId, settled: SETTLED.includes(m.status), done: m.status === "done", answer: m.answer })),
+  );
+  if (!steps.length) return false;
+  const src = results.length ? getJob(results[0].jobId) : undefined;
+  const images = src ? await loadListingPhotos(src.runDir) : [];
+  if (!images.length) return false;
+  for (const step of steps) await addRun(req, images, step.model, step);
+  req.status = "running";
+  return true;
 }
 
 const modelLabel = (m: KnownModel) =>
@@ -291,77 +289,6 @@ export function verifyText(
     "3. Any candidate the checklist still leaves unchecked must be viewed and marked too.",
     "The claim is confirmed only if it survives step 1 and every alternative is rejected with a visible difference — the code checks this before it records a street/building answer. Otherwise report found=false at block confidence with your ranked candidates and the mismatch you found.",
   ].join("\n");
-}
-
-const CHECKS_ACROSS_RUNS = 2;
-
-/**
- * Once a listing's search has settled: an answer that is doubtful or not sure
- * (practice.ts recheckWhy) is searched again, independently, by the recheck
- * model. The recheck is marked check: true, so its answer is the request's
- * answer (Requests page, Radar's outcome.ts): an exact house it names wins,
- * and a "not sure" from it overrules the first search's guess. Returns true
- * when it started one, so the request keeps running until it settles.
- */
-async function recheckIfDoubtful(req: PlatformRequest): Promise<boolean> {
-  const results = req.results ?? [];
-  if (!RECHECK || req.kind !== "listing" || results.some((m) => m.check)) return false;
-  const doubtful = results.filter((m) => m.status === "done" && recheckWhy(m.answer));
-  if (!doubtful.length) return false;
-  return searchAgain(req, doubtful[0].jobId, RECHECK_MODELS, {});
-}
-
-// Daniel, 08.10: an address goes back to Radar only when two searches named
-// the same house on their own (Radar's outcome.ts decide); 09.10: a third Opus
-// breaks a tie. The rule is practice.ts wantsConfirm, shared with practice.
-async function confirmUnlessAgreed(req: PlatformRequest): Promise<boolean> {
-  const results = req.results ?? [];
-  if (req.kind !== "listing") return false;
-  const runs = results.map((m) => ({ m, done: m.status === "done", answer: m.answer, confirm: m.confirm }));
-  if (!wantsConfirm(runs)) return false;
-  // After a confirming search that named another house: the tie-breaker compares every named house (tiebreak.ts).
-  const named = tieBreakRuns(runs);
-  if (named) {
-    const jobs = named.map((r) => getJob(r.m.jobId)).filter((j): j is Job => !!j);
-    // The listing text without any task: a run that is not itself a confirm holds it.
-    const src = jobs.find((j) => !isCheckText(j.input.listingText)) ?? jobs[0];
-    const setup = src ? await tieBreakSetup(src.input.listingText, jobs) : null;
-    if (src && setup) return searchAgain(req, src.id, CONFIRM_MODELS, { confirm: true }, setup);
-  }
-  const found = results.filter((m) => m.status === "done" && exactAddressOf(m.answer));
-  // The latest exact answer's run holds the listing (a recheck copies the first search's input).
-  return searchAgain(req, found[found.length - 1].jobId, CONFIRM_MODELS, { confirm: true });
-}
-
-/** One more independent search of the same listing, marked check: true; a tie-breaker gets its compare task and two-house checklist. */
-async function searchAgain(
-  req: PlatformRequest,
-  fromJobId: string,
-  models: ModelId[],
-  mark: { confirm?: true },
-  tie?: { text: string; seed: Pick<SearchState, "shortlisted" | "candidates">; egids: string[] },
-): Promise<boolean> {
-  const results = req.results ?? [];
-  const src = getJob(fromJobId);
-  const images = src ? await loadListingPhotos(src.runDir) : [];
-  if (!src || images.length === 0) return false;
-  const listingText = tie ? tie.text : src.input.listingText;
-  for (const model of models) {
-    const limits = stepLimits(tie ? "tieBreak" : mark.confirm ? "confirm" : "search");
-    const job = await createJob({ ...src.input, listingText, ...limits, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) }, model);
-    results.push({ model, jobId: job.id, status: "running", answer: null, aiCostUsd: 0, check: true, ...mark });
-    void (async () => {
-      await saveListingPhotos(job.runDir, images);
-      await runInvestigation(job, images, listingText, tie?.seed);
-    })().catch((err) => console.error(`[platform] search again ${job.id} crashed:`, err));
-  }
-  req.status = "running";
-  return true;
-}
-
-/** After a listing's runs settle: a doubtful answer is searched again, then an unconfirmed one. */
-async function afterSettled(req: PlatformRequest): Promise<boolean> {
-  return (await recheckIfDoubtful(req)) || (await confirmUnlessAgreed(req));
 }
 
 export function registerPlatformRoutes(app: Express) {
@@ -457,9 +384,9 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       try {
-        // A no-land round starts like a real no-land request: with Opus (NO_LAND_MODELS).
-        const models = parsed.data.models ?? (parsed.data.noLand ? NO_LAND_MODELS : PRACTICE_MODELS);
-        if (models.some(isGemini) && !geminiConfigured()) {
+        // No models given: each listing starts with what a real request for it gets (firstModels).
+        const models = parsed.data.models ?? null;
+        if (models?.some(isGemini) && !geminiConfigured()) {
           res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
           return;
         }
@@ -535,7 +462,7 @@ export function registerPlatformRoutes(app: Express) {
       res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings, verdicts, review });
     });
     // The same listings again, under today's code, lessons and investigators
-    // (PRACTICE_MODELS): a before/after on exactly the same houses.
+    // (firstModels): a before/after on exactly the same houses.
     app.post(`${base}/rounds/:id/rerun`, async (req: Request, res: Response) => {
       const src = await getRound(req.params.id);
       if (!src) {
@@ -551,12 +478,7 @@ export function registerPlatformRoutes(app: Express) {
           res.status(400).json({ error: "No failed listing to run again." });
           return;
         }
-        const rerunModels = src.noLand ? NO_LAND_MODELS : PRACTICE_MODELS;
-        if (rerunModels.some(isGemini) && !geminiConfigured()) {
-          res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
-          return;
-        }
-        const round = await startRound(src.split, ids.length, rerunModels, { propertyIds: ids, rerunOf: src.id, noLand: src.noLand });
+        const round = await startRound(src.split, ids.length, null, { propertyIds: ids, rerunOf: src.id, noLand: src.noLand });
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
