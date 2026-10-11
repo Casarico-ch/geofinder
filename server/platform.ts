@@ -470,9 +470,9 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       try {
-        // ?failed=1: only the listings no run found (wrong, not sure, over limit, error).
+        // ?failed=1: only the listings Radar would not show as rightly found (listingVerdict).
         const failed = req.query.failed === "1";
-        const found = new Set(src.results.filter((r) => r.outcome === "right").map((r) => r.propertyId));
+        const found = new Set(src.results.map((r) => r.propertyId).filter((p) => listingVerdict(src, p) === "confirmed_right"));
         const ids = Array.from(new Set(src.results.map((r) => r.propertyId))).filter((p) => !failed || (!found.has(p) && src.results.some((r) => r.propertyId === p && r.outcome !== "running")));
         if (!ids.length) {
           res.status(400).json({ error: "No failed listing to run again." });

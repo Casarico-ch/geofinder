@@ -262,10 +262,10 @@ export default function PracticeRound() {
               Find lessons
             </Button>
           )}
-          {!round.trialOf && listings.finished - listings.foundByAny > 0 && (
+          {!round.trialOf && listings.finished - listings.confirmedRight > 0 && (
             <Button variant="outline" size="sm" disabled={!!busy} onClick={() => rerun(true)}>
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-              Run again on the {listings.finished - listings.foundByAny} failed
+              Run again on the {listings.finished - listings.confirmedRight} failed
             </Button>
           )}
           {!round.trialOf && (
