@@ -710,6 +710,11 @@ export interface RoundSummary {
   skipped: { propertyId: number; reason: string }[];
   lessons: number;
   accuracy: number | null; // right / (right + wrong): the goal is 100%
+  // Per listing, as Radar shows it (listingVerdict): found = two runs named the same house.
+  listings: number;
+  found: number;
+  foundWrong: number;
+  successRate: number | null; // found / listings
   split: string;
   models: string[];
   total: number;
@@ -754,6 +759,7 @@ export function summarize(round: PracticeRound): RoundSummary {
     skipped: round.skipped ?? [],
     lessons: round.lessons?.length ?? 0,
     accuracy: n("right") + n("wrong") ? Math.round((n("right") / (n("right") + n("wrong"))) * 1000) / 10 : null,
+    ...foundStats(round),
     split: round.split,
     models: round.models,
     total: round.results.length,
@@ -828,6 +834,17 @@ function rankStats(round: PracticeRound): RoundSummary["ranks"] {
 }
 
 /** Per listing: did two runs name the same house, and was it the right one? */
+function foundStats(round: PracticeRound): Pick<RoundSummary, "listings" | "found" | "foundWrong" | "successRate"> {
+  const verdicts = Array.from(new Set(round.results.map((r) => r.propertyId)), (pid) => listingVerdict(round, pid));
+  const found = verdicts.filter((v) => v === "confirmed_right" || v === "confirmed_wrong").length;
+  return {
+    listings: verdicts.length,
+    found,
+    foundWrong: verdicts.filter((v) => v === "confirmed_wrong").length,
+    successRate: verdicts.length ? Math.round((found / verdicts.length) * 1000) / 10 : null,
+  };
+}
+
 function agreement(round: PracticeRound): { agreed: number; agreedRight: number; agreedWrong: number } {
   const out = { agreed: 0, agreedRight: 0, agreedWrong: 0 };
   const byListing = new Map<number, PracticeResult[]>();

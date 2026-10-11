@@ -147,13 +147,10 @@ export default function Practice() {
             <TableHeader>
               <TableRow>
                 <TableHead>Started</TableHead>
-                <TableHead className="text-right">Runs</TableHead>
-                <TableHead className="text-right">Accuracy</TableHead>
-                <TableHead className="text-right">Right</TableHead>
-                <TableHead className="text-right">Wrong</TableHead>
-                <TableHead className="text-right">Not sure</TableHead>
-                <TableHead className="text-right">Over limit</TableHead>
-                <TableHead className="text-right">Errors</TableHead>
+                <TableHead className="text-right">Listings</TableHead>
+                <TableHead className="text-right">Found</TableHead>
+                <TableHead className="text-right">Success rate</TableHead>
+                <TableHead className="text-right">Confirmed wrong</TableHead>
                 <TableHead className="text-right">Avg min</TableHead>
                 <TableHead className="text-right">Avg cost</TableHead>
                 <TableHead className="text-right">Total cost</TableHead>
@@ -164,14 +161,14 @@ export default function Practice() {
             <TableBody>
               {shown === null && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-muted-foreground">
+                  <TableCell colSpan={10} className="text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               )}
               {shown?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-muted-foreground">
+                  <TableCell colSpan={10} className="text-muted-foreground">
                     No practice round yet.
                   </TableCell>
                 </TableRow>
@@ -188,15 +185,10 @@ export default function Practice() {
                         <Badge variant="secondary">{r.running} running</Badge>
                       ) : null}
                     </TableCell>
-                    <TableCell className="text-right">{r.total}</TableCell>
-                    <TableCell className={`text-right ${r.accuracy != null && r.accuracy < 100 ? "text-destructive font-medium" : ""}`}>
-                      {r.accuracy != null ? `${r.accuracy}%` : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">{r.right}</TableCell>
-                    <TableCell className={`text-right ${r.wrong ? "text-destructive font-medium" : ""}`}>{r.wrong}</TableCell>
-                    <TableCell className="text-right">{r.unsure}</TableCell>
-                    <TableCell className="text-right">{r.overBudget}</TableCell>
-                    <TableCell className="text-right">{r.errors}</TableCell>
+                    <TableCell className="text-right">{r.listings}</TableCell>
+                    <TableCell className="text-right">{r.found}</TableCell>
+                    <TableCell className="text-right">{r.successRate != null ? `${r.successRate}%` : "—"}</TableCell>
+                    <TableCell className={`text-right ${r.foundWrong ? "text-destructive font-medium" : ""}`}>{r.foundWrong}</TableCell>
                     <TableCell className="text-right">{r.avgMinutes ?? "—"}</TableCell>
                     <TableCell className="text-right">{r.avgCostUsd != null ? `$${r.avgCostUsd.toFixed(2)}` : "—"}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">
