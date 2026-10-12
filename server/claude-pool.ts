@@ -25,8 +25,15 @@
 // only joins the line when credit keys are set, so a setup without them runs
 // exactly as before.
 //
-//   - Out of credit → that key is asked again after CLAUDE_CREDIT_RECHECK_MS
-//     (6 h), so next month's credit is picked up without a restart.
+//   - Out of credit, or at a spend limit set in the Console → that key is asked
+//     again after CLAUDE_CREDIT_RECHECK_MS (6 h), so next month's credit is
+//     picked up without a restart.
+//   - At its tier's monthly spend cap → that key rests until the 1st, 00:00 UTC.
+//
+// Pictures belong to the organization that uploaded them, so a run that moves
+// to another key uploads them again and its earlier turns change. Anthropic
+// rejects the earlier reasoning blocks then (the default for organizations made
+// after 31.08.2026), so every call asks it to drop them instead: THINKING below.
 //
 // Nothing here logs, returns or stores a token value — only the variable name.
 // =============================================================================
@@ -34,6 +41,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import { geminiClient, isGemini } from "./gemini";
 
 const OAUTH_BETA = "oauth-2025-04-20"; // an OAuth bearer is refused without it
+export const BINDING_BETA = "thinking-binding-controls-2026-08-01"; // lets a call carry block_binding
+
+/** Adaptive thinking that survives a switch of key: reasoning blocks the new
+ *  organization cannot accept are dropped, the call goes through. Needs
+ *  BINDING_BETA, which every client below sends. */
+export const THINKING = {
+  type: "adaptive",
+  display: "summarized",
+  block_binding: { prefix_mismatch_behavior: "drop_block" },
+} as unknown as Anthropic.Messages.ThinkingConfigParam;
 const COOLDOWN_MS = Number(process.env.CLAUDE_POOL_COOLDOWN_MS ?? 5 * 60_000);
 const MAX_WAIT_MS = Number(process.env.CLAUDE_POOL_WAIT_MS ?? 20 * 60_000);
 const CREDIT_RECHECK_MS = Number(process.env.CLAUDE_CREDIT_RECHECK_MS ?? 6 * 3600_000);
@@ -49,7 +66,7 @@ interface Login {
   client: Anthropic;
   restUntil: number;
   dead: boolean;
-  outOfCredit: boolean;
+  outOfCredit: boolean; // an empty or limited key, as opposed to a rate limit
   uses: number;
   // Anthropic's own words for the last refusal, so the status page says WHY.
   lastRefusal?: { at: string; status: number | undefined; message: string; headers: Record<string, string> };
@@ -68,9 +85,12 @@ function numbered(env: NodeJS.ProcessEnv, re: RegExp): string[] {
 // resting one first. Outages are retried below, on the same login.
 const makeLogin = (label: string, kind: Kind, client: Anthropic): Login => ({ label, kind, client, restUntil: 0, dead: false, outOfCredit: false, uses: 0 });
 
+const apiKeyClient = (apiKey: string) =>
+  new Anthropic({ apiKey, authToken: null, defaultHeaders: { "anthropic-beta": BINDING_BETA }, maxRetries: 0 });
+
 function loginsFromEnv(env: NodeJS.ProcessEnv): Login[] {
   const credits = numbered(env, /^CLAUDE_CREDIT_KEY(?:_(\d+))?$/).map((k) =>
-    makeLogin(k, "credit", new Anthropic({ apiKey: env[k]!.trim(), authToken: null, maxRetries: 0 })),
+    makeLogin(k, "credit", apiKeyClient(env[k]!.trim())),
   );
   // With credit keys set, the subscription logins are never used: they are the
   // Claude Code usage Daniel works with, and GeoFinder would drain it (09.10).
@@ -78,12 +98,12 @@ function loginsFromEnv(env: NodeJS.ProcessEnv): Login[] {
     makeLogin(
       k,
       "subscription",
-      new Anthropic({ apiKey: null, authToken: env[k]!.trim(), defaultHeaders: { "anthropic-beta": OAUTH_BETA }, maxRetries: 0 }),
+      new Anthropic({ apiKey: null, authToken: env[k]!.trim(), defaultHeaders: { "anthropic-beta": `${OAUTH_BETA},${BINDING_BETA}` }, maxRetries: 0 }),
     ),
   ));
   const paid =
     credits.length && env.ANTHROPIC_API_KEY?.trim()
-      ? [makeLogin("ANTHROPIC_API_KEY", "paid", new Anthropic({ apiKey: env.ANTHROPIC_API_KEY.trim(), authToken: null, maxRetries: 0 }))]
+      ? [makeLogin("ANTHROPIC_API_KEY", "paid", apiKeyClient(env.ANTHROPIC_API_KEY.trim()))]
       : [];
   return [...credits, ...subscriptions, ...paid];
 }
@@ -133,9 +153,25 @@ function pick(prefer: string | undefined, now: number): Login | null {
   return tier === TIER.credit ? best[0] : best.sort((a, b) => a.uses - b.uses)[0];
 }
 
-// Anthropic's refusal when an organization's credit has run out (400, or 402).
+// Anthropic's refusal when an organization's credit has run out ("Your credit
+// balance is too low…"; the docs give the words, not the status), or when it
+// reached a spend limit set in the Console ("You have reached your specified
+// API usage limits…", 400).
 function outOfCredit(err: InstanceType<typeof Anthropic.APIError>): boolean {
-  return (err.status === 400 || err.status === 402) && /credit balance/i.test(String(err.message ?? ""));
+  const s = err.status ?? 0;
+  return s >= 400 && s <= 403 && /credit balance|reached your specified (workspace )?API usage limits/i.test(String(err.message ?? ""));
+}
+
+// The tier's monthly spend cap: a 429 with no retry-after that lasts until the
+// 1st of next month, 00:00 UTC.
+function monthlyCap(err: InstanceType<typeof Anthropic.APIError>): boolean {
+  const body = err.error as { error?: { details?: { error_code?: string } } } | undefined;
+  return body?.error?.details?.error_code === "enforced_spend_limit_reached" || /monthly API usage threshold/i.test(String(err.message ?? ""));
+}
+
+function nextMonthUtc(now: number): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
 }
 
 function soonestReset(): number | null {
@@ -173,7 +209,7 @@ export async function onLogin<T>(
   // Gemini has its own key and endpoint; the Claude logins never serve it.
   if (isGemini(model)) return { value: await fn(geminiClient(), GEMINI_LABEL), label: GEMINI_LABEL, switchedFrom: null, waitedMs: 0 };
   if (!poolOn()) {
-    fallback ??= new Anthropic();
+    fallback ??= new Anthropic({ defaultHeaders: { "anthropic-beta": BINDING_BETA } });
     return { value: await fn(fallback, null), label: null, switchedFrom: null, waitedMs: 0 };
   }
   let waitedMs = 0;
@@ -185,8 +221,16 @@ export async function onLogin<T>(
       const soonest = soonestReset();
       if (soonest === null) throw new Error("Every Claude login was refused (401/403) — mint new ones with `claude setup-token`.");
       const wait = Math.max(1_000, soonest - now);
-      if (waitedMs + wait > MAX_WAIT_MS)
-        throw new Error(`Every Claude login is at its usage limit; the soonest is back at ${new Date(soonest).toISOString()}.`);
+      if (waitedMs + wait > MAX_WAIT_MS) {
+        const empty = logins.filter((l) => !l.dead && l.outOfCredit).map((l) => l.label);
+        throw new Error(
+          (empty.length
+            ? `No Claude key can pay for this: ${empty.join(", ")} ${empty.length > 1 ? "are" : "is"} out of credit or at a spend limit` +
+              (logins.some((l) => l.kind === "paid") ? "" : ", and no paid ANTHROPIC_API_KEY is set") +
+              (empty.length < logins.filter((l) => !l.dead).length ? ", the rest at a rate limit" : "")
+            : "Every Claude login is at its usage limit") + `; the soonest is back at ${new Date(soonest).toISOString()}.`,
+        );
+      }
       await new Promise((r) => setTimeout(r, wait));
       waitedMs += wait;
       continue;
@@ -202,6 +246,13 @@ export async function onLogin<T>(
         login.outOfCredit = true;
         login.restUntil = Date.now() + CREDIT_RECHECK_MS;
         console.warn(`[claude-pool] ${login.label} is out of credit; asked again at ${new Date(login.restUntil).toISOString()}`);
+        continue;
+      }
+      if (err instanceof Anthropic.RateLimitError && monthlyCap(err)) {
+        login.lastRefusal = refusalOf(err);
+        login.outOfCredit = true;
+        login.restUntil = nextMonthUtc(Date.now());
+        console.warn(`[claude-pool] ${login.label} reached its monthly spend cap; back at ${new Date(login.restUntil).toISOString()}`);
         continue;
       }
       if (err instanceof Anthropic.RateLimitError) {

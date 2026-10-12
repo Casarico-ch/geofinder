@@ -16,7 +16,7 @@
 // 05.10: "let me trigger it if I want"): the round page's "Find lessons" button
 // (requestLessons). PRACTICE_AUTO_LESSONS=1 brings back the automatic loop.
 // =============================================================================
-import { onLogin } from "./claude-pool";
+import { onLogin, THINKING } from "./claude-pool";
 import { missReason } from "./miss";
 import { streetOf } from "./consensus";
 import { getJob } from "./jobs";
@@ -124,7 +124,7 @@ Answer with JSON only: {"lessons":[{"text":"the rule","why":"which runs show it,
       client.messages.create({
         model: REVIEWER,
         max_tokens: 8_000,
-        thinking: { type: "adaptive", display: "summarized" },
+        thinking: THINKING, // adaptive, summarized; survives a switch of key (claude-pool.ts)
         messages: [{ role: "user", content: prompt }],
       }),
     REVIEWER,

@@ -11,7 +11,7 @@
 // number, HONEST and flagged where it is discretionary. It never fabricates.
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
-import { onLogin } from "./claude-pool";
+import { onLogin, THINKING } from "./claude-pool";
 import {
   COMPUTER_TOOLS,
   MODEL,
@@ -176,7 +176,7 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
       const turn = await onLogin(login, (client) => client.messages.create({
         model: apiModel(job.model ?? MODEL),
         max_tokens: 16_000,
-        thinking: { type: "adaptive", display: "summarized" },
+        thinking: THINKING, // adaptive, summarized; survives a switch of key (claude-pool.ts)
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
         output_config: { effort: "high" },
