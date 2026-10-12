@@ -73,7 +73,7 @@ import {
 import { DIRECTIONS, cluesText, coerceLocation, type Direction } from "./locate";
 import { shapeAt } from "./neighbours";
 import { viewFrom } from "./view";
-import { GEMINI_LABEL, onLogin, poolOn } from "./claude-pool";
+import { BINDING_BETA, GEMINI_LABEL, onLogin, poolOn, THINKING } from "./claude-pool";
 import { keptLessons, lessonsBlock } from "./lessons-store";
 import { houseNumberOf, streetOf } from "./consensus";
 import { twinsOf } from "./twins";
@@ -796,7 +796,7 @@ async function runLoop(
         // (Opus 5.5 / Fable 5 omit thinking text by default) — that's the trace.
         // adaptive thinking is valid on both models (Fable rejects only
         // disabled/budget_tokens, which we never send).
-        thinking: { type: "adaptive", display: "summarized" },
+        thinking: THINKING, // adaptive, summarized; survives a switch of key (claude-pool.ts)
         // Pin effort so every model runs at the same depth — Opus 5.5 would
         // otherwise default to "medium" while the others default to "high".
         output_config: { effort: (job.model && VARIANTS[job.model]?.effort) || EFFORT },
@@ -822,7 +822,7 @@ async function runLoop(
             ? ((await client.beta.messages.create({
                 ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
                 speed: "fast",
-                betas: ["fast-mode-2026-02-01"],
+                betas: ["fast-mode-2026-02-01", BINDING_BETA], // betas replace the client's own beta header
               })) as unknown as Anthropic.Messages.Message)
             : await client.messages.create(params);
         } catch (err) {
