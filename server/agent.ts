@@ -20,7 +20,7 @@ import {
 import { RunFiles } from "./files";
 import { seedGeoHelper } from "./geo-helper";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
-import { buildingAt, buildingByEgid, flatsOf, normalizeCommune } from "./gwr";
+import { buildingAt, buildingByEgid, flatsOf, normalizeCommune, sameRegisterPlot } from "./gwr";
 import {
   annotateFit,
   decisive,
@@ -425,7 +425,7 @@ SOURCES (starting points, not limits; set a User-Agent header)
 - Geneva cadastre (SITG, ArcGIS REST, f=json&outSR=4326). Parcels: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_PARCELLE_MENSU/MapServer/0/query — NO_PARCELLE, SURFACE, COMMUNE; filter by where=COMMUNE='X' AND SURFACE BETWEEN a AND b, or geometry=lon,lat&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects; returnGeometry=true → geometry.rings. Buildings: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_BATIMENT_HORSOL/MapServer/0/query — EPOQUE_CONSTRUCTION, NIVEAUX_HORSOL, SURFACE (footprint), EGID.
 - Other cantons (ZH etc.) — official cadastre on geodienste.ch, WFS 2.0, bbox axis order lat,lon: https://geodienste.ch/db/av_0/deu?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=ms:RESF&SRSNAME=urn:ogc:def:crs:EPSG::4326&BBOX={latmin},{lonmin},{latmax},{lonmax},urn:ogc:def:crs:EPSG::4326&COUNT=30 — ms:RESF = parcel (ms:Flaeche = area, the villa key; ms:Nummer, ms:EGRIS_EGRID). ms:HADR = address (ms:Strassenname, ms:Hausnummer, ms:GWR_EGID). ms:LCSF = building footprints. Geometry is gml:posList (lat lon). av_0 is ZH; other cantons' free WFS: https://www.geodienste.ch/info/services.csv?base_topics=av&language=de.
 - Aerial (swisstopo SWISSIMAGE) — download the JPEG then read_file: https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.swissimage&CRS=EPSG:4326&BBOX={latmin},{lonmin},{latmax},{lonmax}&WIDTH=1200&HEIGHT=1200&FORMAT=image/jpeg (lat,lon order; square bbox in metres: dLat=span/2/111320, dLon=dLat/cos(lat)).
-- Building register (GWR, nationwide): https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry={lon},{lat}&geometryType=esriGeometryPoint&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=15&sr=4326&geometryFormat=geojson&mapExtent={lon-0.002},{lat-0.0015},{lon+0.002},{lat+0.0015}&imageDisplay=800,600,96 — strname_deinr (street+no.), gbauj (year), gastw (floors), ganzwhg (dwellings), egid.
+- Building register (GWR, nationwide): https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry={lon},{lat}&geometryType=esriGeometryPoint&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=15&sr=4326&geometryFormat=geojson&mapExtent={lon-0.002},{lat-0.0015},{lon+0.002},{lat+0.0015}&imageDisplay=800,600,96 — strname_deinr (street+no.), gbauj (year), gastw (floors), ganzwhg (dwellings), egid. Its plot field lparz is often outdated (a plot from before a split) or swapped between the two halves of an attached pair: a building's plot is the one under its address point (gkode/gkodn), and its house number belongs to the building at that point.
 - OSM amenities: Overpass POST https://overpass-api.de/api/interpreter (body 'data='+urlencoded QL). Geocoding: https://nominatim.openstreetmap.org/search?q=...&format=json. Compute haversine/bearing yourself.
 
 SPEED
@@ -1470,6 +1470,15 @@ async function inspectCandidate(
   Object.assign(c, { plot, plotGroup, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
   await saveSearch(job, search);
   const outline = await shapeAt(c.lat, c.lon).then((sh) => (sh ? outlineText(sh) : null)).catch(() => null);
+  // The register's plot field against the plot under the address point: they
+  // disagreed for 18 of 292 practice houses, and where the listing gave a land
+  // area the address point's plot matched it 9 times out of 10, the register's
+  // never (Ovronnaz, Chevalley 27/29: the field names the other half's plot).
+  const registerPlot = await buildingByEgid(c.egid).then((b) => b?.registerPlot ?? null).catch(() => null);
+  const plotClash =
+    plot && registerPlot && !sameRegisterPlot(registerPlot, plot.number)
+      ? `The register's own plot field says ${registerPlot}, but the plot under this building's official address point is ${plot.number}. Trust ${plot.number} and the address point: the register's field is often an old plot from before a split, or the plot of the other half of an attached pair. The house number ${c.address ?? ""} belongs to the building at the address point (the red cross).`
+      : null;
   const sheetNo = String(job.steps.filter((st) => st.title.startsWith("close look")).length + 1).padStart(2, "0");
   const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [];
   const sheet = text(
@@ -1477,6 +1486,7 @@ async function inspectCandidate(
       `Close look at ${c.egid} | ${c.address ?? "?"}, ${c.commune} (verdict so far: ${c.verdict}).`,
       `Register: floors ${c.floors ?? "?"}, dwellings ${c.dwellings ?? "?"}, footprint ${c.footprintM2 ?? "?"} m².`,
       `Plot: ${plot ? `${plot.number}${plot.egrid ? ` (${plot.egrid})` : ""}, ${plot.areaM2} m²` : "not found"}.`,
+      ...(plotClash ? [plotClash] : []),
       outline ? `Outline (swissBUILDINGS3D, from above): ${outline} — compare it with a floor plan in the photos, if there is one.` : "Outline: not in swissBUILDINGS3D.",
       rows.length
         ? `Against the listing:\n${rows.map((r) => `- ${r.fact}: listing ${r.listing}, building ${r.building} → ${r.verdict}`).join("\n")}`

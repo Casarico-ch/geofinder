@@ -44,6 +44,10 @@ export interface GwrBuilding {
   // rooms (wazim, kitchen not counted). Null for several homes or when unknown.
   livingM2: number | null;
   rooms: number | null;
+  // The register's own plot field (lparz). Often an old plot from before a
+  // split, or swapped between attached halves: trust the plot under the
+  // address point instead (sameRegisterPlot).
+  registerPlot: string | null;
 }
 
 async function getJson(url: string, ms = 60_000): Promise<any> {
@@ -256,7 +260,22 @@ function toBuilding(f: any): GwrBuilding | null {
     postcode: num(p.dplz4),
     livingM2: single(p.ganzwhg, p.warea),
     rooms: single(p.ganzwhg, p.wazim),
+    registerPlot: p.lparz ? String(p.lparz) : null,
   };
+}
+
+/**
+ * Whether the register's plot field names the plot under the address point.
+ * Cantons write the same plot with a prefix ("134871" for 4871 in Neuchâtel,
+ * "31645" for 1645), a section letter or leading zeros ("0325"), so one may end with the other.
+ */
+export function sameRegisterPlot(registerPlot: string, plotNumber: string): boolean {
+  // St. Gallen adds a section letter ("1560E" for 1560): compare the digits too.
+  const norm = (x: string) => x.toUpperCase().replace(/^0+/, "");
+  const digits = (x: string) => x.replace(/\D/g, "").replace(/^0+/, "");
+  const [a, b] = [norm(registerPlot), norm(plotNumber)];
+  const [da, db] = [digits(registerPlot), digits(plotNumber)];
+  return a === b || a.endsWith(b) || b.endsWith(a) || (!!da && da === db);
 }
 
 // A dwelling field of a single-home building: the register gives one value per home.
