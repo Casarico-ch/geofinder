@@ -42,6 +42,10 @@ export interface Round {
   skipped: { propertyId: number; reason: string }[];
   lessons: number;
   accuracy: number | null;
+  listings: number;
+  found: number;
+  foundWrong: number;
+  successRate: number | null;
   split: string;
   models: string[];
   noLand?: boolean;

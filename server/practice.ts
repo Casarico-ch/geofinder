@@ -35,6 +35,7 @@ import { buildingByEgid } from "./gwr";
 import { listingFacts } from "./proof";
 import { twinsOf } from "./twins";
 import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
+import { geminiConfigured, isGemini } from "./gemini";
 
 export interface PracticeCase {
   propertyId: number;
@@ -157,7 +158,6 @@ const CONFIRM_CHF = Number(process.env.CONFIRM_BUDGET_CHF ?? 1.5);
 const CONFIRM_MINUTES = Number(process.env.CONFIRM_MAX_MINUTES ?? 10);
 const TIEBREAK_CHF = Number(process.env.TIEBREAK_BUDGET_CHF ?? 1.2);
 const TIEBREAK_MINUTES = Number(process.env.TIEBREAK_MAX_MINUTES ?? 8);
-const pick = (l: { budgetUsd: number; maxMinutes: number }) => ({ budgetUsd: l.budgetUsd, maxMinutes: l.maxMinutes });
 export function stepLimits(step: "search" | "confirm" | "tieBreak"): { budgetUsd: number; maxMinutes: number; noProof?: true } {
   const base = runLimits();
   if (step === "confirm") return { ...base, budgetUsd: CONFIRM_CHF * USD_PER_CHF, maxMinutes: CONFIRM_MINUTES };
@@ -205,9 +205,9 @@ const MAX_CONFIRMS = 2;
 
 type Settled = { done: boolean; answer: Answer | null; confirm?: boolean };
 
-/** The two finished runs that name the same house, or null. */
-export function agreeingPair<T extends Settled>(runs: T[]): [T, T] | null {
-  const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
+/** The two finished runs that name the same house, or null. `parcel`: count parcel confidence too, as Radar does. */
+export function agreeingPair<T extends Settled>(runs: T[], opts: { parcel?: boolean } = {}): [T, T] | null {
+  const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer, opts)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
   for (let i = 0; i < exact.length; i++)
     for (let j = i + 1; j < exact.length; j++) if (sameAddress(exact[i][1], exact[j][1])) return [exact[i][0], exact[j][0]];
   return null;
@@ -221,6 +221,119 @@ export function wantsConfirm(runs: Settled[]): boolean {
   if (!runs.some((r) => r.done && exactAddressOf(r.answer)) || agreeingPair(runs)) return false;
   // A tie-breaker only when the confirming search named another house: a "not sure" leaves nothing to break.
   return !confirms.length || confirms.some((r) => r.done && !!exactAddressOf(r.answer));
+}
+
+// =============================================================================
+// THE SEARCH OF ONE LISTING. Practice rounds and real requests (/v1/address,
+// what Radar sends) run these same functions and nothing else (Daniel, 11.10:
+// "practice is the single source of truth"): which model searches first,
+// which searches follow, under which limits, and whether a house was found.
+// platform.ts only feeds a request's listing and photos in.
+// =============================================================================
+
+const modelList = (v: string | undefined, fallback: string): ModelId[] =>
+  (v ?? fallback)
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
+// The first search (Daniel, 05.10): one Sonnet 5.5 at low effort. Three
+// identical runs either all found a house or none did: the ranking decides.
+const FIRST_MODELS = modelList(process.env.PRACTICE_MODELS ?? process.env.GEOFINDER_MODELS, "sonnet-5-5-low");
+// A house whose listing states no land area has no plot to match, and Sonnet
+// low finds it far less often: 7 of 20 in round rmuzs78j27ebf (08.10) against
+// 15 of 20 for Opus 5.5 high. Those start with Opus high.
+const NO_LAND_MODELS = modelList(process.env.GEOFINDER_NO_LAND_MODELS, "opus-5-5-high");
+
+/** The models that search a listing first. */
+export function firstModels(listingText: string | undefined): ModelId[] {
+  const f = listingFacts(listingText);
+  const models = f.kind === "house" && f.landM2 == null && NO_LAND_MODELS.length ? NO_LAND_MODELS : FIRST_MODELS;
+  return models.filter((m) => !isGemini(m) || geminiConfigured());
+}
+
+export type Role = "search" | "recheck" | "confirm";
+/** One run of a listing as the search reads it. settled: it will not change any more. */
+export interface ListingRun {
+  role: Role;
+  jobId: string | null;
+  settled: boolean;
+  done: boolean;
+  answer: Answer | null;
+}
+export interface Step {
+  role: Role;
+  model: ModelId;
+  tieBreakOf?: string[]; // the tie-breaker: the runs (job ids) whose houses it compares
+}
+
+/**
+ * The searches to start next, given a listing's runs so far. Called each time
+ * one of them settles. A doubtful first answer is searched again, once, and
+ * never once a confirm has started (Bassersdorf, 09.10: the tie-breaker's doubt
+ * started a 4th search after two runs had agreed). Once every run has settled
+ * and no two agree, a confirming search, or the tie-breaker (tiebreak.ts).
+ * `confirm: false`: a lesson's test compares the same runs before and after.
+ */
+export function nextSteps(runs: ListingRun[], opts: { confirm?: boolean } = {}): Step[] {
+  const followed = runs.some((r) => r.role !== "search");
+  if (RECHECK && !followed && runs.some((r) => r.role === "search" && r.done && recheckWhy(r.answer)))
+    return RECHECK_MODELS.map((model) => ({ role: "recheck", model }));
+  if (opts.confirm === false || !runs.length || runs.some((r) => !r.settled)) return [];
+  const states = runs.map((r) => ({ ...r, confirm: r.role === "confirm" }));
+  if (!wantsConfirm(states)) return [];
+  const ids = (tieBreakRuns(states) ?? []).map((r) => r.jobId).filter((id): id is string => !!id);
+  return CONFIRM_MODELS.map((model) => ({ role: "confirm", model, ...(ids.length >= 2 ? { tieBreakOf: ids } : {}) }));
+}
+
+/** What a listing is searched with. lessons/noProof: a practice round fixes them when it starts. */
+export interface ListingInput {
+  listingText?: string;
+  municipality?: string;
+  listingId?: string;
+  listingUrl?: string;
+  radarUrl?: string;
+  lessons?: string[];
+  noProof?: boolean;
+}
+
+/** Start one search of a listing. `finished` settles when the run ends. */
+export async function startSearch(
+  listing: ListingInput,
+  images: AgentImage[],
+  model: ModelId,
+  step: Pick<Step, "role" | "tieBreakOf"> = { role: "search" },
+): Promise<{ job: Job; finished: Promise<void> }> {
+  // The tie-breaker compares the houses the named runs found.
+  const named = (step.tieBreakOf ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j);
+  const tie = named.length >= 2 ? await tieBreakSetup(listing.listingText, named) : null;
+  const listingText = tie ? tie.text : listing.listingText;
+  const limits = stepLimits(tie ? "tieBreak" : step.role === "confirm" ? "confirm" : "search");
+  const job = await createJob(
+    {
+      municipality: listing.municipality,
+      listingText,
+      imageCount: images.length,
+      listingId: listing.listingId,
+      listingUrl: listing.listingUrl,
+      radarUrl: listing.radarUrl,
+      budgetUsd: limits.budgetUsd,
+      maxMinutes: limits.maxMinutes,
+      noProof: listing.noProof ?? !!limits.noProof,
+      ...(listing.lessons ? { lessons: listing.lessons } : {}),
+      ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}),
+    },
+    model,
+  );
+  const finished = (async () => {
+    await saveListingPhotos(job.runDir, images);
+    await runInvestigation(job, images, listingText, tie?.seed);
+  })();
+  return { job, finished };
+}
+
+/** The two runs that name the same house: the listing's address, as Radar shows it. A plot found counts (Daniel, 11.10). */
+export function foundPair<T extends Settled>(runs: T[]): [T, T] | null {
+  return agreeingPair(runs, { parcel: true });
 }
 
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
@@ -339,7 +452,8 @@ export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: s
   if (job.status !== "done") return { outcome: "error", answer: null, lostAt: null };
   if (job.overBudget) return { outcome: "over_budget", answer: null, lostAt: lostAt(job, truth) };
   const a: Answer | null = job.answer;
-  const exact = exactAddressOf(a);
+  // Scored as Radar shows it: a parcel-confidence answer counts as found.
+  const exact = exactAddressOf(a, { parcel: true });
   const named = a?.address ?? a?.parcel ?? null;
   if (exact) {
     const right =
@@ -437,7 +551,8 @@ async function checkTwin(round: PracticeRound, r: PracticeResult): Promise<void>
 export async function startRound(
   split: "practice" | "test",
   limit: number,
-  models: ModelId[],
+  // null: each listing gets the models a real request for it gets (firstModels).
+  models: ModelId[] | null,
   // A lesson's test: the same listings as the round it is compared with, and its own lessons.
   opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string; rerunOf?: string; noLand?: boolean } = {},
 ): Promise<PracticeRound> {
@@ -473,7 +588,7 @@ export async function startRound(
     id: `r${Date.now().toString(36)}${randomUUID().slice(0, 4)}`,
     createdAt: new Date().toISOString(),
     split,
-    models,
+    models: [],
     lessons: opts.lessons ?? (await keptLessons()),
     ...(opts.trialOf ? { trialOf: opts.trialOf } : {}),
     ...(skipped.length ? { skipped } : {}),
@@ -483,9 +598,11 @@ export async function startRound(
     results: [],
   };
   for (const c of cases)
-    for (const model of models)
+    for (const model of models ?? firstModels(c.listingText)) {
+      if (!round.models.includes(model)) round.models.push(model);
       if (!opts.pairs || opts.pairs.some((p) => p.propertyId === c.propertyId && p.model === model))
         round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: c.links?.source ?? null });
+    }
   rounds.set(round.id, round);
   await save(round);
   void drive(round, cases).catch((err) => console.error(`[practice] round ${round.id} crashed:`, err));
@@ -514,27 +631,24 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
       try {
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
-        // The tie-breaker compares the two houses it was given, as real requests do (tiebreak.ts).
-        const named = (r.tieBreakOf ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j);
-        const tie = named.length >= 2 ? await tieBreakSetup(c.listingText, named) : null;
-        const listingText = tie ? tie.text : c.listingText;
-        const job = await createJob(
-          { municipality: c.municipality ?? undefined, listingText, imageCount: images.length, listingId: `practice-${round.id}-${c.propertyId}`, ...pick(stepLimits(tie ? "tieBreak" : r.confirm ? "confirm" : "search")), lessons: round.lessons ?? [], noProof: !!round.noProof, ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}) },
+        const { job, finished } = await startSearch(
+          { municipality: c.municipality ?? undefined, listingText: c.listingText, listingId: `practice-${round.id}-${c.propertyId}`, lessons: round.lessons ?? [], noProof: !!round.noProof },
+          images,
           r.model,
+          { role: roleOf(r), tieBreakOf: r.tieBreakOf },
         );
         r.jobId = job.id;
         await save(round);
-        await saveListingPhotos(job.runDir, images);
-        await runInvestigation(job, images, listingText, tie?.seed);
+        await finished;
         const answer = getJob(job.id)?.answer ?? null;
         if (answer?.twinPick) r.twinPick = answer.twinPick.other;
-        queue.push(...recheckFor(round, r, answer));
+        markDoubt(round, r, answer);
       } catch (err) {
         r.outcome = "error";
         r.error = err instanceof Error ? err.message : String(err);
       }
       refresh(round);
-      queue.push(...confirmFor(round, r.propertyId));
+      queue.push(...stepsFor(round, r.propertyId));
       await save(round);
     }
   };
@@ -545,39 +659,27 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
   await save(round);
 }
 
-/** A doubtful answer's second searches, one per recheck model, added once per listing. */
-function recheckFor(round: PracticeRound, r: PracticeResult, answer: Answer | null): PracticeResult[] {
-  // Only a first search is rechecked, never a confirm or tie-breaker, and never
-  // once a confirm has started (Bassersdorf, 09.10: the tie-breaker's doubt
-  // started a 4th search after two runs had already agreed). Real requests:
-  // platform.ts recheckIfDoubtful stops at any check: true run.
-  const confirming = round.results.some((x) => x.confirm && x.propertyId === r.propertyId);
-  const why = RECHECK && !r.recheck && !r.confirm && !confirming ? recheckWhy(answer) : null;
-  if (!why) return [];
-  Object.assign(r, { doubt: true, doubtWhy: why });
-  if (round.results.some((x) => x.recheck && x.propertyId === r.propertyId)) return [];
-  return RECHECK_MODELS.map((model) => {
-    if (!round.models.includes(model)) round.models.push(model);
-    const again: PracticeResult = { propertyId: r.propertyId, jobId: null, model, truth: r.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: r.sourceUrl, recheck: true };
-    round.results.push(again);
-    return again;
-  });
+const roleOf = (r: Pick<PracticeResult, "recheck" | "confirm">): Role => (r.confirm ? "confirm" : r.recheck ? "recheck" : "search");
+
+/** A first answer that will be searched again is flagged doubtful, with why (the round's recheck stats). */
+function markDoubt(round: PracticeRound, r: PracticeResult, answer: Answer | null): void {
+  const followed = round.results.some((x) => x.propertyId === r.propertyId && roleOf(x) !== "search");
+  const why = RECHECK && roleOf(r) === "search" && !followed ? recheckWhy(answer) : null;
+  if (why) Object.assign(r, { doubt: true, doubtWhy: why });
 }
 
-/** A listing whose runs have all settled and no two agree: its confirming search, as real requests get. */
-function confirmFor(round: PracticeRound, propertyId: number): PracticeResult[] {
-  if (round.trialOf) return []; // a lesson test compares the same runs before and after
+/** The listing's next searches (nextSteps), added to the round. */
+function stepsFor(round: PracticeRound, propertyId: number): PracticeResult[] {
   const runs = round.results.filter((x) => x.propertyId === propertyId);
-  if (!runs.length || runs.some((x) => x.outcome === "running")) return [];
-  const states = runs.map(settled);
-  if (!wantsConfirm(states)) return [];
-  const named = tieBreakRuns(states);
-  const ids = (named ?? []).map((x) => x.r.jobId).filter((id): id is string => !!id);
-  const tieBreakOf = ids.length >= 2 ? ids : undefined;
+  if (!runs.length) return [];
+  const steps = nextSteps(
+    runs.map((x) => ({ ...settled(x), role: roleOf(x), jobId: x.jobId, settled: x.outcome !== "running" })),
+    { confirm: !round.trialOf },
+  );
   const first = runs[0];
-  return CONFIRM_MODELS.map((model) => {
-    if (!round.models.includes(model)) round.models.push(model);
-    const again: PracticeResult = { propertyId, jobId: null, model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, confirm: true, ...(tieBreakOf ? { tieBreakOf } : {}) };
+  return steps.map((s) => {
+    if (!round.models.includes(s.model)) round.models.push(s.model);
+    const again: PracticeResult = { propertyId, jobId: null, model: s.model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, ...(s.role === "recheck" ? { recheck: true } : {}), ...(s.role === "confirm" ? { confirm: true } : {}), ...(s.tieBreakOf ? { tieBreakOf: s.tieBreakOf } : {}) };
     round.results.push(again);
     return again;
   });
@@ -593,7 +695,7 @@ export type ListingVerdict = "running" | "confirmed_right" | "confirmed_wrong" |
 export function listingVerdict(round: PracticeRound, propertyId: number): ListingVerdict {
   const runs = round.results.filter((x) => x.propertyId === propertyId);
   if (runs.some((x) => x.outcome === "running")) return "running";
-  const pair = agreeingPair(runs.map(settled));
+  const pair = foundPair(runs.map(settled));
   if (!pair) return "not_confirmed";
   return pair.some((p) => p.r.outcome === "right") ? "confirmed_right" : "confirmed_wrong";
 }
@@ -608,6 +710,11 @@ export interface RoundSummary {
   skipped: { propertyId: number; reason: string }[];
   lessons: number;
   accuracy: number | null; // right / (right + wrong): the goal is 100%
+  // Per listing, as Radar shows it (listingVerdict): found = two runs named the same house.
+  listings: number;
+  found: number;
+  foundWrong: number;
+  successRate: number | null; // found / listings
   split: string;
   models: string[];
   total: number;
@@ -652,6 +759,7 @@ export function summarize(round: PracticeRound): RoundSummary {
     skipped: round.skipped ?? [],
     lessons: round.lessons?.length ?? 0,
     accuracy: n("right") + n("wrong") ? Math.round((n("right") / (n("right") + n("wrong"))) * 1000) / 10 : null,
+    ...foundStats(round),
     split: round.split,
     models: round.models,
     total: round.results.length,
@@ -726,6 +834,17 @@ function rankStats(round: PracticeRound): RoundSummary["ranks"] {
 }
 
 /** Per listing: did two runs name the same house, and was it the right one? */
+function foundStats(round: PracticeRound): Pick<RoundSummary, "listings" | "found" | "foundWrong" | "successRate"> {
+  const verdicts = Array.from(new Set(round.results.map((r) => r.propertyId)), (pid) => listingVerdict(round, pid));
+  const found = verdicts.filter((v) => v === "confirmed_right" || v === "confirmed_wrong").length;
+  return {
+    listings: verdicts.length,
+    found,
+    foundWrong: verdicts.filter((v) => v === "confirmed_wrong").length,
+    successRate: verdicts.length ? Math.round((found / verdicts.length) * 1000) / 10 : null,
+  };
+}
+
 function agreement(round: PracticeRound): { agreed: number; agreedRight: number; agreedWrong: number } {
   const out = { agreed: 0, agreedRight: 0, agreedWrong: 0 };
   const byListing = new Map<number, PracticeResult[]>();
@@ -871,11 +990,10 @@ export async function settleRound(round: PracticeRound): Promise<boolean> {
   // their recheck and confirm (09.10: Oberried and Saas-Fee named a wrong house
   // and no second search ever ran): queue them now.
   const more: PracticeResult[] = [];
-  for (const r of round.results) {
-    const job = r.jobId ? getJob(r.jobId) : undefined;
-    if (job?.status === "done") more.push(...recheckFor(round, r, job.answer ?? null));
+  for (const id of Array.from(new Set(round.results.map((r) => r.propertyId)))) {
+    for (const r of round.results) if (r.propertyId === id) markDoubt(round, r, r.jobId ? (getJob(r.jobId)?.answer ?? null) : null);
+    more.push(...stepsFor(round, id));
   }
-  if (!more.length) for (const id of Array.from(new Set(round.results.map((r) => r.propertyId)))) more.push(...confirmFor(round, id));
   if (more.length) {
     await save(round);
     await continueRound(round);

@@ -319,8 +319,9 @@ function overallStatus(results: ModelResult[]): RequestStatus {
 const TERMINAL: JobStatus[] = ["done", "error", "cancelled"];
 const POLL_MS = 5_000;
 
-// Called once every run of a listing request has settled. Returns true when it
-// added a run (a cross-check), so the request keeps running until that settles.
+// Called each time a run of a listing request settles (and once all have).
+// Returns true when it added a run (practice.ts nextSteps), so the request
+// keeps running until that settles too.
 type SettleHook = (req: PlatformRequest) => Promise<boolean>;
 let settleHook: SettleHook | null = null;
 export function onListingSettled(fn: SettleHook): void {
@@ -332,6 +333,7 @@ export function watchListingRequest(req: PlatformRequest): void {
   // Returns true once every model has settled.
   const tick = async (): Promise<boolean> => {
     let changed = false;
+    let settledNow = false;
     for (const r of req.results ?? []) {
       if (TERMINAL.includes(r.status)) continue;
       const job = getJob(r.jobId);
@@ -344,14 +346,18 @@ export function watchListingRequest(req: PlatformRequest): void {
       if (job.status !== r.status || cost !== r.aiCostUsd) changed = true;
       r.status = job.status;
       r.aiCostUsd = cost;
-      if (TERMINAL.includes(job.status)) r.answer = job.answer;
+      if (TERMINAL.includes(job.status)) {
+        r.answer = job.answer;
+        settledNow = true;
+      }
     }
     const all = req.results ?? [];
-    if (all.every((r) => TERMINAL.includes(r.status))) {
-      if (settleHook && (await settleHook(req))) {
-        await saveRequest(req);
-        return false;
-      }
+    const allSettled = all.every((r) => TERMINAL.includes(r.status));
+    if ((settledNow || allSettled) && settleHook && (await settleHook(req))) {
+      await saveRequest(req);
+      return false;
+    }
+    if (allSettled) {
       req.status = all.some((r) => r.status === "done") ? "done" : "error";
       // A re-run that finishes must not keep the error an earlier run left behind.
       req.error = req.status === "error" ? "No model finished the investigation." : undefined;

@@ -24,16 +24,19 @@ export interface Candidate {
 }
 
 const EXACT_CONFIDENCE = new Set(["street", "building"]);
+// Radar shows an address found at parcel confidence too (radar outcome.ts
+// EXACT_CONFIDENCE), so practice scores it the same way (Daniel, 11.10).
+const RADAR_CONFIDENCE = new Set(["street", "building", "parcel"]);
 
 function parcelOf(a: Answer): string | null {
   if (a.parcels?.length) return a.parcels.map((p) => `${p.commune} ${p.plot}`).join(", ");
   return a.parcel?.trim() || null;
 }
 
-/** The exact address a run found, or null when it found none. */
-export function exactAddressOf(answer: Answer | null): Candidate | null {
+/** The exact address a run found, or null when it found none. `parcel`: count parcel confidence too, as Radar does. */
+export function exactAddressOf(answer: Answer | null, opts: { parcel?: boolean } = {}): Candidate | null {
   if (!answer || !answer.found) return null;
-  if (!EXACT_CONFIDENCE.has(answer.confidence)) return null;
+  if (!(opts.parcel ? RADAR_CONFIDENCE : EXACT_CONFIDENCE).has(answer.confidence)) return null;
   const address = answer.address?.trim() || null;
   const parcel = parcelOf(answer);
   // A street and a number: "2036" alone (a run answered a postcode) is no address.
