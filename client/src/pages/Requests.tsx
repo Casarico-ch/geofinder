@@ -991,7 +991,6 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
       </div>
       <div className="space-y-1">
         <p className={`text-base font-semibold ${head.tone}`}>{head.text}</p>
-        {c.decidedBy && <p className="text-sm text-muted-foreground">Decided by: {c.decidedBy}</p>}
       </div>
       <Table className="text-xs table-fixed">
         <TableHeader>
