@@ -130,9 +130,9 @@ export async function findBuilding(query: string): Promise<GwrBuilding | null> {
   return typeof hit.lat === "number" && typeof hit.lon === "number" ? buildingAt(hit.lat, hit.lon) : null;
 }
 
-// Facts the register holds beyond the proof's three: shown side by side, never
-// deciding the quick verdict (a listed year can be a renovation, and the
-// register's own living area and rooms are often missing or rough).
+// The construction period beside the proof's three facts, never deciding the
+// quick verdict (a listed year can be a renovation). The register's own living area and rooms per home are left out: they are
+// often decades old (Lancy, 13.10: 100 m² and 4 rooms for a 182 m², 7-room house).
 function moreRows(l: ReturnType<typeof listingFacts>, b: Partial<GwrBuilding>): Fact[] {
   const rows: Fact[] = [];
   if (l.year != null) {
@@ -141,19 +141,6 @@ function moreRows(l: ReturnType<typeof listingFacts>, b: Partial<GwrBuilding>): 
     const building = built != null ? String(built) : p ? (p[0] === 0 ? `before ${p[1] + 1}` : `${p[0]}–${p[1]}`) : "not in the register";
     const fits = built != null ? Math.abs(built - l.year) <= 2 : p ? l.year >= p[0] - 1 && l.year <= p[1] + 1 : null;
     rows.push({ fact: "Year built", listing: String(l.year), building, verdict: fits == null ? "unknown" : fits ? "match" : "mismatch" });
-  }
-  if (l.rooms != null && l.dwellings === 1) {
-    const r = b.rooms ?? null; // the register counts no kitchen: a listed 7 is 6 or 7
-    rows.push({
-      fact: "Rooms",
-      listing: String(l.rooms),
-      building: r == null ? "not in the register" : String(r),
-      verdict: r == null ? "unknown" : Math.abs(r - l.rooms) <= 1.5 ? "match" : "mismatch",
-    });
-  }
-  if (l.livingM2 != null && l.dwellings === 1 && b.livingM2 != null) {
-    const off = Math.abs(b.livingM2 - l.livingM2) / l.livingM2;
-    rows.push({ fact: "Register living area", listing: `${l.livingM2} m²`, building: `${b.livingM2} m²`, verdict: off <= 0.2 ? "match" : "mismatch" });
   }
   return rows;
 }
@@ -228,7 +215,7 @@ function taskText(listingText: string, houses: ChallengeHouse[], noneFound: bool
     `4. Mark EVERY one of ${list} match or rejected with mark_candidates, the reason naming the concrete difference or the concrete fit you see. At most one is a match.`,
     "5. Submit the winner. Your reasoning MUST be exactly these lines, nothing else (it is shown as a table):",
     `COMPARE: <criterion> | ${labels.map((l) => `${l}: <what ${l} has, a few words> (fits|no|unclear)`).join(" | ")}`,
-    "   one COMPARE line per criterion you checked, each one a separate line: living area, plot, homes, year built, rooms, roof shape, pool and garden, the street and surroundings, the neighbours, the view, and anything else the photos show. Keep each cell under 12 words.",
+    "   one COMPARE line per criterion you checked, each one a separate line: roof shape, pool and garden, the street and surroundings, the neighbours, the view, and anything else the photos or aerial show. Do NOT repeat living area, plot, homes or year built: the register rows already show them. Keep each cell under 12 words.",
     ...houses.map((h) => `${h.label}: WINS or LOSES — <one sentence>`),
     "DECIDED BY: <one sentence: the one thing that settles it>",
     "PHOTOS: <one sentence: what the photos could and could not show>",
