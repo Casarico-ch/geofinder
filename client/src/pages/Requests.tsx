@@ -969,15 +969,9 @@ function FitCell({ text, fit }: { text: string; fit: "yes" | "no" | "unclear" })
 // close look compared (roof, garden, street, neighbours…), the winner marked.
 function ChallengeBlock({ c }: { c: ChallengeView }) {
   const head = challengeHeadline(c);
-  const facts = Array.from(new Set(c.houses.flatMap((h) => h.quick.facts.map((f) => f.fact))));
+  // The register's own living area and rooms were shown on the first challenges: often decades old, no longer shown.
+  const facts = Array.from(new Set(c.houses.flatMap((h) => h.quick.facts.map((f) => f.fact)))).filter((f) => f !== "Register living area" && f !== "Rooms");
   const listingOf = (fact: string) => c.houses.flatMap((h) => h.quick.facts).find((f) => f.fact === fact)?.listing ?? "";
-  const section = (title: string) => (
-    <TableRow className="hover:bg-transparent">
-      <TableCell colSpan={c.houses.length + 1} className="px-2 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        {title}
-      </TableCell>
-    </TableRow>
-  );
   return (
     <div className="space-y-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1014,7 +1008,6 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {section("From the register")}
           {facts.map((fact) => (
             <TableRow key={fact} className="hover:bg-transparent align-top">
               <TableCell className="px-2 py-1.5 whitespace-normal">
@@ -1031,7 +1024,6 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
               })}
             </TableRow>
           ))}
-          {c.compare.length > 0 && section("From the close look")}
           {c.compare.map((row) => (
             <TableRow key={row.criterion} className="hover:bg-transparent align-top">
               <TableCell className="px-2 py-1.5 whitespace-normal">{row.criterion}</TableCell>
