@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Swords, Trash2 } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -430,12 +431,12 @@ const VERDICT_TONE: Record<AnswerProof["facts"][number]["verdict"], string> = {
 
 // The listing's own facts against the building's, and how much of the
 // checklist was ruled out: what the answer rests on.
-function ProofTable({ proof }: { proof: AnswerProof }) {
+function ProofTable({ proof, hideCount }: { proof: AnswerProof; hideCount?: boolean }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-muted-foreground tabular-nums">
-        {proof.ruledOut} of {proof.total} candidates ruled out
-        {proof.egid ? ` · EGID ${proof.egid}` : ""}
+        {hideCount ? "" : `${proof.ruledOut} of ${proof.total} candidates ruled out`}
+        {proof.egid ? `${hideCount ? "" : " · "}EGID ${proof.egid}` : ""}
       </p>
       {proof.facts.length > 0 && (
         <Table className="text-xs">
@@ -819,8 +820,213 @@ function RequestDetails({ r }: { r: PlatformRequest }) {
             <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>
           )}
           <Attempts r={r} />
+          <Challenger r={r} />
         </>
       )}
+    </div>
+  );
+}
+
+// Mirrors server/challenge.ts ChallengeView.
+type HouseVerdict = "unchecked" | "rejected" | "possible" | "match";
+interface ChallengeHouse {
+  label: string;
+  egid: string;
+  address: string | null;
+  commune: string | null;
+  suggested: boolean;
+  namedBy: string[];
+  quick: { verdict: "yes" | "likely" | "no" | "unsure"; reason: string; facts: AnswerProof["facts"] };
+}
+interface ChallengeView {
+  id: string;
+  createdAt: string;
+  query: string;
+  jobId: string;
+  model: string;
+  houses: ChallengeHouse[];
+  noneFound: boolean;
+  status: JobStatus;
+  costUsd: number;
+  winner: string | null;
+  winnerAddress: string | null;
+  confidence: string | null;
+  reasoning: string | null;
+  verdicts: Record<string, { verdict: HouseVerdict; reason: string | null; looked: boolean }>;
+}
+
+const QUICK_LABEL: Record<ChallengeHouse["quick"]["verdict"], { label: string; tone: string }> = {
+  yes: { label: "Facts prove it", tone: "bg-emerald-500/10 text-emerald-700" },
+  likely: { label: "Facts fit", tone: "bg-emerald-500/10 text-emerald-700" },
+  no: { label: "Facts rule it out", tone: "bg-red-500/10 text-red-700" },
+  unsure: { label: "Facts can't tell", tone: "bg-muted text-muted-foreground" },
+};
+const LOOK_LABEL: Record<HouseVerdict, { label: string; tone: string }> = {
+  match: { label: "Match", tone: "bg-emerald-500/10 text-emerald-700" },
+  rejected: { label: "Rejected", tone: "bg-red-500/10 text-red-700" },
+  possible: { label: "Possible", tone: "bg-amber-500/10 text-amber-700" },
+  unchecked: { label: "Not judged", tone: "bg-muted text-muted-foreground" },
+};
+const houseName = (h: ChallengeHouse) => [h.address, h.commune].filter(Boolean).join(", ") || `EGID ${h.egid}`;
+
+// The headline: who won, in one sentence.
+function challengeHeadline(c: ChallengeView): { text: string; tone: string } {
+  if (c.status === "running" || c.status === "paused") return { text: "Comparing the houses…", tone: "text-muted-foreground" };
+  if (c.status !== "done") return { text: "The comparison did not finish — open the trace.", tone: "text-destructive" };
+  const w = c.houses.find((h) => h.label === c.winner);
+  if (w?.suggested) return { text: `Your suggestion wins: ${houseName(w)}`, tone: "text-emerald-700" };
+  if (w) return { text: `The search's answer holds: ${houseName(w)}`, tone: "text-foreground" };
+  if (c.winner === "other") return { text: `Neither — a neighbour fits better: ${c.winnerAddress ?? "see the trace"}`, tone: "text-amber-700" };
+  return { text: "No house wins: the evidence does not settle it.", tone: "text-amber-700" };
+}
+
+// Challenge the result with another house. Not a correction: the suggested
+// house is weighed, at full depth, against every house the searches named
+// (server/challenge.ts), and the breakdown says which one wins and why.
+function Challenger({ r }: { r: PlatformRequest }) {
+  const [address, setAddress] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [list, setList] = useState<ChallengeView[]>([]);
+  const load = async () => {
+    const res = await fetch(`/api/requests/${encodeURIComponent(r.id)}/challenges`).catch(() => null);
+    if (res?.ok) setList(((await res.json()) as { challenges: ChallengeView[] }).challenges);
+  };
+  const running = list.some((c) => c.status === "running");
+  useEffect(() => {
+    void load();
+  }, [r.id]);
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => void load(), 5000);
+    return () => clearInterval(t);
+  }, [running, r.id]);
+  if (r.id.startsWith("job-")) return null; // an older search with no request record: re-run it first
+  const start = async () => {
+    if (address.trim().length < 3) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/requests/${encodeURIComponent(r.id)}/challenge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: address.trim() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setList((prev) => [body as ChallengeView, ...prev]);
+      setAddress("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not start the challenge.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="gap-3 py-3.5 px-3.5 shadow-none">
+      <div>
+        <p className="text-sm font-semibold">Challenge the result</p>
+        <p className="text-xs text-muted-foreground">
+          Suggest another house. Opus compares it in full depth with every house the searches named — facts, plot, roof,
+          neighbours and photos — and says which one wins and why. A few dollars, up to 20 minutes.
+        </p>
+      </div>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void start();
+        }}
+      >
+        <Input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Street and number, postcode — or an EGID"
+          aria-label="Suggested address"
+          disabled={busy}
+        />
+        <Button type="submit" size="sm" className="h-9" disabled={busy || address.trim().length < 3}>
+          {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Swords className="mr-1.5 h-3.5 w-3.5" />}
+          Challenge
+        </Button>
+      </form>
+      {list.map((c) => (
+        <ChallengeBlock key={c.id} c={c} />
+      ))}
+    </Card>
+  );
+}
+
+function ChallengeBlock({ c }: { c: ChallengeView }) {
+  const head = challengeHeadline(c);
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <StatusIcon status={c.status} />
+        <span>Challenge with {c.query}</span>
+        <span className="tabular-nums">· ${c.costUsd.toFixed(2)} · {fmtDate(c.createdAt)}</span>
+        <div className="flex-1" />
+        <Link href={`/i/${c.jobId}`} className="text-primary inline-flex items-center gap-1 hover:underline">
+          Trace <ExternalLink className="h-3 w-3" />
+        </Link>
+      </div>
+      <p className={`text-sm font-semibold ${head.tone}`}>{head.text}</p>
+      <Table className="text-xs">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="h-7 px-2">House</TableHead>
+            <TableHead className="h-7 px-2">Register facts</TableHead>
+            <TableHead className="h-7 px-2">Close look</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {c.houses.map((h) => {
+            const v = c.verdicts[h.label];
+            const won = c.winner === h.label;
+            return (
+              <TableRow key={h.label} className="align-top">
+                <TableCell className="px-2 py-1.5 whitespace-normal">
+                  <div className="font-medium">
+                    {h.label} · {houseName(h)}
+                    {won && <Badge variant="outline" className="ml-1.5 border-transparent bg-emerald-500/10 text-emerald-700">Wins</Badge>}
+                  </div>
+                  <div className="text-muted-foreground">
+                    {h.suggested ? "Your suggestion" : `Found by ${h.namedBy.map((m) => MODEL_LABEL[m.replace(/ \(check\)$/, "")] ?? m).join(", ")}`}
+                    {` · EGID ${h.egid}`}
+                  </div>
+                </TableCell>
+                <TableCell className="px-2 py-1.5 whitespace-normal">
+                  <Badge variant="outline" className={`border-transparent font-normal ${QUICK_LABEL[h.quick.verdict].tone}`}>
+                    {QUICK_LABEL[h.quick.verdict].label}
+                  </Badge>
+                  <div className="mt-1 text-muted-foreground">{h.quick.reason}</div>
+                </TableCell>
+                <TableCell className="px-2 py-1.5 whitespace-normal">
+                  <Badge variant="outline" className={`border-transparent font-normal ${LOOK_LABEL[v?.verdict ?? "unchecked"].tone}`}>
+                    {LOOK_LABEL[v?.verdict ?? "unchecked"].label}
+                  </Badge>
+                  {v?.reason && <div className="mt-1 text-muted-foreground">{v.reason}</div>}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      {c.reasoning && (
+        <div className="rounded-md bg-muted/50 px-3 py-2">
+          <p className="text-xs font-medium text-muted-foreground mb-1">Why{c.confidence ? ` · confidence: ${c.confidence}` : ""}</p>
+          <p className="text-sm whitespace-pre-wrap">{c.reasoning}</p>
+        </div>
+      )}
+      <details className="text-xs">
+        <summary className="cursor-pointer text-muted-foreground">Fact tables</summary>
+        <div className="mt-2 grid gap-3 lg:grid-cols-2">
+          {c.houses.map((h) => (
+            <div key={h.label} className="space-y-1">
+              <p className="font-medium">{h.label} · {houseName(h)}</p>
+              <ProofTable proof={{ egid: h.egid, facts: h.quick.facts, ruledOut: 0, total: 0 }} hideCount />
+            </div>
+          ))}
+        </div>
+      </details>
     </div>
   );
 }

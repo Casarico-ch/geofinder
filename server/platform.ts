@@ -21,6 +21,7 @@ import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, type AgentImage } from "./agent";
 import { type Candidate } from "./consensus";
 import { reviewRound } from "./review";
+import { startChallenge, viewChallenge } from "./challenge";
 import { MODELS, costUsd, elapsedMs, getJob, listJobs, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
@@ -692,6 +693,36 @@ export function registerPlatformRoutes(app: Express) {
       requestStatus: record?.status ?? null,
       recheck: check ? { jobId: check.jobId, model: check.model, status: check.status, answer: check.answer } : null,
     });
+  });
+
+  // A person challenges the result with another house: weighed in full depth
+  // against every house the searches named (challenge.ts). Opus, a few dollars.
+  app.post("/api/requests/:id/challenge", async (req: Request, res: Response) => {
+    const parsed = z.object({ address: z.string().trim().min(3).max(200) }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Expected { address }" });
+      return;
+    }
+    const record = getRequest(req.params.id);
+    if (!record || record.kind !== "listing") {
+      res.status(404).json({ error: "Only a listing request can be challenged (re-run an older search first)." });
+      return;
+    }
+    const src = (record.results ?? []).map((m) => getJob(m.jobId)).find((j) => !!j);
+    const images = src ? await loadListingPhotos(src.runDir) : [];
+    try {
+      const c = await startChallenge(record, parsed.data.address, images);
+      (record.challenges ??= []).push(c);
+      await saveRequest(record);
+      res.status(202).json(viewChallenge(c));
+    } catch (err) {
+      res.status(422).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  app.get("/api/requests/:id/challenges", (req: Request, res: Response) => {
+    const record = getRequest(req.params.id);
+    res.json({ challenges: (record?.challenges ?? []).map(viewChallenge).reverse() });
   });
 
   app.get("/api/requests/:id", (req: Request, res: Response) => {
