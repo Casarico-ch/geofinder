@@ -215,7 +215,7 @@ function taskText(listingText: string, houses: ChallengeHouse[], noneFound: bool
     `4. Mark EVERY one of ${list} match or rejected with mark_candidates, the reason naming the concrete difference or the concrete fit you see. At most one is a match.`,
     "5. Submit the winner. Your reasoning MUST be exactly these lines, nothing else (it is shown as a table):",
     `COMPARE: <criterion> | ${labels.map((l) => `${l}: <what ${l} has, a few words> (fits|no|unclear)`).join(" | ")}`,
-    "   one COMPARE line per criterion you checked, each one a separate line: living area, plot, homes, year built, rooms, roof shape, pool and garden, the street and surroundings, the neighbours, the view, and anything else the photos show. Keep each cell under 12 words.",
+    "   one COMPARE line per criterion you checked, each one a separate line: roof shape, pool and garden, the street and surroundings, the neighbours, the view, and anything else the photos or aerial show. Do NOT repeat living area, plot, homes or year built: the register rows already show them. Keep each cell under 12 words.",
     ...houses.map((h) => `${h.label}: WINS or LOSES — <one sentence>`),
     "DECIDED BY: <one sentence: the one thing that settles it>",
     "PHOTOS: <one sentence: what the photos could and could not show>",

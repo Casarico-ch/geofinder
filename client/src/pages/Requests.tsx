@@ -972,6 +972,9 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
   // The register's own living area and rooms were shown on the first challenges: often decades old, no longer shown.
   const facts = Array.from(new Set(c.houses.flatMap((h) => h.quick.facts.map((f) => f.fact)))).filter((f) => f !== "Register living area" && f !== "Rooms");
   const listingOf = (fact: string) => c.houses.flatMap((h) => h.quick.facts).find((f) => f.fact === fact)?.listing ?? "";
+  // The run's own lines for what the register rows already show are left out.
+  const compare = c.compare.filter((r) => !/^(living area|plot|homes|year built|rooms)\b/i.test(r.criterion.trim()));
+  const [open, setOpen] = useState(false);
   return (
     <div className="space-y-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -983,9 +986,11 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
           Trace <ExternalLink className="h-3 w-3" />
         </Link>
       </div>
-      <div className="space-y-1">
-        <p className={`text-base font-semibold ${head.tone}`}>{head.text}</p>
-      </div>
+      <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className={`text-base font-semibold ${head.tone}`}>{head.text}</span>
+        <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
       <Table className="text-xs table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -1024,7 +1029,7 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
               })}
             </TableRow>
           ))}
-          {c.compare.map((row) => (
+          {compare.map((row) => (
             <TableRow key={row.criterion} className="hover:bg-transparent align-top">
               <TableCell className="px-2 py-1.5 whitespace-normal">{row.criterion}</TableCell>
               {c.houses.map((h) => {
@@ -1039,6 +1044,7 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
           ))}
         </TableBody>
       </Table>
+      )}
     </div>
   );
 }
