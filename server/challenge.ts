@@ -65,6 +65,44 @@ export interface ChallengeView extends Challenge {
   confidence: string | null;
   reasoning: string | null;
   verdicts: Record<string, { verdict: LedgerEntry["verdict"]; reason: string | null; looked: boolean }>;
+  /** The reasoning, read into its parts (see taskText); empty parts when the run wrote free text. */
+  compare: { criterion: string; cells: Record<string, { text: string; fit: "yes" | "no" | "unclear" }> }[];
+  summary: Record<string, { wins: boolean; text: string }>;
+  decidedBy: string | null;
+  photos: string | null;
+  /** The register contradicts the winner on a fact (agent.ts registerContradiction): a caveat, not a different winner. */
+  caveat: string | null;
+}
+
+const FIT: Record<string, "yes" | "no" | "unclear"> = { fits: "yes", fit: "yes", yes: "yes", no: "no", "doesn't fit": "no", unclear: "unclear" };
+
+// "COMPARE: Plot | A: 800 m² vs 815 (fits) | B: 1355 m² (no)", "A: WINS — …", "DECIDED BY: …".
+export function readReasoning(text: string, labels: string[]) {
+  const compare: ChallengeView["compare"] = [];
+  const summary: ChallengeView["summary"] = {};
+  let decidedBy: string | null = null, photos: string | null = null, caveat: string | null = null;
+  const rest: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim().replace(/^[-*•]\s*/, "");
+    if (!line) continue;
+    let m: RegExpMatchArray | null;
+    if ((m = line.match(/^COMPARE:\s*(.+)$/i))) {
+      const [criterion, ...parts] = m[1].split("|").map((x) => x.trim());
+      const cells: Record<string, { text: string; fit: "yes" | "no" | "unclear" }> = {};
+      for (const part of parts) {
+        const c = part.match(/^([A-Z]):\s*(.*?)\s*(?:\((fits?|no|doesn't fit|unclear|yes)\))?$/i);
+        if (c && labels.includes(c[1].toUpperCase())) cells[c[1].toUpperCase()] = { text: c[2], fit: FIT[(c[3] ?? "unclear").toLowerCase()] ?? "unclear" };
+      }
+      if (criterion) compare.push({ criterion, cells });
+    } else if ((m = line.match(/^([A-Z])\s*(?::|—|-)\s*(WINS|LOSES)\b[\s:—-]*(.*)$/i)) && labels.includes(m[1].toUpperCase())) {
+      summary[m[1].toUpperCase()] = { wins: m[2].toUpperCase() === "WINS", text: m[3].trim() };
+    } else if ((m = line.match(/^DECIDED BY:\s*(.+)$/i))) decidedBy = m[1];
+    else if ((m = line.match(/^PHOTOS:\s*(.+)$/i))) photos = m[1];
+    else if ((m = line.match(/^Not confirmed: the register contradicts the listing — (.+?)\.?$/i))) caveat = m[1];
+    else rest.push(line);
+  }
+  if (!photos && rest.length) photos = rest.join(" ");
+  return { compare, summary, decidedBy, photos, caveat };
 }
 
 async function getJson(url: string, ms = 15_000): Promise<any> {
@@ -92,8 +130,39 @@ export async function findBuilding(query: string): Promise<GwrBuilding | null> {
   return typeof hit.lat === "number" && typeof hit.lon === "number" ? buildingAt(hit.lat, hit.lon) : null;
 }
 
+// Facts the register holds beyond the proof's three: shown side by side, never
+// deciding the quick verdict (a listed year can be a renovation, and the
+// register's own living area and rooms are often missing or rough).
+function moreRows(l: ReturnType<typeof listingFacts>, b: Partial<GwrBuilding>): Fact[] {
+  const rows: Fact[] = [];
+  if (l.year != null) {
+    const p = b.period ?? null;
+    const built = b.year ?? null;
+    const building = built != null ? String(built) : p ? (p[0] === 0 ? `before ${p[1] + 1}` : `${p[0]}–${p[1]}`) : "not in the register";
+    const fits = built != null ? Math.abs(built - l.year) <= 2 : p ? l.year >= p[0] - 1 && l.year <= p[1] + 1 : null;
+    rows.push({ fact: "Year built", listing: String(l.year), building, verdict: fits == null ? "unknown" : fits ? "match" : "mismatch" });
+  }
+  if (l.rooms != null && l.dwellings === 1) {
+    const r = b.rooms ?? null; // the register counts no kitchen: a listed 7 is 6 or 7
+    rows.push({
+      fact: "Rooms",
+      listing: String(l.rooms),
+      building: r == null ? "not in the register" : String(r),
+      verdict: r == null ? "unknown" : Math.abs(r - l.rooms) <= 1.5 ? "match" : "mismatch",
+    });
+  }
+  if (l.livingM2 != null && l.dwellings === 1 && b.livingM2 != null) {
+    const off = Math.abs(b.livingM2 - l.livingM2) / l.livingM2;
+    rows.push({ fact: "Register living area", listing: `${l.livingM2} m²`, building: `${b.livingM2} m²`, verdict: off <= 0.2 ? "match" : "mismatch" });
+  }
+  return rows;
+}
+
 /** The register facts of one building against the listing, with a plain verdict. */
-export async function quickCheck(listingText: string, b: Pick<GwrBuilding, "egid" | "lat" | "lon" | "floors" | "dwellings" | "footprintM2">) {
+export async function quickCheck(
+  listingText: string,
+  b: Pick<GwrBuilding, "egid" | "lat" | "lon" | "floors" | "dwellings" | "footprintM2"> & Partial<GwrBuilding>,
+) {
   const l = listingFacts(listingText);
   const own = await plotAt(b.lat, b.lon).catch(() => null);
   const group = own && l.landM2 != null && !l.sharedLand ? await plotGroupFor(own, l.landM2).catch(() => null) : null;
@@ -115,7 +184,8 @@ export async function quickCheck(listingText: string, b: Pick<GwrBuilding, "egid
     verdict = "unsure";
     reason = rows.length ? "Nothing rules it out, but no fact separates it from its neighbours." : "The listing states no size or home count to check.";
   }
-  return { verdict, reason, facts: rows.map(({ fact, listing, building, verdict: v }) => ({ fact, listing, building, verdict: v })) };
+  const facts = [...rows.map(({ fact, listing, building, verdict: v }) => ({ fact, listing, building, verdict: v })), ...moreRows(l, b)];
+  return { verdict, reason, facts };
 }
 
 const key = (egid: string | number) => String(Number(egid));
@@ -140,7 +210,8 @@ function taskText(listingText: string, houses: ChallengeHouse[], noneFound: bool
   const sug = houses.find((h) => h.suggested)!;
   const describe = (h: ChallengeHouse) =>
     `${h.label}: ${h.address ?? "?"}, ${h.commune ?? ""} (lat ${h.lat}, lon ${h.lon}) — EGID ${h.egid} on your checklist — ` +
-    (h.suggested ? "SUGGESTED BY A PERSON as a challenge" : `named by the search${h.namedBy.length > 1 ? "es" : ""} (${h.namedBy.join(", ")})`);
+    (h.suggested ? "SUGGESTED BY A PERSON as a challenge" : `named by the search${h.namedBy.length > 1 ? "es" : ""} (${h.namedBy.join(", ")})`) +
+    `\n   Register (already decoded, use these and do not re-derive them): ${h.quick.facts.map((f) => `${f.fact.toLowerCase()} ${f.building}`).join("; ")}.`;
   return [
     listingText,
     "",
@@ -155,9 +226,12 @@ function taskText(listingText: string, houses: ChallengeHouse[], noneFound: bool
     `2. render_roofs on ${list} and the houses right next to them: compare each roof's shape with the photos — hip or gable, ridge direction, dormers and roof windows, a lower wing — and each one's neighbours with the buildings beside the house in the photos.`,
     "3. Compare what the photos show of the place: which side the garden, terrace and pool face, the slope, the street, its place in a row, a shed, a carport, the view.",
     `4. Mark EVERY one of ${list} match or rejected with mark_candidates, the reason naming the concrete difference or the concrete fit you see. At most one is a match.`,
-    "5. Submit the winner. Your reasoning MUST be a breakdown in this form, one line per house, then one line on what decided it:",
-    ...houses.map((h) => `${h.label} — WINS or LOSES: <the facts and visible details for and against>`),
-    "DECIDED BY: <the one thing that settles it>",
+    "5. Submit the winner. Your reasoning MUST be exactly these lines, nothing else (it is shown as a table):",
+    `COMPARE: <criterion> | ${labels.map((l) => `${l}: <what ${l} has, a few words> (fits|no|unclear)`).join(" | ")}`,
+    "   one COMPARE line per criterion you checked, each one a separate line: living area, plot, homes, year built, rooms, roof shape, pool and garden, the street and surroundings, the neighbours, the view, and anything else the photos show. Keep each cell under 12 words.",
+    ...houses.map((h) => `${h.label}: WINS or LOSES — <one sentence>`),
+    "DECIDED BY: <one sentence: the one thing that settles it>",
+    "PHOTOS: <one sentence: what the photos could and could not show>",
     `6. If you rejected ALL of ${list} with a visible difference, you may name a neighbour instead; if nothing fits clearly, submit found=false at block confidence and say what would separate them.`,
   ].join("\n");
 }
@@ -241,12 +315,21 @@ export function viewChallenge(c: Challenge): ChallengeView {
     verdicts[h.label] = { verdict: e?.verdict ?? "unchecked", reason: e?.reason ?? null, looked: !!e?.closeLook };
   }
   const a = job?.answer ?? null;
+  const read = readReasoning(a?.reasoning ?? "", c.houses.map((h) => h.label));
   let winner: string | null = null;
   if (a?.found && search && exactAddressOf(a)) {
     const picked = claimedEntry(search, { lat: a.latitude, lon: a.longitude, address: a.address });
     winner = (picked && c.houses.find((h) => h.egid === key(picked.egid))?.label) ?? "other";
+  } else if (job && job.status !== "running") {
+    // The pick the register contradicts is recorded "not found" (agent.ts), but
+    // the comparison still has a winner: the one house marked match. The
+    // contradiction is shown beside it as a caveat (Lancy, 13.10).
+    const matched = c.houses.filter((h) => verdicts[h.label]?.verdict === "match");
+    const said = c.houses.filter((h) => read.summary[h.label]?.wins);
+    winner = matched.length === 1 ? matched[0].label : said.length === 1 ? said[0].label : null;
   }
   return {
+    ...read,
     ...c,
     status: job?.status ?? "error",
     costUsd: job ? costUsd(job.tokens, job.model) : 0,

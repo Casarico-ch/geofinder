@@ -39,6 +39,7 @@ export interface GwrBuilding {
   klass: number | null; // gklas (1272 = church or other religious building)
   status: number | null; // gstat (1004 = existing)
   year: number | null; // gbauj
+  period?: [number, number] | null; // gbaup: the construction period, when the exact year is not known
   postcode: number | null; // dplz4
   // The one home of a single-home building: its living area (warea, m²) and
   // rooms (wazim, kitchen not counted). Null for several homes or when unknown.
@@ -237,6 +238,12 @@ export async function neighbourCommunes(
   return out.sort((a, b) => a.distanceM - b.distanceM).slice(0, max);
 }
 
+// gbaup codes: the register's construction periods.
+const PERIODS: Record<number, [number, number]> = {
+  8011: [0, 1918], 8012: [1919, 1945], 8013: [1946, 1960], 8014: [1961, 1970], 8015: [1971, 1980], 8016: [1981, 1985],
+  8017: [1986, 1990], 8018: [1991, 1995], 8019: [1996, 2000], 8020: [2001, 2005], 8021: [2006, 2010], 8022: [2011, 2015], 8023: [2016, 2100],
+};
+
 function toBuilding(f: any): GwrBuilding | null {
   const p = f.properties ?? f.attributes ?? {};
   const coords = f.geometry?.coordinates;
@@ -257,6 +264,7 @@ function toBuilding(f: any): GwrBuilding | null {
     klass: num(p.gklas),
     status: num(p.gstat),
     year: num(p.gbauj),
+    period: PERIODS[Number(p.gbaup)] ?? null,
     postcode: num(p.dplz4),
     livingM2: single(p.ganzwhg, p.warea),
     rooms: single(p.ganzwhg, p.wazim),
