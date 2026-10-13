@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Swords, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Swords, Trash2, Check, X, Minus } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -860,12 +860,6 @@ interface ChallengeView {
   caveat: string | null;
 }
 
-const LOOK_LABEL: Record<HouseVerdict, { label: string; tone: string }> = {
-  match: { label: "Match", tone: "bg-emerald-500/10 text-emerald-700" },
-  rejected: { label: "Rejected", tone: "bg-red-500/10 text-red-700" },
-  possible: { label: "Possible", tone: "bg-amber-500/10 text-amber-700" },
-  unchecked: { label: "Not judged", tone: "bg-muted text-muted-foreground" },
-};
 const houseName = (h: ChallengeHouse) => [h.address, h.commune].filter(Boolean).join(", ") || `EGID ${h.egid}`;
 
 // The headline: who won, in one sentence.
@@ -954,22 +948,20 @@ function Challenger({ r }: { r: PlatformRequest }) {
   );
 }
 
-const FIT_TONE: Record<"yes" | "no" | "unclear", string> = {
-  yes: "bg-emerald-500/10 text-emerald-700",
-  no: "bg-red-500/10 text-red-700",
-  unclear: "bg-muted text-muted-foreground",
-};
-const FIT_WORD: Record<"yes" | "no" | "unclear", string> = { yes: "Fits", no: "No", unclear: "Unclear" };
 const FACT_FIT: Record<AnswerProof["facts"][number]["verdict"], "yes" | "no" | "unclear"> = { match: "yes", mismatch: "no", unknown: "unclear" };
 
 function FitCell({ text, fit }: { text: string; fit: "yes" | "no" | "unclear" }) {
   return (
-    <div className="flex flex-col items-start gap-1 sm:flex-row sm:justify-between sm:gap-2">
-      <span className="tabular-nums">{text}</span>
-      <Badge variant="outline" className={`shrink-0 border-transparent font-normal ${FIT_TONE[fit]}`}>
-        {FIT_WORD[fit]}
-      </Badge>
-    </div>
+    <span className={`inline-flex items-start gap-1.5 tabular-nums ${fit === "no" ? "text-red-700" : ""}`}>
+      {fit === "yes" ? (
+        <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+      ) : fit === "no" ? (
+        <X className="mt-0.5 h-3 w-3 shrink-0" />
+      ) : (
+        <Minus className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+      )}
+      {text}
+    </span>
   );
 }
 
@@ -1000,9 +992,6 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
       <div className="space-y-1">
         <p className={`text-base font-semibold ${head.tone}`}>{head.text}</p>
         {c.decidedBy && <p className="text-sm text-muted-foreground">Decided by: {c.decidedBy}</p>}
-        {c.caveat && (
-          <p className="text-xs text-amber-700">Register caveat on the winner: {c.caveat}. Its other facts outweighed it.</p>
-        )}
       </div>
       <Table className="text-xs table-fixed">
         <TableHeader>
@@ -1026,22 +1015,6 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {c.status === "done" && (
-            <TableRow className="hover:bg-transparent align-top">
-              <TableCell className="px-2 py-2 font-medium">Verdict</TableCell>
-              {c.houses.map((h) => {
-                const v = c.verdicts[h.label]?.verdict ?? "unchecked";
-                return (
-                  <TableCell key={h.label} className="px-2 py-2 whitespace-normal">
-                    <Badge variant="outline" className={`border-transparent font-normal ${LOOK_LABEL[v].tone}`}>
-                      {LOOK_LABEL[v].label}
-                    </Badge>
-                    <div className="mt-1 text-muted-foreground">{c.summary[h.label]?.text ?? c.verdicts[h.label]?.reason ?? ""}</div>
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          )}
           {section("From the register")}
           {facts.map((fact) => (
             <TableRow key={fact} className="hover:bg-transparent align-top">
@@ -1075,7 +1048,6 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
           ))}
         </TableBody>
       </Table>
-      {c.photos && <p className="text-xs text-muted-foreground">Photos: {c.photos}</p>}
     </div>
   );
 }
