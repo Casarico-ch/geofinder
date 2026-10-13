@@ -13,6 +13,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { RUNS_ROOT } from "./sandbox";
 import { deleteJob, getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type KnownModel } from "./jobs";
+import type { Challenge } from "./challenge";
 import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 
 // "paused" is display-only: a request whose unfinished runs are all paused.
@@ -61,6 +62,8 @@ export interface PlatformRequest {
   plotErrors?: { plot: string; error: string; candidates?: LandCandidate[] }[];
   // listing requests
   results?: ModelResult[];
+  // houses a person suggested, each weighed in full depth against the ones found (challenge.ts)
+  challenges?: Challenge[];
   popetyCostChf: number;
   error?: string;
   source?: "platform" | "website";
@@ -162,7 +165,10 @@ export async function createRequestFromJobs(jobs: Job[]): Promise<PlatformReques
 // in them, and any other request that held one of those runs.
 export async function deleteRows(requestIds: string[], jobIds: string[]): Promise<number> {
   const jobSet = new Set(jobIds);
-  for (const id of requestIds) for (const m of requests.get(id)?.results ?? []) jobSet.add(m.jobId);
+  for (const id of requestIds) {
+    for (const m of requests.get(id)?.results ?? []) jobSet.add(m.jobId);
+    for (const c of requests.get(id)?.challenges ?? []) jobSet.add(c.jobId);
+  }
   const reqSet = new Set(requestIds.filter((id) => requests.has(id)));
   for (const r of Array.from(requests.values())) if ((r.results ?? []).some((m) => jobSet.has(m.jobId))) reqSet.add(r.id);
   for (const id of Array.from(reqSet)) {
@@ -192,7 +198,7 @@ const withoutCheck = (t?: string): string => {
 // carry the same listing and started within a few minutes of each other.
 export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const all = listRequests();
-  const claimed = new Set(all.flatMap((r) => (r.results ?? []).map((m) => m.jobId)));
+  const claimed = new Set(all.flatMap((r) => [...(r.results ?? []).map((m) => m.jobId), ...(r.challenges ?? []).map((c) => c.jobId)]));
   const loose = listJobs()
     // Practice searches (practice.ts) are shown on the Practice page only.
     .filter((j) => !claimed.has(j.id) && !j.input.listingId?.startsWith("practice-"))
