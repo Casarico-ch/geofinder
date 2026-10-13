@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Search, Trash2 } from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -430,12 +431,12 @@ const VERDICT_TONE: Record<AnswerProof["facts"][number]["verdict"], string> = {
 
 // The listing's own facts against the building's, and how much of the
 // checklist was ruled out: what the answer rests on.
-function ProofTable({ proof }: { proof: AnswerProof }) {
+function ProofTable({ proof, hideCount }: { proof: AnswerProof; hideCount?: boolean }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs text-muted-foreground tabular-nums">
-        {proof.ruledOut} of {proof.total} candidates ruled out
-        {proof.egid ? ` · EGID ${proof.egid}` : ""}
+        {hideCount ? "" : `${proof.ruledOut} of ${proof.total} candidates ruled out`}
+        {proof.egid ? `${hideCount ? "" : " · "}EGID ${proof.egid}` : ""}
       </p>
       {proof.facts.length > 0 && (
         <Table className="text-xs">
@@ -819,9 +820,97 @@ function RequestDetails({ r }: { r: PlatformRequest }) {
             <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">{r.input.listingText}</p>
           )}
           <Attempts r={r} />
+          <Challenger r={r} />
         </>
       )}
     </div>
+  );
+}
+
+// Mirrors server/challenge.ts ChallengeResult.
+interface ChallengeResult {
+  query: string;
+  address: string | null;
+  commune: string | null;
+  egid: string;
+  verdict: "yes" | "likely" | "no" | "unsure";
+  reason: string;
+  facts: AnswerProof["facts"];
+  sameAsAnswer: boolean;
+}
+
+const CHALLENGE_LABEL: Record<ChallengeResult["verdict"], { label: string; tone: string }> = {
+  yes: { label: "It's the one", tone: "bg-emerald-500/10 text-emerald-700" },
+  likely: { label: "Probably", tone: "bg-emerald-500/10 text-emerald-700" },
+  no: { label: "Not the one", tone: "bg-red-500/10 text-red-700" },
+  unsure: { label: "Can't tell", tone: "bg-amber-500/10 text-amber-700" },
+};
+
+// Suggest an address of your own and get a straight answer: is it the house?
+// The building is checked against the listing's facts, as an answer is (server/challenge.ts).
+function Challenger({ r }: { r: PlatformRequest }) {
+  const [address, setAddress] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<ChallengeResult[]>([]);
+  const answerEgid = (r.results ?? []).map((m) => m.answer?.proof?.egid).find((e) => !!e) ?? null;
+  const check = async () => {
+    if (address.trim().length < 3) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/requests/${encodeURIComponent(r.id)}/challenge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: address.trim(), answerEgid }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      setResults((prev) => [body as ChallengeResult, ...prev]);
+      setAddress("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not check that address.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="gap-3 py-3.5 px-3.5 shadow-none">
+      <div>
+        <p className="text-sm font-semibold">Suggest an address</p>
+        <p className="text-xs text-muted-foreground">Checked against the listing's facts in the building register. Photos are not compared.</p>
+      </div>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void check();
+        }}
+      >
+        <Input
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Street and number, postcode — or an EGID"
+          aria-label="Challenger address"
+          disabled={busy}
+        />
+        <Button type="submit" size="sm" className="h-9" disabled={busy || address.trim().length < 3}>
+          {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1.5 h-3.5 w-3.5" />}
+          Check
+        </Button>
+      </form>
+      {results.map((c, i) => (
+        <div key={`${c.egid}-${i}`} className="space-y-2 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className={`border-transparent ${CHALLENGE_LABEL[c.verdict].tone}`}>
+              {CHALLENGE_LABEL[c.verdict].label}
+            </Badge>
+            <span className="text-sm font-medium">{[c.address, c.commune].filter(Boolean).join(", ") || c.query}</span>
+            {c.sameAsAnswer && <span className="text-xs text-muted-foreground">· same house as the answer</span>}
+          </div>
+          <p className="text-sm">{c.reason}</p>
+          <ProofTable proof={{ egid: c.egid, facts: c.facts, ruledOut: 0, total: 0 }} hideCount />
+        </div>
+      ))}
+    </Card>
   );
 }
 

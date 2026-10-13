@@ -21,6 +21,7 @@ import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, type AgentImage } from "./agent";
 import { type Candidate } from "./consensus";
 import { reviewRound } from "./review";
+import { challenge } from "./challenge";
 import { MODELS, costUsd, elapsedMs, getJob, listJobs, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
@@ -692,6 +693,26 @@ export function registerPlatformRoutes(app: Express) {
       requestStatus: record?.status ?? null,
       recheck: check ? { jobId: check.jobId, model: check.model, status: check.status, answer: check.answer } : null,
     });
+  });
+
+  // A challenger address for a listing request: is it the house? (challenge.ts)
+  app.post("/api/requests/:id/challenge", async (req: Request, res: Response) => {
+    const parsed = z.object({ address: z.string().trim().min(3).max(200), answerEgid: z.string().max(20).nullish() }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Expected { address }" });
+      return;
+    }
+    const record = getRequest(req.params.id) ?? listRequestsWithLooseJobs().find((r) => r.id === req.params.id);
+    const text = record?.input.listingText;
+    if (!record || record.kind !== "listing" || !text) {
+      res.status(404).json({ error: "No listing request with that id" });
+      return;
+    }
+    try {
+      res.json(await challenge(text, parsed.data.address, parsed.data.answerEgid));
+    } catch (err) {
+      res.status(422).json({ error: err instanceof Error ? err.message : String(err) });
+    }
   });
 
   app.get("/api/requests/:id", (req: Request, res: Response) => {
