@@ -853,14 +853,13 @@ interface ChallengeView {
   confidence: string | null;
   reasoning: string | null;
   verdicts: Record<string, { verdict: HouseVerdict; reason: string | null; looked: boolean }>;
+  compare: { criterion: string; cells: Record<string, { text: string; fit: "yes" | "no" | "unclear" }> }[];
+  summary: Record<string, { wins: boolean; text: string }>;
+  decidedBy: string | null;
+  photos: string | null;
+  caveat: string | null;
 }
 
-const QUICK_LABEL: Record<ChallengeHouse["quick"]["verdict"], { label: string; tone: string }> = {
-  yes: { label: "Facts prove it", tone: "bg-emerald-500/10 text-emerald-700" },
-  likely: { label: "Facts fit", tone: "bg-emerald-500/10 text-emerald-700" },
-  no: { label: "Facts rule it out", tone: "bg-red-500/10 text-red-700" },
-  unsure: { label: "Facts can't tell", tone: "bg-muted text-muted-foreground" },
-};
 const LOOK_LABEL: Record<HouseVerdict, { label: string; tone: string }> = {
   match: { label: "Match", tone: "bg-emerald-500/10 text-emerald-700" },
   rejected: { label: "Rejected", tone: "bg-red-500/10 text-red-700" },
@@ -955,10 +954,40 @@ function Challenger({ r }: { r: PlatformRequest }) {
   );
 }
 
+const FIT_TONE: Record<"yes" | "no" | "unclear", string> = {
+  yes: "bg-emerald-500/10 text-emerald-700",
+  no: "bg-red-500/10 text-red-700",
+  unclear: "bg-muted text-muted-foreground",
+};
+const FIT_WORD: Record<"yes" | "no" | "unclear", string> = { yes: "Fits", no: "No", unclear: "Unclear" };
+const FACT_FIT: Record<AnswerProof["facts"][number]["verdict"], "yes" | "no" | "unclear"> = { match: "yes", mismatch: "no", unknown: "unclear" };
+
+function FitCell({ text, fit }: { text: string; fit: "yes" | "no" | "unclear" }) {
+  return (
+    <div className="flex flex-col items-start gap-1 sm:flex-row sm:justify-between sm:gap-2">
+      <span className="tabular-nums">{text}</span>
+      <Badge variant="outline" className={`shrink-0 border-transparent font-normal ${FIT_TONE[fit]}`}>
+        {FIT_WORD[fit]}
+      </Badge>
+    </div>
+  );
+}
+
+// One table, a column per house: the register's facts, then everything the
+// close look compared (roof, garden, street, neighbours…), the winner marked.
 function ChallengeBlock({ c }: { c: ChallengeView }) {
   const head = challengeHeadline(c);
+  const facts = Array.from(new Set(c.houses.flatMap((h) => h.quick.facts.map((f) => f.fact))));
+  const listingOf = (fact: string) => c.houses.flatMap((h) => h.quick.facts).find((f) => f.fact === fact)?.listing ?? "";
+  const section = (title: string) => (
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={c.houses.length + 1} className="px-2 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </TableCell>
+    </TableRow>
+  );
   return (
-    <div className="space-y-2 border-t border-border pt-3">
+    <div className="space-y-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <StatusIcon status={c.status} />
         <span>Challenge with {c.query}</span>
@@ -968,65 +997,85 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
           Trace <ExternalLink className="h-3 w-3" />
         </Link>
       </div>
-      <p className={`text-sm font-semibold ${head.tone}`}>{head.text}</p>
-      <Table className="text-xs">
+      <div className="space-y-1">
+        <p className={`text-base font-semibold ${head.tone}`}>{head.text}</p>
+        {c.decidedBy && <p className="text-sm text-muted-foreground">Decided by: {c.decidedBy}</p>}
+        {c.caveat && (
+          <p className="text-xs text-amber-700">Register caveat on the winner: {c.caveat}. Its other facts outweighed it.</p>
+        )}
+      </div>
+      <Table className="text-xs table-fixed">
         <TableHeader>
-          <TableRow>
-            <TableHead className="h-7 px-2">House</TableHead>
-            <TableHead className="h-7 px-2">Register facts</TableHead>
-            <TableHead className="h-7 px-2">Close look</TableHead>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="h-auto px-2 py-2 w-[24%] align-bottom">Criterion</TableHead>
+            {c.houses.map((h) => (
+              <TableHead key={h.label} className="h-auto px-2 py-2 align-bottom whitespace-normal">
+                <div className="flex flex-wrap items-center gap-1.5 text-foreground font-medium">
+                  {h.label} · {houseName(h)}
+                  {c.winner === h.label && (
+                    <Badge variant="outline" className="border-transparent bg-emerald-500/10 text-emerald-700">
+                      Wins
+                    </Badge>
+                  )}
+                </div>
+                <div className="font-normal">
+                  {h.suggested ? "Your suggestion" : `Found by ${h.namedBy.map((m) => MODEL_LABEL[m.replace(/ \(check\)$/, "")] ?? m).join(", ")}`}
+                </div>
+              </TableHead>
+            ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {c.houses.map((h) => {
-            const v = c.verdicts[h.label];
-            const won = c.winner === h.label;
-            return (
-              <TableRow key={h.label} className="align-top">
-                <TableCell className="px-2 py-1.5 whitespace-normal">
-                  <div className="font-medium">
-                    {h.label} · {houseName(h)}
-                    {won && <Badge variant="outline" className="ml-1.5 border-transparent bg-emerald-500/10 text-emerald-700">Wins</Badge>}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {h.suggested ? "Your suggestion" : `Found by ${h.namedBy.map((m) => MODEL_LABEL[m.replace(/ \(check\)$/, "")] ?? m).join(", ")}`}
-                    {` · EGID ${h.egid}`}
-                  </div>
-                </TableCell>
-                <TableCell className="px-2 py-1.5 whitespace-normal">
-                  <Badge variant="outline" className={`border-transparent font-normal ${QUICK_LABEL[h.quick.verdict].tone}`}>
-                    {QUICK_LABEL[h.quick.verdict].label}
-                  </Badge>
-                  <div className="mt-1 text-muted-foreground">{h.quick.reason}</div>
-                </TableCell>
-                <TableCell className="px-2 py-1.5 whitespace-normal">
-                  <Badge variant="outline" className={`border-transparent font-normal ${LOOK_LABEL[v?.verdict ?? "unchecked"].tone}`}>
-                    {LOOK_LABEL[v?.verdict ?? "unchecked"].label}
-                  </Badge>
-                  {v?.reason && <div className="mt-1 text-muted-foreground">{v.reason}</div>}
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {c.status === "done" && (
+            <TableRow className="hover:bg-transparent align-top">
+              <TableCell className="px-2 py-2 font-medium">Verdict</TableCell>
+              {c.houses.map((h) => {
+                const v = c.verdicts[h.label]?.verdict ?? "unchecked";
+                return (
+                  <TableCell key={h.label} className="px-2 py-2 whitespace-normal">
+                    <Badge variant="outline" className={`border-transparent font-normal ${LOOK_LABEL[v].tone}`}>
+                      {LOOK_LABEL[v].label}
+                    </Badge>
+                    <div className="mt-1 text-muted-foreground">{c.summary[h.label]?.text ?? c.verdicts[h.label]?.reason ?? ""}</div>
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          )}
+          {section("From the register")}
+          {facts.map((fact) => (
+            <TableRow key={fact} className="hover:bg-transparent align-top">
+              <TableCell className="px-2 py-1.5 whitespace-normal">
+                {fact}
+                <div className="text-muted-foreground">Listing: {listingOf(fact)}</div>
+              </TableCell>
+              {c.houses.map((h) => {
+                const f = h.quick.facts.find((x) => x.fact === fact);
+                return (
+                  <TableCell key={h.label} className="px-2 py-1.5 whitespace-normal">
+                    {f ? <FitCell text={f.building} fit={FACT_FIT[f.verdict]} /> : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          ))}
+          {c.compare.length > 0 && section("From the close look")}
+          {c.compare.map((row) => (
+            <TableRow key={row.criterion} className="hover:bg-transparent align-top">
+              <TableCell className="px-2 py-1.5 whitespace-normal">{row.criterion}</TableCell>
+              {c.houses.map((h) => {
+                const cell = row.cells[h.label];
+                return (
+                  <TableCell key={h.label} className="px-2 py-1.5 whitespace-normal">
+                    {cell ? <FitCell text={cell.text} fit={cell.fit} /> : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
-      {c.reasoning && (
-        <div className="rounded-md bg-muted/50 px-3 py-2">
-          <p className="text-xs font-medium text-muted-foreground mb-1">Why{c.confidence ? ` · confidence: ${c.confidence}` : ""}</p>
-          <p className="text-sm whitespace-pre-wrap">{c.reasoning}</p>
-        </div>
-      )}
-      <details className="text-xs">
-        <summary className="cursor-pointer text-muted-foreground">Fact tables</summary>
-        <div className="mt-2 grid gap-3 lg:grid-cols-2">
-          {c.houses.map((h) => (
-            <div key={h.label} className="space-y-1">
-              <p className="font-medium">{h.label} · {houseName(h)}</p>
-              <ProofTable proof={{ egid: h.egid, facts: h.quick.facts, ruledOut: 0, total: 0 }} hideCount />
-            </div>
-          ))}
-        </div>
-      </details>
+      {c.photos && <p className="text-xs text-muted-foreground">Photos: {c.photos}</p>}
     </div>
   );
 }
