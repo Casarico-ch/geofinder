@@ -4,6 +4,13 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import {
+  LABEL_BAR_PX,
+  MAX_CLIPS,
+  MAX_PAGES,
+  MAX_RECORD_MS,
+  MAX_STITCH_PX,
+  RESUME_MAX_AGE_MS,
+  URL_SETTLE_MS,
   barCopy,
   confirmBody,
   filedToast,
@@ -12,8 +19,17 @@ import {
   labelFor,
   maskClone,
   notesFromReply,
+  pageLabel,
   popPlace,
+  readBody,
+  readRecord,
+  resumeDecision,
   shortcutAction,
+  stitchLayout,
+  urlWatchStep,
+  type CapturedPage,
+  type SessionRecord,
+  type UrlWatch,
 } from "../client/src/lib/magic-feedback";
 import {
   CONFIRM_TIMEOUT_MS,
@@ -89,8 +105,7 @@ await check("pins are numbered in spoken order, not by element index", () => {
       { n: 2, text: "two" },
       { n: 11, text: "eleven" },
     ],
-    elements,
-    { width: 1000, height: 800 }
+    [{ elements, vw: 1000, vh: 800 }]
   );
   assert.deepEqual(
     notes.map(n => [n.text, n.label]),
@@ -110,24 +125,34 @@ await check(
         { n: 1, text: "b" },
         { n: 99, text: "nowhere" },
       ],
-      [{ label: "top", x: 0, y: 0, w: 40, h: 20 }],
-      { width: 1000, height: 800 }
+      [
+        {
+          elements: [{ label: "top", x: 0, y: 0, w: 40, h: 20 }],
+          vw: 1000,
+          vh: 800,
+        },
+      ]
     );
     assert.equal(notes.length, 2);
     assert.equal(notes[1].x - notes[0].x, 28);
     assert.equal(notes[0].y, 14);
     const edge = notesFromReply(
       [{ n: 1, text: "x" }],
-      [{ label: "r", x: 990, y: 50, w: 40, h: 20 }],
-      { width: 1000, height: 800 }
+      [
+        {
+          elements: [{ label: "r", x: 990, y: 50, w: 40, h: 20 }],
+          vw: 1000,
+          vh: 800,
+        },
+      ]
     );
     assert.equal(edge[0].x, 984);
   }
 );
 await check("only notes with words are kept and filed", () => {
   const notes = [
-    { text: "keep", label: "", x: 0, y: 0 },
-    { text: "   ", label: "", x: 0, y: 0 },
+    { text: "keep", label: "", x: 0, y: 0, page: 1 },
+    { text: "   ", label: "", x: 0, y: 0, page: 0 },
   ];
   assert.equal(keptNotes(notes).length, 1);
   const body = confirmBody(
@@ -140,10 +165,19 @@ await check("only notes with words are kept and filed", () => {
       questions: ["q"],
     },
     notes,
-    "data:image/png;base64,AA",
-    "https://x/"
+    "data:image/jpeg;base64,AA",
+    [{ url: "https://x/a" }, { url: "https://x/b" }]
   );
-  assert.deepEqual(body.notes, [{ text: "keep" }]);
+  assert.deepEqual(body.notes, [{ text: "keep", page: 1 }]);
+  assert.equal(
+    body.url,
+    "https://x/a",
+    "the start page, not the page at send time"
+  );
+  assert.deepEqual(body.pages, [
+    { url: "https://x/a" },
+    { url: "https://x/b" },
+  ]);
   assert.equal("by" in body, false);
 });
 await check("bar copy, clock, pop placement and toasts", () => {
@@ -165,6 +199,248 @@ await check("bar copy, clock, pop placement and toasts", () => {
   assert.equal(filedToast(false), "Sent to Rico — in Backlog and started.");
   assert.equal(filedToast(true), "Added to a card already on the board.");
 });
+
+// ---- one recording, many pages ---------------------------------------------------
+await check(
+  "annotations map onto their own page; a missing page is page 0",
+  () => {
+    const pages = [
+      {
+        elements: [{ label: "p1a", x: 0, y: 50, w: 40, h: 20 }],
+        vw: 1000,
+        vh: 800,
+      },
+      {
+        elements: [
+          { label: "p2a", x: 100, y: 60, w: 40, h: 20 },
+          { label: "p2b", x: 980, y: 70, w: 40, h: 20 },
+        ],
+        vw: 600,
+        vh: 500,
+      },
+    ];
+    const notes = notesFromReply(
+      [
+        { n: 1, text: "old cockpit" },
+        { n: 2, text: "second page", page: 1 },
+        { n: 1, text: "first", page: 0 },
+        { n: 1, text: "same n, other page", page: 1 },
+        { n: 2, text: "not on page 0", page: 0 },
+        { n: 1, text: "no such page", page: 5 },
+        { n: 1, text: "bad page", page: 0.5 },
+      ],
+      pages
+    );
+    assert.deepEqual(
+      notes.map(n => [n.text, n.label, n.page]),
+      [
+        ["old cockpit", "p1a", 0],
+        ["second page", "p2b", 1],
+        ["first", "p1a", 0],
+        ["same n, other page", "p2a", 1],
+      ]
+    );
+    // pins clamp to the viewport the page was captured in, not the current one
+    assert.equal(notes[1].x, 584);
+    // two notes on page 0 element 1 sit side by side; page 1 element 1 starts fresh
+    assert.equal(notes[2].x - notes[0].x, 28);
+    assert.equal(notes[3].x, 120);
+  }
+);
+await check(
+  "the address must hold still for the settle time before a page is captured",
+  () => {
+    let w: UrlWatch = { current: "https://g/a", pending: null };
+    let step = urlWatchStep(w, "https://g/a", 0);
+    assert.equal(step.capture, false);
+    step = urlWatchStep(step.watch, "https://g/b", 1000);
+    assert.equal(step.capture, false);
+    assert.deepEqual(step.watch.pending, { href: "https://g/b", since: 1000 });
+    step = urlWatchStep(step.watch, "https://g/b", 1000 + URL_SETTLE_MS - 1);
+    assert.equal(step.capture, false);
+    // moved on again before settling: the clock restarts on the newest address
+    step = urlWatchStep(step.watch, "https://g/c", 1500);
+    assert.equal(step.capture, false);
+    step = urlWatchStep(step.watch, "https://g/c", 1500 + URL_SETTLE_MS - 100);
+    assert.equal(step.capture, false);
+    step = urlWatchStep(step.watch, "https://g/c", 1500 + URL_SETTLE_MS);
+    assert.equal(step.capture, true);
+    // went back before settling: nothing to capture, pending cleared
+    w = { current: "https://g/a", pending: { href: "https://g/b", since: 0 } };
+    step = urlWatchStep(w, "https://g/a", 5000);
+    assert.equal(step.capture, false);
+    assert.equal(step.watch.pending, null);
+    assert.equal(URL_SETTLE_MS, 800);
+    assert.equal(MAX_PAGES, 5);
+  }
+);
+await check(
+  "stitch: one page is just its picture; more get label bars; tall stacks scale down",
+  () => {
+    const one = stitchLayout([{ w: 2000, h: 1200 }]);
+    assert.deepEqual(one, {
+      width: 2000,
+      height: 1200,
+      scale: 1,
+      blocks: [{ labelTop: null, imageTop: 0 }],
+    });
+    const two = stitchLayout([
+      { w: 1000, h: 800 },
+      { w: 1200, h: 600 },
+    ]);
+    assert.equal(two.width, 1200);
+    assert.equal(two.height, 800 + 600 + 2 * LABEL_BAR_PX);
+    assert.deepEqual(two.blocks, [
+      { labelTop: 0, imageTop: 28 },
+      { labelTop: 828, imageTop: 856 },
+    ]);
+    const tall = stitchLayout(
+      Array.from({ length: 5 }, () => ({ w: 2880, h: 1800 }))
+    );
+    const raw = 5 * (1800 + LABEL_BAR_PX);
+    assert.equal(tall.scale, MAX_STITCH_PX / raw);
+    assert.equal(tall.height, MAX_STITCH_PX);
+    assert.equal(tall.width, Math.round(2880 * (MAX_STITCH_PX / raw)));
+  }
+);
+await check("page label names the page and its path", () => {
+  assert.equal(
+    pageLabel(0, "https://geo.test/results?id=4#x"),
+    "Page 1 · /results?id=4#x"
+  );
+  assert.equal(pageLabel(2, "not a url"), "Page 3 · not a url");
+});
+const pg = (url: string, at: number): CapturedPage => ({
+  shot: "data:image/jpeg;base64," + url.length,
+  elements: [{ label: "x", x: 1, y: 2, w: 10, h: 10 }],
+  url,
+  at,
+  vw: 1000,
+  vh: 700,
+});
+await check(
+  "the read body always carries the legacy fields from page 1 and clip 1",
+  () => {
+    const body = readBody({
+      pages: [pg("https://g/a", 0), pg("https://g/bb", 4000)],
+      clips: [
+        { audio: "data:audio/webm;base64,AA", at: 0 },
+        { audio: "data:audio/webm;base64,BB", at: 9000 },
+      ],
+      mousePath: [{ x: 1, y: 1, t: 5 }],
+      clicks: [],
+      ms: 12000,
+    });
+    assert.equal(body.shot, body.pages[0].shot);
+    assert.deepEqual(body.elements, body.pages[0].elements);
+    assert.equal(body.url, "https://g/a");
+    assert.equal(body.audio, body.clips[0].audio);
+    assert.equal(body.ms, 12000);
+    assert.equal(body.pages.length, 2);
+    assert.deepEqual(body.clips, [
+      { audio: "data:audio/webm;base64,AA", at: 0 },
+      { audio: "data:audio/webm;base64,BB", at: 9000 },
+    ]);
+    assert.deepEqual(Object.keys(body.pages[1]).sort(), [
+      "at",
+      "elements",
+      "shot",
+      "url",
+      "vh",
+      "vw",
+    ]);
+    const capped = readBody({
+      pages: Array.from({ length: 7 }, (_, i) => pg("https://g/" + i, i)),
+      clips: Array.from({ length: 9 }, (_, i) => ({ audio: "a" + i, at: i })),
+      mousePath: [],
+      clicks: [],
+      ms: 1,
+    });
+    assert.equal(capped.pages.length, MAX_PAGES);
+    assert.equal(capped.clips.length, MAX_CLIPS);
+  }
+);
+
+// ---- surviving a page load (a fake store standing in for IndexedDB) -----------------
+await check(
+  "a saved recording round-trips through the store and resumes, reads back, or is dropped",
+  async () => {
+    const store = new Map<string, unknown>();
+    // structuredClone is what IndexedDB does to a value it stores
+    const put = (k: string, v: unknown) => store.set(k, structuredClone(v));
+    const now = 1_000_000;
+    const rec: SessionRecord = {
+      v: 1,
+      startedAt: now - 30_000,
+      phase: "recording",
+      stopped: false,
+      pages: [pg("https://g/a", 0), pg("https://g/b", 8000)],
+      clips: [{ at: 0, mime: "audio/webm", chunks: [new Blob(["abc"])] }],
+      mousePath: [{ x: 1, y: 2, t: 3 }],
+      clicks: [],
+    };
+    put("tab-1", rec);
+    const back = resumeDecision(store.get("tab-1"), now);
+    assert.equal(back.action, "resume");
+    assert.equal(back.record!.pages[1].url, "https://g/b");
+    assert.equal(await back.record!.clips[0].chunks[0].text(), "abc");
+    assert.equal(resumeDecision(store.get("tab-2"), now).action, "none");
+    // the 2-minute cap counts from the first start, across reloads
+    assert.equal(
+      resumeDecision(store.get("tab-1"), rec.startedAt + MAX_RECORD_MS).action,
+      "readback"
+    );
+    assert.equal(
+      resumeDecision({ ...rec, stopped: true }, now).action,
+      "readback"
+    );
+    assert.equal(
+      resumeDecision(
+        {
+          ...rec,
+          clips: Array.from({ length: MAX_CLIPS }, () => rec.clips[0]),
+        },
+        now
+      ).action,
+      "readback"
+    );
+    assert.equal(
+      resumeDecision(rec, rec.startedAt + RESUME_MAX_AGE_MS + 1).action,
+      "drop"
+    );
+    // review restores with its reply and notes; a note saved without a page is page 0
+    const reply = {
+      ok: true as const,
+      transcript: "t",
+      annotations: [],
+      summary: "s",
+      thoughts: "",
+      questions: [],
+    };
+    put("tab-1", {
+      ...rec,
+      phase: "review",
+      review: { reply, notes: [{ text: "n", label: "l", x: 1, y: 2 }] },
+    });
+    const rv = resumeDecision(store.get("tab-1"), now);
+    assert.equal(rv.action, "review");
+    assert.equal(rv.record!.review!.notes[0].page, 0);
+    assert.equal(rv.record!.review!.reply.summary, "s");
+    // unreadable is dropped
+    for (const bad of [
+      "junk",
+      { ...rec, v: 2 },
+      { ...rec, pages: [] },
+      { ...rec, pages: [{ url: "x" }] },
+      { ...rec, phase: "review" },
+      { ...rec, startedAt: "yesterday" },
+      { ...rec, pages: Array.from({ length: 6 }, () => rec.pages[0]) },
+    ]) {
+      assert.equal(readRecord(bad), null, JSON.stringify(bad).slice(0, 60));
+      assert.equal(resumeDecision(bad, now).action, "drop");
+    }
+  }
+);
 
 // ---- masking --------------------------------------------------------------------
 function fakeEl(tag: string, extra: Record<string, any> = {}) {
@@ -422,6 +698,35 @@ try {
       assert.ok(![...r.headers.values()].some(v => v.includes(KEY)));
     }
   );
+  await check(
+    "route: pages and clips reach the cockpit untouched",
+    async () => {
+      const body = readBody({
+        pages: [pg("https://g/a", 0), pg("https://g/b", 5000)],
+        clips: [
+          { audio: "A", at: 0 },
+          { audio: "B", at: 7000 },
+        ],
+        mousePath: [],
+        clicks: [],
+        ms: 9000,
+      });
+      const r = await post("/api/magic-feedback", body);
+      assert.equal(r.status, 200);
+      assert.deepEqual(seen.at(-1)!.body, body);
+      const c = await post("/api/magic-feedback/confirm", {
+        summary: "s",
+        notes: [{ text: "n", page: 1 }],
+        pages: [{ url: "https://g/a" }, { url: "https://g/b" }],
+      });
+      assert.equal(c.status, 200);
+      assert.deepEqual(seen.at(-1)!.body.pages, [
+        { url: "https://g/a" },
+        { url: "https://g/b" },
+      ]);
+      assert.deepEqual(seen.at(-1)!.body.notes, [{ text: "n", page: 1 }]);
+    }
+  );
   await check("route: confirm sets by server-side", async () => {
     const r = await post("/api/magic-feedback/confirm", {
       summary: "s",
@@ -453,16 +758,16 @@ try {
     }
   );
   await check(
-    "route: a 12 MB recording passes; over 15 MB is a 413 with a sentence",
+    "route: a 22 MB recording passes; over 25 MB is a 413 with a sentence",
     async () => {
       const big = await post("/api/magic-feedback", {
         shot: "x",
-        audio: "a".repeat(12 * 1024 * 1024),
+        audio: "a".repeat(22 * 1024 * 1024),
       });
       assert.equal(big.status, 200);
       const tooBig = await post("/api/magic-feedback", {
         shot: "x",
-        audio: "a".repeat(16 * 1024 * 1024),
+        audio: "a".repeat(26 * 1024 * 1024),
       });
       assert.equal(tooBig.status, 413);
       assert.deepEqual(await tooBig.json(), {
@@ -471,7 +776,7 @@ try {
       });
       // the wider parser behind it still serves every other route
       const other = await post("/api/other", {
-        audio: "a".repeat(16 * 1024 * 1024),
+        audio: "a".repeat(26 * 1024 * 1024),
       });
       assert.equal(other.status, 200);
     }

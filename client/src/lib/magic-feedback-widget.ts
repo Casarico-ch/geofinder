@@ -11,31 +11,76 @@
 import {
   MAX_CLICKS,
   MAX_ELEMENTS,
+  MAX_PAGES,
   MAX_RECORD_MS,
   MOUSE_SAMPLE_MS,
+  SHOT_JPEG_QUALITY,
+  URL_POLL_MS,
   confirmBody,
   shortcutAction,
   filedToast,
   labelFor,
   maskClone,
   notesFromReply,
+  pageLabel,
+  readBody,
   readFailureToast,
+  resumeDecision,
+  stitchLayout,
+  urlWatchStep,
+  type CapturedPage,
   type MappedElement,
   type PathPoint,
   type ReadReply,
   type ReviewNote,
+  type SavedClip,
+  type SessionRecord,
+  type UrlWatch,
 } from "./magic-feedback";
+import { clearSession, loadSession, saveSession } from "./magic-feedback-store";
 
 export type Phase = "idle" | "starting" | "recording" | "reading" | "review";
+
+/** What the review screen needs of each page: its address and the picture its pins were measured on. */
+export interface ReviewPage {
+  url: string;
+  shot: string;
+  vw: number;
+  vh: number;
+}
 
 export interface MagicState {
   phase: Phase;
   startedAt: number;
   reply: ReadReply | null;
   notes: ReviewNote[];
+  pages: ReviewPage[];
+  /** This recording was picked up again after a real page load. */
+  resumed: boolean;
 }
 
 type Notify = (kind: "error" | "success", message: string) => void;
+
+/** Everything one recording has gathered so far; what is saved to survive a page load. */
+interface Session {
+  startedAt: number;
+  stopped: boolean;
+  pages: CapturedPage[];
+  clips: SavedClip[];
+  mousePath: PathPoint[];
+  clicks: PathPoint[];
+  review: { reply: ReadReply; notes: ReviewNote[] } | null;
+}
+
+const IDLE: MagicState = {
+  phase: "idle",
+  startedAt: 0,
+  reply: null,
+  notes: [],
+  pages: [],
+  resumed: false,
+};
+const SAVE_DEBOUNCE_MS = 400;
 
 const ELEMENT_SELECTOR =
   "button, a, input, textarea, select, [role=button], [role=link], [role=tab], h1, h2, h3, label, [data-mf-label]";
@@ -93,6 +138,52 @@ function pickAudioMime(): string {
   return cands.find(c => MediaRecorder.isTypeSupported(c)) ?? "";
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image did not decode"));
+    img.src = src;
+  });
+}
+
+function reviewPages(pages: CapturedPage[]): ReviewPage[] {
+  return pages.map(p => ({ url: p.url, shot: p.shot, vw: p.vw, vh: p.vh }));
+}
+
+/** The viewport as it is right now: picture (JPEG) and element map, in shared coordinates. */
+async function capturePage(at: number): Promise<CapturedPage> {
+  const { default: html2canvas } = await import("html2canvas-pro");
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const url = location.href;
+  const elements = buildElementMap();
+  // Pinned to the viewport so the canvas and the element map share coordinates.
+  const canvas = await html2canvas(document.body, {
+    logging: false,
+    useCORS: true,
+    x: window.scrollX,
+    y: window.scrollY,
+    width: vw,
+    height: vh,
+    windowWidth: vw,
+    windowHeight: vh,
+    ignoreElements: el =>
+      el instanceof HTMLElement && el.hasAttribute("data-mf-ui"),
+    onclone: doc => {
+      maskClone(doc);
+    },
+  });
+  return {
+    shot: canvas.toDataURL("image/jpeg", SHOT_JPEG_QUALITY),
+    elements,
+    url,
+    at,
+    vw,
+    vh,
+  };
+}
+
 async function postJson(
   path: string,
   body: unknown
@@ -112,22 +203,19 @@ async function postJson(
 }
 
 export class MagicFeedbackWidget {
-  private state: MagicState = {
-    phase: "idle",
-    startedAt: 0,
-    reply: null,
-    notes: [],
-  };
+  private state: MagicState = IDLE;
   private listeners = new Set<() => void>();
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private mousePath: PathPoint[] = [];
-  private clicks: PathPoint[] = [];
-  private elements: MappedElement[] = [];
-  private cleanShot: HTMLCanvasElement | null = null;
+  private session: Session | null = null;
   private capTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private watch: UrlWatch = { current: "", pending: null };
+  private capturing = false;
   private lastSample = 0;
+  /** Bumped on teardown, so an async step that outlives its widget does nothing. */
+  private gen = 0;
 
   constructor(private notify: Notify) {}
 
@@ -142,13 +230,16 @@ export class MagicFeedbackWidget {
     this.listeners.forEach(fn => fn());
   }
 
-  /** Wires the shortcut. A scripted browser gets no listener at all. Returns the teardown. */
+  /** Wires the shortcut and picks up a recording a page load interrupted. A scripted browser gets nothing. */
   attach(): () => void {
     if (typeof navigator !== "undefined" && navigator.webdriver)
       return () => {};
     document.addEventListener("keydown", this.onKeyDown, true);
+    window.addEventListener("pagehide", this.onPageHide);
+    void this.resumeFromStore();
     return () => {
       document.removeEventListener("keydown", this.onKeyDown, true);
+      window.removeEventListener("pagehide", this.onPageHide);
       this.abort();
     };
   }
@@ -162,28 +253,76 @@ export class MagicFeedbackWidget {
     else if (action === "stop" && phase === "recording") void this.stop();
   };
 
+  /** The page is going away: save what there is; the next load picks it up. */
+  private onPageHide = () => {
+    if (this.state.phase === "recording") {
+      try {
+        this.recorder?.requestData();
+      } catch {
+        /* best effort */
+      }
+    }
+    this.flush();
+  };
+
   private onMove = (e: MouseEvent) => {
+    const s = this.session;
+    if (!s) return;
     const t = Date.now();
     if (t - this.lastSample < MOUSE_SAMPLE_MS) return;
     this.lastSample = t;
-    this.mousePath.push({
-      x: e.clientX,
-      y: e.clientY,
-      t: t - this.state.startedAt,
-    });
+    s.mousePath.push({ x: e.clientX, y: e.clientY, t: t - s.startedAt });
   };
   private onClick = (e: MouseEvent) => {
-    if (this.clicks.length < MAX_CLICKS)
-      this.clicks.push({
+    const s = this.session;
+    if (s && s.clicks.length < MAX_CLICKS)
+      s.clicks.push({
         x: e.clientX,
         y: e.clientY,
-        t: Date.now() - this.state.startedAt,
+        t: Date.now() - s.startedAt,
       });
   };
+
+  // ---- persistence ----
+  private record(): SessionRecord | null {
+    const s = this.session;
+    if (!s) return null;
+    return {
+      v: 1,
+      startedAt: s.startedAt,
+      phase: s.review ? "review" : "recording",
+      stopped: s.stopped,
+      pages: s.pages,
+      clips: s.clips,
+      mousePath: s.mousePath,
+      clicks: s.clicks,
+      ...(s.review ? { review: s.review } : {}),
+    };
+  }
+  private scheduleSave() {
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => this.flush(), SAVE_DEBOUNCE_MS);
+  }
+  private flush() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const rec = this.record();
+    if (rec) void saveSession(rec);
+  }
+  /** Forget this recording, here and in storage. */
+  private forget() {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.session = null;
+    void clearSession();
+  }
+
+  // ---- recording ----
 
   /** One recording at a time: only from idle, and never while a review stands on screen. */
   async start() {
     if (this.state.phase !== "idle") return;
+    const gen = this.gen;
     this.set({ phase: "starting" });
     let stream: MediaStream;
     try {
@@ -193,27 +332,12 @@ export class MagicFeedbackWidget {
       this.set({ phase: "idle" });
       return;
     }
+    let first: CapturedPage;
     try {
-      const { default: html2canvas } = await import("html2canvas-pro");
-      this.elements = buildElementMap();
-      // Pinned to the viewport so the canvas and the element map share coordinates.
-      this.cleanShot = await html2canvas(document.body, {
-        logging: false,
-        useCORS: true,
-        x: window.scrollX,
-        y: window.scrollY,
-        width: window.innerWidth,
-        height: window.innerHeight,
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
-        ignoreElements: el =>
-          el instanceof HTMLElement && el.hasAttribute("data-mf-ui"),
-        onclone: doc => {
-          maskClone(doc);
-        },
-      });
+      first = await capturePage(0);
     } catch {
       stream.getTracks().forEach(t => t.stop());
+      if (gen !== this.gen) return;
       this.set({ phase: "idle" });
       this.notify(
         "error",
@@ -221,36 +345,99 @@ export class MagicFeedbackWidget {
       );
       return;
     }
-
-    this.stream = stream;
-    this.audioChunks = [];
-    this.mousePath = [];
-    this.clicks = [];
+    if (gen !== this.gen) {
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+    this.session = {
+      startedAt: Date.now(),
+      stopped: false,
+      pages: [first],
+      clips: [],
+      mousePath: [],
+      clicks: [],
+      review: null,
+    };
     this.lastSample = 0;
+    this.listen(stream, false);
+  }
+
+  /** Opens a new audio clip on `stream` and listens, until stop() or the cap counted from the first start. */
+  private listen(stream: MediaStream, resumed: boolean) {
+    const s = this.session!;
+    this.stream = stream;
     const mime = pickAudioMime();
+    let rec: MediaRecorder;
     try {
-      this.recorder = mime
+      rec = mime
         ? new MediaRecorder(stream, { mimeType: mime })
         : new MediaRecorder(stream);
     } catch {
-      this.recorder = new MediaRecorder(stream);
+      rec = new MediaRecorder(stream);
     }
-    this.recorder.ondataavailable = e => {
-      if (e.data && e.data.size) this.audioChunks.push(e.data);
+    const clip: SavedClip = {
+      at: Math.max(0, Date.now() - s.startedAt),
+      mime: rec.mimeType || mime || "audio/webm",
+      chunks: [],
     };
-    this.recorder.start(250);
-    this.set({ phase: "recording", startedAt: Date.now() });
+    s.clips.push(clip);
+    rec.ondataavailable = e => {
+      if (e.data && e.data.size) {
+        clip.chunks.push(e.data);
+        this.scheduleSave();
+      }
+    };
+    this.recorder = rec;
+    rec.start(250);
+    this.set({ phase: "recording", startedAt: s.startedAt, resumed });
     window.addEventListener("mousemove", this.onMove, { passive: true });
     window.addEventListener("click", this.onClick, {
       capture: true,
       passive: true,
     });
-    this.capTimer = setTimeout(() => void this.stop(), MAX_RECORD_MS);
+    const left = MAX_RECORD_MS - (Date.now() - s.startedAt);
+    this.capTimer = setTimeout(() => void this.stop(), Math.max(0, left));
+    this.watch = { current: location.href, pending: null };
+    this.pollTimer = setInterval(this.pollUrl, URL_POLL_MS);
+    this.flush();
   }
+
+  /** The address moved and held still: capture the new page, unless five are already in. */
+  private pollUrl = () => {
+    const s = this.session;
+    if (!s || this.capturing || this.state.phase !== "recording") return;
+    const step = urlWatchStep(this.watch, location.href, Date.now());
+    this.watch = step.watch;
+    if (!step.capture) return;
+    this.watch = { current: location.href, pending: null };
+    if (s.pages.length >= MAX_PAGES) return;
+    const gen = this.gen;
+    this.capturing = true;
+    capturePage(Date.now() - s.startedAt)
+      .then(page => {
+        if (
+          gen !== this.gen ||
+          this.session !== s ||
+          this.state.phase !== "recording" ||
+          s.pages.length >= MAX_PAGES
+        )
+          return;
+        s.pages.push(page);
+        this.flush();
+      })
+      .catch(() => {
+        /* this page goes without a picture; the recording carries on */
+      })
+      .finally(() => {
+        this.capturing = false;
+      });
+  };
 
   private release() {
     if (this.capTimer) clearTimeout(this.capTimer);
     this.capTimer = null;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
     window.removeEventListener("mousemove", this.onMove);
     window.removeEventListener("click", this.onClick, { capture: true });
     this.stream?.getTracks().forEach(t => t.stop());
@@ -259,99 +446,234 @@ export class MagicFeedbackWidget {
 
   async stop() {
     if (this.state.phase !== "recording" || !this.recorder) return;
-    const ms = Date.now() - this.state.startedAt;
     this.set({ phase: "reading" });
     const rec = this.recorder;
-    const audio = await new Promise<Blob>(resolve => {
-      rec.addEventListener(
-        "stop",
-        () =>
-          resolve(
-            new Blob(this.audioChunks, { type: rec.mimeType || "audio/webm" })
-          ),
-        {
-          once: true,
-        }
-      );
+    await new Promise<void>(resolve => {
+      rec.addEventListener("stop", () => resolve(), { once: true });
       try {
         rec.stop();
       } catch {
-        resolve(new Blob(this.audioChunks, { type: "audio/webm" }));
+        resolve();
       }
     });
     this.release();
     this.recorder = null;
+    if (this.session) this.session.stopped = true;
+    this.flush();
+    await this.readBack();
+  }
 
+  /** Sends every page and clip gathered so far to be read; the review follows. */
+  private async readBack() {
+    const s = this.session;
+    if (!s) return;
+    const gen = this.gen;
+    this.set({ phase: "reading", startedAt: s.startedAt });
     let said = "";
     try {
-      const shot = this.cleanShot!.toDataURL("image/png");
-      const r = await postJson("/api/magic-feedback", {
-        shot,
-        elements: this.elements,
-        mousePath: this.mousePath,
-        clicks: this.clicks,
-        audio: await blobToDataUrl(audio),
-        url: location.href,
-        ms,
-      });
+      const clips: { audio: string; at: number }[] = [];
+      for (const c of s.clips) {
+        if (!c.chunks.length) continue;
+        clips.push({
+          audio: await blobToDataUrl(new Blob(c.chunks, { type: c.mime })),
+          at: c.at,
+        });
+      }
+      const r = await postJson(
+        "/api/magic-feedback",
+        readBody({
+          pages: s.pages,
+          clips,
+          mousePath: s.mousePath,
+          clicks: s.clicks,
+          ms: Math.min(Date.now() - s.startedAt, MAX_RECORD_MS),
+        })
+      );
+      if (gen !== this.gen || this.session !== s) return;
       if (!r.ok) {
         said = String(r.body?.error || "the server answered " + r.status);
         throw new Error(said);
       }
       const reply = r.body as ReadReply;
-      const notes = notesFromReply(reply.annotations, this.elements, {
-        width: window.innerWidth,
-        height: window.innerHeight,
+      const notes = notesFromReply(reply.annotations, s.pages);
+      s.review = { reply, notes };
+      this.flush();
+      this.set({
+        phase: "review",
+        reply,
+        notes,
+        pages: reviewPages(s.pages),
       });
-      this.set({ phase: "review", reply, notes });
     } catch {
+      if (gen !== this.gen) return;
       // only a sentence the server pronounced is worth showing; "Failed to fetch" is not
-      this.set({ phase: "idle" });
+      this.set({ ...IDLE });
       this.notify("error", readFailureToast(said));
+      this.forget();
     }
   }
 
-  discard() {
-    this.cleanShot = null;
-    this.set({ phase: "idle", reply: null, notes: [] });
+  /** On load: what the last page of this tab left behind is resumed, read back or shown again. */
+  private async resumeFromStore() {
+    if (this.state.phase !== "idle") return;
+    const gen = this.gen;
+    const raw = await loadSession();
+    if (gen !== this.gen || this.state.phase !== "idle") return;
+    const { action, record } = resumeDecision(raw, Date.now());
+    if (action === "none") return;
+    if (action === "drop" || !record) {
+      void clearSession();
+      return;
+    }
+    this.session = {
+      startedAt: record.startedAt,
+      stopped: !!record.stopped,
+      pages: record.pages,
+      clips: record.clips,
+      mousePath: record.mousePath,
+      clicks: record.clicks,
+      review: record.review ?? null,
+    };
+    if (action === "review" && record.review) {
+      this.set({
+        phase: "review",
+        startedAt: record.startedAt,
+        reply: record.review.reply,
+        notes: record.review.notes,
+        pages: reviewPages(record.pages),
+      });
+      return;
+    }
+    if (action === "readback") {
+      this.session.stopped = true;
+      await this.readBack();
+      return;
+    }
+    // resume: the mic again, this page as the next one, the clock from the first start
+    this.set({ phase: "starting", startedAt: record.startedAt });
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      if (gen !== this.gen) return;
+      this.session.stopped = true;
+      await this.readBack();
+      return;
+    }
+    if (gen !== this.gen || !this.session) {
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+    const s = this.session;
+    if (s.pages.length < MAX_PAGES) {
+      try {
+        const page = await capturePage(Date.now() - s.startedAt);
+        if (gen === this.gen && s.pages.length < MAX_PAGES) s.pages.push(page);
+      } catch {
+        /* resume without this page's picture */
+      }
+    }
+    if (gen !== this.gen || this.session !== s) {
+      stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+    if (Date.now() - s.startedAt >= MAX_RECORD_MS) {
+      stream.getTracks().forEach(t => t.stop());
+      s.stopped = true;
+      await this.readBack();
+      return;
+    }
+    this.listen(stream, true);
   }
 
-  /** Burns the pins into the clean screenshot, numbered exactly as the card's notes are, then files the card. */
+  // ---- review ----
+
+  /** The review's edits, kept so a reload shows them again. */
+  setNotes(notes: ReviewNote[]) {
+    const s = this.session;
+    if (!s?.review) return;
+    s.review = { ...s.review, notes };
+    this.scheduleSave();
+  }
+
+  discard() {
+    this.forget();
+    this.set({ ...IDLE });
+  }
+
+  /** Every page with its pins burned in, numbered exactly as the card's notes are, stacked into one JPEG. */
+  private async stitch(pages: CapturedPage[], kept: ReviewNote[]) {
+    const imgs = await Promise.all(pages.map(p => loadImage(p.shot)));
+    const layout = stitchLayout(
+      imgs.map(i => ({ w: i.naturalWidth, h: i.naturalHeight }))
+    );
+    const c = document.createElement("canvas");
+    c.width = layout.width;
+    c.height = layout.height;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.scale(layout.scale, layout.scale);
+    const rawW = layout.width / layout.scale;
+    imgs.forEach((img, k) => {
+      const b = layout.blocks[k];
+      if (b.labelTop !== null) {
+        ctx.fillStyle = "#1b1a2e";
+        ctx.fillRect(0, b.labelTop, rawW, 28);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 14px Arial";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(pageLabel(k, pages[k].url), 10, b.labelTop + 14);
+      }
+      ctx.drawImage(img, 0, b.imageTop);
+      const sx = img.naturalWidth / (pages[k].vw || img.naturalWidth);
+      const sy = img.naturalHeight / (pages[k].vh || img.naturalHeight);
+      kept.forEach((p, i) => {
+        if (p.page !== k) return;
+        const x = p.x * sx;
+        const y = b.imageTop + p.y * sy;
+        ctx.beginPath();
+        ctx.arc(x, y, 13 * sx, 0, Math.PI * 2);
+        ctx.fillStyle = "#1b1a2e";
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold " + Math.round(12 * sx) + "px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(i + 1), x, y + 1);
+      });
+    });
+    const out = c.toDataURL("image/jpeg", 0.85);
+    return out.length > 8_000_000 ? c.toDataURL("image/jpeg", 0.6) : out;
+  }
+
+  /** Burns the pins into the screenshots, then files the card. */
   async send(notes: ReviewNote[]) {
     const reply = this.state.reply;
-    const clean = this.cleanShot;
-    if (this.state.phase !== "review" || !reply || !clean) return;
+    const s = this.session;
+    if (this.state.phase !== "review" || !reply || !s) return;
     const kept = notes.filter(n => String(n.text || "").trim());
-    const c = document.createElement("canvas");
-    c.width = clean.width;
-    c.height = clean.height;
-    const ctx = c.getContext("2d")!;
-    ctx.drawImage(clean, 0, 0);
-    const sx = clean.width / window.innerWidth;
-    const sy = clean.height / window.innerHeight;
-    kept.forEach((p, i) => {
-      const x = p.x * sx;
-      const y = p.y * sy;
-      ctx.beginPath();
-      ctx.arc(x, y, 13 * sx, 0, Math.PI * 2);
-      ctx.fillStyle = "#1b1a2e";
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#ffffff";
-      ctx.stroke();
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold " + Math.round(12 * sx) + "px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(i + 1), x, y + 1);
-    });
-    const annotated = c.toDataURL("image/png");
+    const pages = s.pages;
+    let annotated: string;
+    try {
+      annotated = await this.stitch(pages, kept);
+    } catch {
+      this.notify(
+        "error",
+        "That did not file — the screenshots could not be prepared."
+      );
+      return;
+    }
     // The screen clears before the call lands, so a failure has to say so itself.
     this.discard();
     try {
       const r = await postJson(
         "/api/magic-feedback/confirm",
-        confirmBody(reply, kept, annotated, location.href)
+        confirmBody(reply, kept, annotated, pages)
       );
       if (!r.ok) {
         this.notify(
@@ -371,8 +693,10 @@ export class MagicFeedbackWidget {
     }
   }
 
-  /** Unmount mid-recording: stop the mic, drop everything. */
+  /** Unmount: stop the mic. What was saved stays saved, for the next load of this tab. */
   private abort() {
+    this.gen++;
+    this.flush();
     try {
       this.recorder?.stop();
     } catch {
@@ -380,7 +704,8 @@ export class MagicFeedbackWidget {
     }
     this.recorder = null;
     this.release();
-    this.cleanShot = null;
-    this.state = { phase: "idle", startedAt: 0, reply: null, notes: [] };
+    this.session = null;
+    this.capturing = false;
+    this.state = { ...IDLE };
   }
 }
