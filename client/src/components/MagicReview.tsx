@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import type { ReviewPage } from "@/lib/magic-feedback-widget";
 import {
   POP_W,
   barCopy,
   keptNotes,
+  pageLabel,
   popPlace,
   type ReviewNote,
 } from "@/lib/magic-feedback";
@@ -16,18 +19,29 @@ import {
 // Remove drops a note never meant. One note open at a time, so nothing
 // overlaps. What is left is exactly what is filed, under the same numbers
 // burned into the screenshot.
+//
+// A recording that crossed pages gets a page switcher in the bar (default: the
+// last page, the one on screen). Only the selected page's pins show, numbered
+// globally; a page that is not the one on screen is shown as its own
+// screenshot behind the pins, at the size it was captured, so every pin lands
+// on the picture it was measured on.
 export default function MagicReview({
   initialNotes,
+  pages,
   questions,
+  onChange,
   onDiscard,
   onSend,
 }: {
   initialNotes: ReviewNote[];
+  pages: ReviewPage[];
   questions: string[];
+  onChange: (notes: ReviewNote[]) => void;
   onDiscard: () => void;
   onSend: (notes: ReviewNote[]) => void;
 }) {
   const [notes, setNotes] = useState(initialNotes);
+  const [sel, setSel] = useState(Math.max(0, pages.length - 1));
   const [hover, setHover] = useState(-1);
   const [open, setOpen] = useState(-1);
   const shown = open >= 0 ? open : hover;
@@ -36,6 +50,17 @@ export default function MagicReview({
   const qs = (questions || []).filter(Boolean);
   const viewport = { width: window.innerWidth, height: window.innerHeight };
 
+  const page = pages[sel];
+  const live =
+    sel === pages.length - 1 && (!page || page.url === location.href);
+
+  useEffect(() => onChange(notes), [notes, onChange]);
+
+  const pick = (v: string) => {
+    setSel(Number(v));
+    setOpen(-1);
+    setHover(-1);
+  };
   const unhover = (i: number) => setHover(h => (h === i ? -1 : h));
   const edit = (i: number, text: string) =>
     setNotes(ns => ns.map((n, k) => (k === i ? { ...n, text } : n)));
@@ -49,7 +74,9 @@ export default function MagicReview({
   // number exactly what will be filed.
   useEffect(() => {
     if (open !== -1) return;
-    setNotes(ns => (ns.every(x => x.text.trim()) ? ns : ns.filter(x => x.text.trim())));
+    setNotes(ns =>
+      ns.every(x => x.text.trim()) ? ns : ns.filter(x => x.text.trim())
+    );
   }, [open]);
 
   useEffect(() => {
@@ -62,28 +89,43 @@ export default function MagicReview({
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
-  const n = shown >= 0 ? notes[shown] : undefined;
+  const n = shown >= 0 && notes[shown]?.page === sel ? notes[shown] : undefined;
   const editing = n !== undefined && open === shown;
 
   return (
     <div data-mf-ui="">
-      {notes.map((note, i) => (
-        <Button
-          key={i}
-          type="button"
-          size="icon-sm"
-          variant={shown === i ? "default" : "secondary"}
-          aria-label={"Note " + (i + 1)}
-          className="fixed z-[2147483000] size-6 -translate-x-1/2 -translate-y-1/2 rounded-full text-xs font-bold shadow-md ring-2 ring-background"
-          style={{ left: note.x, top: note.y }}
-          onMouseEnter={() => setHover(i)}
-          onMouseLeave={() => unhover(i)}
-          onFocus={() => setHover(i)}
-          onClick={() => setOpen(o => (o === i ? -1 : i))}
+      {!live && page && (
+        <div
+          aria-hidden
+          className="fixed inset-0 z-[2147482999] overflow-hidden bg-background"
         >
-          {i + 1}
-        </Button>
-      ))}
+          <img
+            src={page.shot}
+            alt=""
+            className="absolute left-0 top-0 max-w-none"
+            style={{ width: page.vw, height: page.vh, objectFit: "fill" }}
+          />
+        </div>
+      )}
+      {notes.map((note, i) =>
+        note.page !== sel ? null : (
+          <Button
+            key={i}
+            type="button"
+            size="icon-sm"
+            variant={shown === i ? "default" : "secondary"}
+            aria-label={"Note " + (i + 1)}
+            className="fixed z-[2147483000] size-6 -translate-x-1/2 -translate-y-1/2 rounded-full text-xs font-bold shadow-md ring-2 ring-background"
+            style={{ left: note.x, top: note.y }}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => unhover(i)}
+            onFocus={() => setHover(i)}
+            onClick={() => setOpen(o => (o === i ? -1 : i))}
+          >
+            {i + 1}
+          </Button>
+        )
+      )}
 
       {n && (
         <Card
@@ -156,6 +198,21 @@ export default function MagicReview({
             </span>
           )}
         </div>
+        {pages.length > 1 && (
+          <Tabs value={String(sel)} onValueChange={pick}>
+            <TabsList>
+              {pages.map((p, k) => (
+                <TabsTrigger
+                  key={k}
+                  value={String(k)}
+                  title={pageLabel(k, p.url)}
+                >
+                  Page {k + 1}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
         <Button variant="outline" onClick={onDiscard}>
           Discard
         </Button>

@@ -18,6 +18,21 @@ export const MAX_ELEMENTS = 60;
 export const MOUSE_SAMPLE_MS = 100;
 export const MAX_CLICKS = 200;
 export const POP_W = 300;
+/** One recording follows you across at most this many pages; later address changes are ignored. */
+export const MAX_PAGES = 5;
+/** Audio clips: one per stretch of recording between real page loads. */
+export const MAX_CLIPS = 6;
+/** How often the address is looked at while recording (no history patching). */
+export const URL_POLL_MS = 300;
+/** A new address must hold still this long before its page is captured. */
+export const URL_SETTLE_MS = 800;
+/** A saved recording older than this is dropped on load, never resumed. */
+export const RESUME_MAX_AGE_MS = 30 * 60 * 1000;
+/** Screenshots travel as JPEG at this quality, so five pages and the audio fit. */
+export const SHOT_JPEG_QUALITY = 0.8;
+/** The stitched confirm image: label bar height and the tallest stack before it is scaled down. */
+export const LABEL_BAR_PX = 28;
+export const MAX_STITCH_PX = 6000;
 
 export interface MappedElement {
   label: string;
@@ -32,8 +47,23 @@ export interface PathPoint {
   t: number;
 }
 export interface Annotation {
+  /** 1-based into ITS page's element map. */
   n: number;
   text: string;
+  /** 0-based page index; an older cockpit sends none, which means page 0. */
+  page?: number;
+}
+/** One page of a recording: what was on screen when the address settled. */
+export interface CapturedPage {
+  /** JPEG data URL of the viewport. */
+  shot: string;
+  elements: MappedElement[];
+  url: string;
+  /** ms since the recording started. */
+  at: number;
+  /** The viewport the shot and the element map were measured in. */
+  vw: number;
+  vh: number;
 }
 export interface ReadReply {
   ok: true;
@@ -48,6 +78,8 @@ export interface ReviewNote {
   label: string;
   x: number;
   y: number;
+  /** 0-based page the pin sits on. */
+  page: number;
 }
 
 // ---- the shortcut --------------------------------------------------------------
@@ -186,27 +218,33 @@ export function maskClone(doc: {
 // ---- the review screen ---------------------------------------------------------
 
 /**
- * The cockpit answers with notes against the element map's 1-based index
- * (which is how the old screen ended up numbered 1, 2, 3, 10, 11). The review
- * screen numbers pins 1..N in the order they were spoken; two notes on one
- * element sit side by side instead of on top of each other.
+ * The cockpit answers with notes against each page's element map (1-based,
+ * local to that page; which is how the old screen ended up numbered 1, 2, 3,
+ * 10, 11). The review screen numbers pins 1..N globally in the order they
+ * were spoken, each on its own page; two notes on one element sit side by
+ * side instead of on top of each other. A missing `page` is page 0 (an older
+ * cockpit); a page that does not exist drops the note.
  */
 export function notesFromReply(
   annotations: Annotation[],
-  elements: MappedElement[],
-  viewport: { width: number; height: number }
+  pages: Pick<CapturedPage, "elements" | "vw" | "vh">[]
 ): ReviewNote[] {
-  const perEl: Record<number, number> = {};
+  const perEl: Record<string, number> = {};
   const notes: ReviewNote[] = [];
   for (const a of annotations || []) {
-    const el = elements[a.n - 1];
+    const page = a.page ?? 0;
+    if (!Number.isInteger(page) || page < 0 || page >= pages.length) continue;
+    const pg = pages[page];
+    const el = pg.elements[a.n - 1];
     if (!el) continue;
-    const k = (perEl[a.n] = (perEl[a.n] || 0) + 1);
+    const key = page + ":" + a.n;
+    const k = (perEl[key] = (perEl[key] || 0) + 1);
     notes.push({
       text: String(a.text || ""),
       label: el.label,
-      x: Math.min(viewport.width - 16, el.x + el.w / 2 + (k - 1) * 28),
+      x: Math.min(pg.vw - 16, el.x + el.w / 2 + (k - 1) * 28),
       y: Math.max(14, el.y),
+      page,
     });
   }
   return notes;
@@ -242,12 +280,15 @@ export function formatClock(ms: number): string {
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + " / 2:00";
 }
 
-/** The body the confirm call sends. `by` is never set here — the server sets it. */
+/**
+ * The body the confirm call sends. `by` is never set here — the server sets
+ * it. `url` is the page the recording started on; `pages` lists every page.
+ */
 export function confirmBody(
   reply: ReadReply,
   notes: ReviewNote[],
   shot: string,
-  url: string
+  pages: Pick<CapturedPage, "url">[]
 ) {
   return {
     shot,
@@ -255,8 +296,9 @@ export function confirmBody(
     thoughts: reply.thoughts,
     transcript: reply.transcript,
     questions: reply.questions,
-    notes: keptNotes(notes).map(n => ({ text: n.text })),
-    url,
+    notes: keptNotes(notes).map(n => ({ text: n.text, page: n.page })),
+    url: pages[0]?.url ?? "",
+    pages: pages.slice(0, MAX_PAGES).map(p => ({ url: p.url })),
   };
 }
 
@@ -272,4 +314,213 @@ export function filedToast(folded: boolean): string {
   return folded
     ? "Added to a card already on the board."
     : "Sent to Rico — in Backlog and started.";
+}
+
+// ---- one recording, many pages ------------------------------------------------
+
+export interface UrlWatch {
+  /** The address of the last captured page. */
+  current: string;
+  /** A different address seen, and since when; null while on `current`. */
+  pending: { href: string; since: number } | null;
+}
+
+/**
+ * One poll of the address. Returns the next watch state and whether the new
+ * address has held still long enough (URL_SETTLE_MS) to capture its page. The
+ * caller sets `current` once it has captured (or decided not to).
+ */
+export function urlWatchStep(
+  w: UrlWatch,
+  href: string,
+  now: number
+): { watch: UrlWatch; capture: boolean } {
+  if (href === w.current)
+    return { watch: { ...w, pending: null }, capture: false };
+  if (!w.pending || w.pending.href !== href)
+    return { watch: { ...w, pending: { href, since: now } }, capture: false };
+  return { watch: w, capture: now - w.pending.since >= URL_SETTLE_MS };
+}
+
+/** "Page 2 · /results?id=4": the label bar over a page in the stitched image. */
+export function pageLabel(index: number, url: string): string {
+  let path = url;
+  try {
+    const u = new URL(url);
+    path = u.pathname + u.search + u.hash;
+  } catch {
+    /* not a full URL: show it as it is */
+  }
+  return "Page " + (index + 1) + " · " + path.slice(0, 120);
+}
+
+export interface StitchLayout {
+  /** Final canvas size, after scaling. */
+  width: number;
+  height: number;
+  /** Applied to every coordinate below (they are pre-scale). */
+  scale: number;
+  blocks: { labelTop: number | null; imageTop: number }[];
+}
+
+/**
+ * Pages stacked vertically, each preceded by a LABEL_BAR_PX label bar when
+ * there is more than one; one page is just its own picture. A stack taller
+ * than MAX_STITCH_PX is scaled down proportionally.
+ */
+export function stitchLayout(sizes: { w: number; h: number }[]): StitchLayout {
+  const labelled = sizes.length > 1;
+  let y = 0;
+  let width = 0;
+  const blocks = sizes.map(s => {
+    const labelTop = labelled ? y : null;
+    if (labelled) y += LABEL_BAR_PX;
+    const imageTop = y;
+    y += s.h;
+    width = Math.max(width, s.w);
+    return { labelTop, imageTop };
+  });
+  const scale = y > MAX_STITCH_PX ? MAX_STITCH_PX / y : 1;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(y * scale)),
+    scale,
+    blocks,
+  };
+}
+
+// ---- surviving a real page load -------------------------------------------------
+
+export interface SavedClip {
+  /** ms since the recording started. */
+  at: number;
+  mime: string;
+  chunks: Blob[];
+}
+
+export interface SessionRecord {
+  v: 1;
+  startedAt: number;
+  phase: "recording" | "review";
+  /** Recording ended by the user or the cap; a reload reads it back instead of reopening the mic. */
+  stopped?: boolean;
+  pages: CapturedPage[];
+  clips: SavedClip[];
+  mousePath: PathPoint[];
+  clicks: PathPoint[];
+  review?: { reply: ReadReply; notes: ReviewNote[] };
+}
+
+function isObj(x: unknown): x is Record<string, unknown> {
+  return !!x && typeof x === "object" && !Array.isArray(x);
+}
+
+/** A stored value back into a record, or null when it is not one this code wrote. */
+export function readRecord(raw: unknown): SessionRecord | null {
+  if (!isObj(raw) || raw.v !== 1) return null;
+  if (typeof raw.startedAt !== "number" || !Number.isFinite(raw.startedAt))
+    return null;
+  if (raw.phase !== "recording" && raw.phase !== "review") return null;
+  const pages = raw.pages;
+  if (!Array.isArray(pages) || !pages.length || pages.length > MAX_PAGES)
+    return null;
+  for (const p of pages) {
+    if (
+      !isObj(p) ||
+      typeof p.shot !== "string" ||
+      typeof p.url !== "string" ||
+      !Array.isArray(p.elements) ||
+      typeof p.at !== "number" ||
+      typeof p.vw !== "number" ||
+      typeof p.vh !== "number"
+    )
+      return null;
+  }
+  const clips = raw.clips;
+  if (!Array.isArray(clips) || clips.length > MAX_CLIPS) return null;
+  for (const c of clips)
+    if (
+      !isObj(c) ||
+      typeof c.at !== "number" ||
+      typeof c.mime !== "string" ||
+      !Array.isArray(c.chunks)
+    )
+      return null;
+  let review: SessionRecord["review"];
+  if (raw.phase === "review") {
+    const r = raw.review;
+    if (!isObj(r) || !isObj(r.reply) || !Array.isArray(r.notes)) return null;
+    review = {
+      reply: r.reply as unknown as ReadReply,
+      notes: (r.notes as ReviewNote[]).map(n => ({ ...n, page: n.page ?? 0 })),
+    };
+  }
+  return {
+    v: 1,
+    startedAt: raw.startedAt,
+    phase: raw.phase,
+    stopped: raw.stopped === true,
+    pages: pages as CapturedPage[],
+    clips: clips as SavedClip[],
+    mousePath: Array.isArray(raw.mousePath)
+      ? (raw.mousePath as PathPoint[])
+      : [],
+    clicks: Array.isArray(raw.clicks) ? (raw.clicks as PathPoint[]) : [],
+    ...(review ? { review } : {}),
+  };
+}
+
+export type ResumeAction = "none" | "drop" | "resume" | "readback" | "review";
+
+/** What a fresh page does with what the last one left behind. */
+export function resumeDecision(
+  raw: unknown,
+  now: number
+): { action: ResumeAction; record: SessionRecord | null } {
+  if (raw == null) return { action: "none", record: null };
+  const rec = readRecord(raw);
+  if (!rec) return { action: "drop", record: null };
+  const age = now - rec.startedAt;
+  if (age < 0 || age > RESUME_MAX_AGE_MS)
+    return { action: "drop", record: null };
+  if (rec.phase === "review") return { action: "review", record: rec };
+  if (rec.stopped || age >= MAX_RECORD_MS || rec.clips.length >= MAX_CLIPS)
+    return { action: "readback", record: rec };
+  return { action: "resume", record: rec };
+}
+
+export const RESUMED_LINE =
+  "Still recording — picked up after the page reloaded.";
+
+/**
+ * The read call's body. The legacy single-page fields are always sent, from
+ * page 1 and clip 1, so a cockpit that knows nothing of pages still works.
+ */
+export function readBody(input: {
+  pages: CapturedPage[];
+  clips: { audio: string; at: number }[];
+  mousePath: PathPoint[];
+  clicks: PathPoint[];
+  ms: number;
+}) {
+  const pages = input.pages.slice(0, MAX_PAGES);
+  const clips = input.clips.slice(0, MAX_CLIPS);
+  return {
+    shot: pages[0].shot,
+    elements: pages[0].elements,
+    mousePath: input.mousePath,
+    clicks: input.clicks,
+    audio: clips[0]?.audio ?? "",
+    url: pages[0].url,
+    ms: input.ms,
+    pages: pages.map(p => ({
+      shot: p.shot,
+      elements: p.elements,
+      url: p.url,
+      at: p.at,
+      vw: p.vw,
+      vh: p.vh,
+    })),
+    clips: clips.map(c => ({ audio: c.audio, at: c.at })),
+  };
 }

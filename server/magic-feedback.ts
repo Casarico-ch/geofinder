@@ -21,7 +21,8 @@ export const DEFAULT_COCKPIT_URL =
   "https://rico-cockpit-production.up.railway.app";
 export const READ_TIMEOUT_MS = 270_000; // ~4.5 min: the cockpit transcribes, then runs a vision call
 export const CONFIRM_TIMEOUT_MS = 60_000;
-export const BODY_LIMIT = "15mb";
+// Up to five JPEG pages and six audio clips, plus the legacy single-page copy of page 1 and clip 1.
+export const BODY_LIMIT = "25mb";
 export const NOT_CONFIGURED =
   "Magic feedback is not configured on this server.";
 
