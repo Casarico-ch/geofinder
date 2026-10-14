@@ -9,6 +9,7 @@ import {
   MAX_PAGES,
   MAX_RECORD_MS,
   MAX_STITCH_PX,
+  MODEL_SHOT_MAX,
   RESUME_MAX_AGE_MS,
   URL_SETTLE_MS,
   barCopy,
@@ -18,6 +19,7 @@ import {
   keptNotes,
   labelFor,
   maskClone,
+  modelShotSize,
   notesFromReply,
   pageLabel,
   popPlace,
@@ -317,6 +319,33 @@ const pg = (url: string, at: number): CapturedPage => ({
   at,
   vw: 1000,
   vh: 700,
+});
+await check("the model's copy of a shot is the viewport's own CSS size", () => {
+  // a 2x retina capture of a 1440x900 viewport comes back to 1440x900
+  assert.deepEqual(modelShotSize(2880, 1800, 1440, 900), { w: 1440, h: 900 });
+  // a 1x capture is left alone
+  assert.deepEqual(modelShotSize(1280, 800, 1280, 800), { w: 1280, h: 800 });
+  // never enlarged, even when the viewport claims more
+  assert.deepEqual(modelShotSize(800, 600, 1600, 1200), { w: 800, h: 600 });
+  // a phone at 3x: 390x844 CSS px
+  assert.deepEqual(modelShotSize(1170, 2532, 390, 844), { w: 390, h: 844 });
+});
+await check(
+  "the model's copy never exceeds MODEL_SHOT_MAX on its longest edge",
+  () => {
+    const big = modelShotSize(3840, 2160, 1920, 1080);
+    assert.ok(Math.max(big.w, big.h) <= MODEL_SHOT_MAX);
+    assert.deepEqual(big, { w: MODEL_SHOT_MAX, h: 882 });
+    // no viewport known: only the cap applies
+    assert.deepEqual(modelShotSize(3136, 1000, 0, 0), { w: 1568, h: 500 });
+    const tall = modelShotSize(1000, 4000, 2000, 8000);
+    assert.equal(tall.h, MODEL_SHOT_MAX);
+    assert.equal(tall.w, 392);
+  }
+);
+await check("a shot with no size is refused, not sent", () => {
+  assert.throws(() => modelShotSize(0, 900, 1440, 900), /invariant violated/);
+  assert.throws(() => modelShotSize(NaN, 900, 1440, 900), /invariant violated/);
 });
 await check(
   "the read body always carries the legacy fields from page 1 and clip 1",

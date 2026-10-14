@@ -30,6 +30,33 @@ export const URL_SETTLE_MS = 800;
 export const RESUME_MAX_AGE_MS = 30 * 60 * 1000;
 /** Screenshots travel as JPEG at this quality, so five pages and the audio fit. */
 export const SHOT_JPEG_QUALITY = 0.8;
+/** The longest edge of a screenshot sent to the model for the read-back (Claude's vision sweet spot). */
+export const MODEL_SHOT_MAX = 1568;
+
+/**
+ * The size of the copy of a screenshot the model reads: the viewport's own CSS
+ * size (a 2x retina capture is halved, so its pixels match the element map's
+ * coordinates), and never longer than MODEL_SHOT_MAX on its longest edge.
+ * Never enlarges. The full-size shot is still the one the card's picture uses.
+ */
+export function modelShotSize(
+  w: number,
+  h: number,
+  vw: number,
+  vh: number
+): { w: number; h: number } {
+  if (!(w > 0) || !(h > 0))
+    throw new Error("invariant violated: a screenshot has a size");
+  let scale = vw > 0 && vh > 0 ? Math.min(1, vw / w, vh / h) : 1;
+  scale = Math.min(
+    scale,
+    (MODEL_SHOT_MAX / Math.max(w * scale, h * scale)) * scale
+  );
+  return {
+    w: Math.max(1, Math.round(w * scale)),
+    h: Math.max(1, Math.round(h * scale)),
+  };
+}
 /** The stitched confirm image: label bar height and the tallest stack before it is scaled down. */
 export const LABEL_BAR_PX = 28;
 export const MAX_STITCH_PX = 6000;
