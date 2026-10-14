@@ -21,6 +21,7 @@ import {
   filedToast,
   labelFor,
   maskClone,
+  modelShotSize,
   notesFromReply,
   pageLabel,
   readBody,
@@ -145,6 +146,43 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error("image did not decode"));
     img.src = src;
   });
+}
+
+/**
+ * The copy of a page's screenshot the model reads: downscaled to the viewport's
+ * CSS size (capped at MODEL_SHOT_MAX), so a retina capture uploads a quarter of
+ * the bytes and its pixels match the element map. The page's own full-size
+ * shot is untouched — the card's picture is still burned from it.
+ */
+async function modelShot(p: CapturedPage): Promise<string> {
+  const img = await loadImage(p.shot);
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const size = modelShotSize(w, h, p.vw, p.vh);
+  if (size.w === w && size.h === h) return p.shot;
+  const c = document.createElement("canvas");
+  c.width = size.w;
+  c.height = size.h;
+  const ctx = c.getContext("2d");
+  if (!ctx) return p.shot;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, size.w, size.h);
+  return c.toDataURL("image/jpeg", SHOT_JPEG_QUALITY);
+}
+
+/** The pages as the read-back sends them: each with its model-sized shot. */
+async function modelPages(pages: CapturedPage[]): Promise<CapturedPage[]> {
+  return Promise.all(
+    pages.map(async p => {
+      try {
+        return { ...p, shot: await modelShot(p) };
+      } catch (err) {
+        console.error("[magicFeedback.modelShot]", err);
+        return p;
+      }
+    })
+  );
 }
 
 function reviewPages(pages: CapturedPage[]): ReviewPage[] {
@@ -482,7 +520,7 @@ export class MagicFeedbackWidget {
       const r = await postJson(
         "/api/magic-feedback",
         readBody({
-          pages: s.pages,
+          pages: await modelPages(s.pages),
           clips,
           mousePath: s.mousePath,
           clicks: s.clicks,
