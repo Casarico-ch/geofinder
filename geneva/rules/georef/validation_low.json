@@ -1,0 +1,53 @@
+{
+ "method": "5 random parcels per low-confidence trace, plan crop with parcel (red) and traced sectors (blue) inspected by eye (scripts/validate_sheet.py); sheets in georef/evidence/val_<plan>.png",
+ "RS 27425": {
+  "sheet": "georef/evidence/val_27425.png",
+  "parcels": {
+   "2709": "D (vineyard band) - plausible",
+   "8132": "C - plausible (no letter in view)",
+   "4901": "A - correct (circled A below)",
+   "7314": "A - correct (village terraced houses)",
+   "4858": "D - uncertain (unlabelled land)"
+  },
+  "result": "4/5 plausible, 1 uncertain; re-traced after audit 4 (A no longer covers the zone-5 villa area; 6059 now C)"
+ },
+ "RS 27304": {
+  "sheet": "georef/evidence/val_27304.png",
+  "parcels": {
+   "8927": "3 - correct (next to label 3)",
+   "9038": "2 - correct (villa area south of the road)",
+   "3075": "2 - correct",
+   "4899": "1 - correct (village core)",
+   "6013": "78% unidentified - east edge; zone-consistency rule moves zone-5 parcels to sector 2/2A/3"
+  },
+  "result": "4/5 correct, 1 corrected by the zone rule"
+ },
+ "RS 27275": {
+  "sheet": "georef/evidence/val_27275.png",
+  "parcels": {
+   "1144": "A - plausible (on rue de Graman)",
+   "1620": "A - plausible",
+   "1442": "A - plausible",
+   "1701": "C - plausible (open land south-east)",
+   "1347": "unidentified north block - left unidentified"
+  },
+  "result": "photographed board, overlay misregistered by 20-70 m; check by street correspondence only - 4/5 plausible"
+ },
+ "PDZI 29975-A": {
+  "result": "parcel 4363 (audit #134) now 100% inside the flood-filled aire de localisation (was 67%)"
+ },
+ "PDZI 28460-B": {
+  "result": "height sectors placed on a new manual georef (4 points, residuals 1-9 m) refined by line alignment; low confidence"
+ },
+ "PDZI 29292": {
+  "sheet": "georef/evidence/val_29292.png",
+  "parcels": {
+   "8038": "1.0 inside - correct",
+   "10946": "0.51 - parcel straddles rue du Pr\u00e9-Salomon, the road part is outside - correct",
+   "7739": "0.72 - outline follows the red limit lines, eastern built-up part now inside - correct",
+   "10947": "0.65 - south part in the river buffer outside - correct",
+   "11278": "0.77 - road strip outside - correct"
+  },
+  "result": "re-traced by flood fill between the art. 9 limit lines (audit 5); 5/5 correct"
+ }
+}

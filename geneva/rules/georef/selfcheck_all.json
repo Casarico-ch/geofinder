@@ -1,0 +1,1163 @@
+{
+ "visual_second_reads": [
+  [
+   "27353",
+   "parcel 2176 (rue de la Servette, R+6 / R+7 corner):height",
+   418.11,
+   "georef/evidence/27353_gabarit.png"
+  ],
+  [
+   "27953",
+   "density",
+   1.2,
+   "georef/evidence/27953_art5_values.png"
+  ],
+  [
+   "27953",
+   "density",
+   1.5,
+   "georef/evidence/27953_art5_values.png"
+  ]
+ ],
+ "totals": {
+  "entries": 91,
+  "quotes": 824,
+  "numbers": 206,
+  "ocr_numbers": 41,
+  "ocr_confirmed": 41,
+  "ok": 91
+ },
+ "entries": [
+  {
+   "src": "PS",
+   "key": "216",
+   "ok": true,
+   "quotes": 1,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "79114",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30151",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29993",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29792",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29718",
+   "ok": true,
+   "quotes": 14,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29934",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30216",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 6,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29848",
+   "ok": true,
+   "quotes": 8,
+   "numbers": 2,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "28392",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29394",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "28590",
+   "ok": true,
+   "quotes": 9,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29430",
+   "ok": true,
+   "quotes": 8,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29575",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 3,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29484",
+   "ok": true,
+   "quotes": 8,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "28271",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "27383",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30158",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29577",
+   "ok": true,
+   "quotes": 4,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "27626",
+   "ok": true,
+   "quotes": 8,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29962",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29431",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 2,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29827",
+   "ok": true,
+   "quotes": 21,
+   "numbers": 2,
+   "ocr_numbers": 2,
+   "ocr_confirmed": 2,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29376",
+   "ok": true,
+   "quotes": 26,
+   "numbers": 10,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "28679",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29589",
+   "ok": true,
+   "quotes": 9,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "27878",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30174",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30074",
+   "ok": true,
+   "quotes": 12,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29999",
+   "ok": true,
+   "quotes": 44,
+   "numbers": 19,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29479",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 2,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29525",
+   "ok": true,
+   "quotes": 13,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29541",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 2,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29400",
+   "ok": true,
+   "quotes": 18,
+   "numbers": 6,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30111",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29720",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29866",
+   "ok": true,
+   "quotes": 8,
+   "numbers": 3,
+   "ocr_numbers": 3,
+   "ocr_confirmed": 3,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29108",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 2,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29165",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29184",
+   "ok": true,
+   "quotes": 21,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30054",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29543",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 2,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29530",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30036",
+   "ok": true,
+   "quotes": 9,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30205",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30079",
+   "ok": true,
+   "quotes": 13,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30075",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "810217",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "27646",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29183",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "30077",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29969",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29953",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29872",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29559",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29901",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29790",
+   "ok": true,
+   "quotes": 9,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29485",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29802",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PS",
+   "key": "29961",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 3,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "26959",
+   "ok": true,
+   "quotes": 13,
+   "numbers": 6,
+   "ocr_numbers": 6,
+   "ocr_confirmed": 6,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27425",
+   "ok": true,
+   "quotes": 17,
+   "numbers": 5,
+   "ocr_numbers": 5,
+   "ocr_confirmed": 5,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27723",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27304",
+   "ok": true,
+   "quotes": 30,
+   "numbers": 5,
+   "ocr_numbers": 5,
+   "ocr_confirmed": 5,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "4737",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 1,
+   "ocr_numbers": 1,
+   "ocr_confirmed": 1,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "0",
+   "ok": true,
+   "quotes": 4,
+   "numbers": 2,
+   "ocr_numbers": 2,
+   "ocr_confirmed": 2,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27650",
+   "ok": true,
+   "quotes": 2,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27526",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27283",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 1,
+   "ocr_numbers": 1,
+   "ocr_confirmed": 1,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "4198",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 3,
+   "ocr_numbers": 3,
+   "ocr_confirmed": 3,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27275",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 5,
+   "ocr_numbers": 5,
+   "ocr_confirmed": 5,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27353",
+   "ok": true,
+   "quotes": 8,
+   "numbers": 6,
+   "ocr_numbers": 4,
+   "ocr_confirmed": 4,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "27749",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "RS",
+   "key": "28316",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 0,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29995",
+   "ok": true,
+   "quotes": 10,
+   "numbers": 8,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "/tmp/claude-0/-home-user-geofinder/272f38bd-18d5-52a4-990b-019ccc789ce2/scratchpad/rules/lci.txt",
+   "key": "26615-N",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29702",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 4,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "28495-B",
+   "ok": true,
+   "quotes": 13,
+   "numbers": 4,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "28689-A",
+   "ok": true,
+   "quotes": 3,
+   "numbers": 1,
+   "ocr_numbers": 1,
+   "ocr_confirmed": 1,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29362",
+   "ok": true,
+   "quotes": 6,
+   "numbers": 4,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "27953",
+   "ok": true,
+   "quotes": 15,
+   "numbers": 9,
+   "ocr_numbers": 2,
+   "ocr_confirmed": 2,
+   "problems": []
+  },
+  {
+   "src": "/tmp/claude-0/-home-user-geofinder/272f38bd-18d5-52a4-990b-019ccc789ce2/scratchpad/rules/lci.txt",
+   "key": "28460-B",
+   "ok": true,
+   "quotes": 22,
+   "numbers": 7,
+   "ocr_numbers": 1,
+   "ocr_confirmed": 1,
+   "problems": []
+  },
+  {
+   "src": "/tmp/claude-0/-home-user-geofinder/272f38bd-18d5-52a4-990b-019ccc789ce2/scratchpad/rules/lci.txt",
+   "key": "29292",
+   "ok": true,
+   "quotes": 9,
+   "numbers": 1,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29994",
+   "ok": true,
+   "quotes": 16,
+   "numbers": 9,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29976",
+   "ok": true,
+   "quotes": 11,
+   "numbers": 6,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29975-A",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 3,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29975-B",
+   "ok": true,
+   "quotes": 7,
+   "numbers": 4,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29745-A",
+   "ok": true,
+   "quotes": 5,
+   "numbers": 3,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "30097",
+   "ok": true,
+   "quotes": 23,
+   "numbers": 26,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "29968",
+   "ok": true,
+   "quotes": 4,
+   "numbers": 4,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  },
+  {
+   "src": "PDZI",
+   "key": "28667",
+   "ok": true,
+   "quotes": 21,
+   "numbers": 9,
+   "ocr_numbers": 0,
+   "ocr_confirmed": 0,
+   "problems": []
+  }
+ ],
+ "visual_checks": [
+  [
+   "RS",
+   "27353",
+   "parcel 2176 (rue de la Servette, R+6 / R+7 corner):height",
+   416.74,
+   "gabarit elevation, read visually (georef/evidence/27353_gabarit.png)"
+  ],
+  [
+   "RS",
+   "27353",
+   "parcel 2176 (rue de la Servette, R+6 / R+7 corner):height",
+   421.05,
+   "gabarit elevation, read visually (georef/evidence/27353_gabarit.png)"
+  ],
+  [
+   "PDZI",
+   "28495-B",
+   "implantation sector W (gabarit 9 m):height",
+   9,
+   "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+  ],
+  [
+   "PDZI",
+   "28495-B",
+   "implantation sector S (gabarit 9 m):height",
+   9,
+   "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+  ],
+  [
+   "PDZI",
+   "28495-B",
+   "implantation sector centre (gabarit 12 m):height",
+   12,
+   "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+  ],
+  [
+   "PDZI",
+   "28495-B",
+   "implantation sector NE (gabarit 12 m + attique):height",
+   12,
+   "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "a (south-west, 10 m):height",
+   10,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "b (hotel, 21 m):height",
+   21,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "c (administrative centre, 16 m):height",
+   16,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "d (north-east, 16 m):height",
+   16,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "other implantation sectors (16 m north / 12 m centre-east / 10 m south):height",
+   16,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "other implantation sectors (16 m north / 12 m centre-east / 10 m south):height",
+   12,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "27953",
+   "other implantation sectors (16 m north / 12 m centre-east / 10 m south):height",
+   10,
+   "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+  ],
+  [
+   "PDZI",
+   "28460-B",
+   "zone de transition (west):height",
+   15,
+   "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+  ],
+  [
+   "PDZI",
+   "28460-B",
+   "secteur à gabarit limité H=12 m (north):height",
+   12,
+   "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+  ],
+  [
+   "PDZI",
+   "28460-B",
+   "secteurs à gabarit limité H max 15 m / 10 m (south-east): 15 m part:height",
+   15,
+   "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+  ],
+  [
+   "PDZI",
+   "28460-B",
+   "secteurs à gabarit limité H max 15 m / 10 m (south-east): 10 m part:height",
+   10,
+   "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+  ],
+  [
+   "/tmp/claude-0/-home-user-geofinder/272f38bd-18d5-52a4-990b-019ccc789ce2/scratchpad/rules/lci.txt",
+   "28460-B",
+   "secteur à gabarit limité H=6 m (east, incl. zone NNI A):height",
+   6,
+   "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "A:height",
+   429.0,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "B:height",
+   426.0,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "C:height",
+   427.5,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "D:height",
+   426.0,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "I:height",
+   426.0,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "E:height",
+   425.5,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "H:height",
+   425.5,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "F:height",
+   424.0,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ],
+  [
+   "PDZI",
+   "28667",
+   "G:height",
+   424.0,
+   "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+  ]
+ ],
+ "sector_join": [
+  [
+   "PS 29792",
+   "sectors without parcels: parcel 1053 (demolition condition)"
+  ],
+  [
+   "PS 28679",
+   "no placed parcels (unplaced plan)"
+  ],
+  [
+   "PS 27878",
+   "no placed parcels (unplaced plan)"
+  ],
+  [
+   "PS 30174",
+   "no placed parcels (unplaced plan)"
+  ],
+  [
+   "PS 29525",
+   "no placed parcels (unplaced plan)"
+  ],
+  [
+   "RS 4737",
+   "no placed parcels (unplaced plan)"
+  ],
+  [
+   "PDZI 27953",
+   "no placed parcels (unplaced plan)"
+  ]
+ ]
+}

@@ -1,0 +1,1779 @@
+
+rsGE L 2 05: Loi sur les eaux (LEaux-GE)
+Source SILGENEVE
+PUBLIC
+Dernières modifications au 1er septembre
+2026
+ Loi sur les eaux
+ (LEaux-GE)
+ L 2 05
+du 19 mars 2026
+(Entrée en vigueur : 4 juillet 2026)
+Le GRAND CONSEIL de la République et canton de Genève,
+vu l'article 76 de la Constitution fédérale, du 18 avril 1999;
+vu la loi fédérale sur la protection des eaux, du 24 janvier 1991;
+vu la loi fédérale sur l'aménagement des cours d'eau, du 21 juin
+1991;
+vu la loi fédérale sur l'utilisation des forces hydrauliques, du 22
+décembre 1916;
+vu l'ordonnance fédérale sur la garantie de l'approvisionnement en
+eau potable lors d'une pénurie grave, du 19 août 2020;
+vu la constitution de la République et canton de Genève, du 14
+octobre 2012, en particulier son article 159;
+vu la loi ratifiant l'extension au canton de Genève de l'Accord de
+Karlsruhe sur la coopération transfrontalière entre les collectivités
+territoriales et organismes publics locaux, signé le 23 janvier 1996, du 22
+avril 2004,
+décrète ce qui suit  :
+Titre
+I 
+Principes et dispositions générales
+Chapitre
+I Buts et principes
+Art. 1 Buts
+1 La présente loi vise à protéger durablement
+la quantité et la qualité des eaux, la santé et la sécurité des êtres vivants,
+à garantir l'usage adéquat des ressources en eau, ainsi qu'à préserver et à
+rétablir au maximum la dynamique naturelle et les fonctions des eaux et des
+écosystèmes qui en dépendent.
+2 En particulier, la présente loi vise
+à :
+a) assurer une gestion cohérente des eaux et une
+coopération active avec les autres politiques publiques en lien avec cette
+ressource;
+b) déterminer les principes et les objectifs permettant
+de surveiller et d'assurer la quantité et la qualité des eaux;
+c) fixer les règles et les actions de protection des
+eaux ainsi que de l'aménagement et de la renaturation du lac Léman
+(ci-après : lac), des cours d'eau et des rives;
+d) assurer la protection des personnes et des biens
+contre les actions dommageables dues aux eaux superficielles;
+e) définir et régler l'usage commun et l'usage accru
+des eaux;
+f) assurer le développement de réseaux
+d'utilisation des eaux brutes, en particulier pour la production de biens
+alimentaires;
+g) régler l'approvisionnement en eau potable, en
+particulier en cas de pénurie;
+h) garantir le développement et le fonctionnement
+adéquats des systèmes d'assainissement et promouvoir la valorisation des eaux
+qui y transitent et de leurs nutriments en tant que ressources;
+i) développer, dans toute la mesure du possible,
+la valorisation et la gestion des eaux pluviales, en particulier en milieu
+urbain;
+j) assurer l'information de la population et
+encourager la recherche, la formation, ainsi que la sensibilisation à la valeur
+de l'eau et des milieux aquatiques;
+k) assurer l'accès aux secteurs de baignade.
+3 La présente loi contient également les
+dispositions d'exécution de la loi fédérale sur la protection des eaux, du 24
+janvier 1991 (ci-après : la loi fédérale), de la loi fédérale sur
+l'aménagement des cours d'eau, du 21 juin 1991, de la loi fédérale sur
+l'utilisation des forces hydrauliques, du 22 décembre 1916, et de
+l'ordonnance fédérale sur la garantie de l'approvisionnement en eau potable
+lors d'une pénurie grave, du 19 août 2020.
+Art. 2 Champ
+d'application
+1 La présente loi s'applique aux eaux
+superficielles et aux eaux souterraines, qu'elles soient privées ou publiques,
+ainsi qu'aux eaux pluviales.
+2 La loi sur les ressources du sous-sol, du 7
+avril 2017, est réservée.
+Art. 3 Principes
+généraux
+1 L'eau est un bien commun. Chacune et chacun
+est tenu de la protéger et de l'utiliser avec parcimonie.
+2 Conformément au principe de causalité, les
+frais de prévention et de réparation des atteintes aux eaux sont à la charge de
+celle ou de celui qui les cause.
+3 Les eaux font l'objet d'une gestion
+publique, durable et intégrée, tenant compte notamment des enjeux
+écosystémiques, climatiques, sanitaires, alimentaires, culturels, économiques,
+récréatifs et éducatifs.
+4 Outre son action concertée avec la
+Confédération et les communes, le canton coopère avec les entités concernées au
+niveau international, transfrontalier et intercantonal.
+Chapitre II 
+Dispositions générales
+Art. 4 Définitions
+Au sens de la présente loi, on entend par :
+a) grand cycle de l'eau, les flux hydrologiques
+naturels ayant lieu entre les océans et les autres eaux, soit, à l'échelle du
+territoire genevois, la dynamique naturelle des écoulements des eaux pluviales,
+des eaux superficielles et des eaux souterraines;
+b) petit cycle de l'eau, les flux hydrologiques
+destinés à l'utilisation de la ressource en eau depuis son point de prélèvement
+jusqu'à son rejet dans le milieu naturel, après traitement, si nécessaire, au
+sein des installations d'assainissement;
+c) eaux, en fonction de leur provenance et de
+leur distribution naturelle :
+- les eaux pluviales ou météoriques, constituées
+par les précipitations atmosphériques,
+- les eaux superficielles, au sens du droit
+fédéral, en particulier le lac et les cours d'eau,
+- les eaux souterraines, au sens du droit
+fédéral;
+d) eaux souterraines principales, les eaux
+souterraines qui présentent des caractéristiques particulièrement intéressantes
+en termes de quantité ou de qualité, notamment pour :
+- leur capacité de régulation et de soutien au
+grand cycle de l'eau, en particulier les nappes d'accompagnement en forte
+relation avec les eaux superficielles garantissant le débit d'étiage,
+- leur potentiel d'approvisionnement en eau
+potable, en eau brute ou en énergie;
+e) eaux brutes, les eaux faisant l'objet d'un
+usage accru, prélevées dans le grand cycle de l'eau et distribuées, en
+principe, sans traitement particulier;
+f) rives, le lit majeur nécessaire à
+l'écoulement des crues et aux fonctions naturelles et biologiques du lac ou des
+cours d'eau, ainsi que de la faune et de la flore existantes ou potentielles
+ayant un rapport direct avec elles;
+g) prélèvement, l'action d'extraire,
+définitivement ou temporairement, un volume d'eau souterraine ou superficielle,
+par exemple au moyen de captages, de pompages ou de dérivations;
+h) canalisation, l'installation publique de
+collecte des eaux;
+i) branchement, l'installation privée de
+collecte des eaux;
+j) raccordement, la jonction entre la
+canalisation et le branchement.
+Art. 5 Eaux du
+domaine public
+1 Sous réserve des droits privés valablement
+constitués, toutes les eaux superficielles font partie du domaine public
+cantonal ou communal.
+2 Le lac, le Rhône, l'Arve, l'Allondon, le
+Nant d'Avril, la Drize, l'Hermance, l'Aire, la Laire, la Seymaz, la Versoix,
+ainsi que tous les tronçons des cours d'eau formant frontière nationale, font
+partie du domaine public cantonal.
+3 Sur proposition du Conseil d'Etat, le Grand
+Conseil peut intégrer au domaine public cantonal toute autre eau superficielle,
+dans la mesure où elle présente un intérêt public, notamment pour les cycles de
+l'eau et pour certains usages.
+4 Les eaux souterraines principales font
+partie du domaine public cantonal.
+5 Les autres eaux superficielles font partie
+du domaine public communal, dans les limites du territoire des communes.
+6 Le Conseil d'Etat établit les cartes de
+référence des eaux superficielles et souterraines du domaine public. Ces cartes
+ont force obligatoire pour les autorités.
+Art. 6 Utilité
+publique
+1 L'aliénation d'emprises, de droits et d'immeubles
+est déclarée d'utilité publique au sens de l'article 3, alinéa 1, lettre b, de
+la loi sur l'expropriation pour cause d'utilité publique, du 10 juin 1933,
+lorsqu'elle est nécessaire à :
+a) l'exécution des travaux d'aménagement, de
+protection, d'entretien important et de surveillance du lac, des cours d'eau,
+de leurs rives et des eaux souterraines approuvés par le Conseil d'Etat;
+b) l'exécution des travaux de renaturation approuvés
+par le Conseil d'Etat;
+c) l'établissement des installations nécessaires à
+l'approvisionnement en eaux brutes approuvées par le Conseil d'Etat;
+d) l'établissement du réseau public d'approvisionnement
+en eau potable prévu au plan directeur technique des Services industriels de
+Genève, lequel est approuvé par le Conseil d'Etat;
+e) l'établissement de réseaux publics d'assainissement
+et des installations de traitement des eaux prévus aux plans généraux
+d'évacuation des eaux, aux plans détaillés de gestion et d'évacuation des eaux
+ou dans la planification directrice au sens de l'article 11 de la présente loi.
+2 Dans ces cas, toute acquisition d'immeuble
+ou constitution de servitude, ou toute fixation d'indemnité qui n'a pas lieu de
+gré à gré, est soumise aux dispositions de la loi sur l'expropriation pour
+cause d'utilité publique, du 10 juin 1933.
+Art. 7 Autorité
+compétente
+1 Sous réserve de dispositions particulières
+qui attribuent la compétence à une autre autorité, le Conseil d'Etat désigne le
+département chargé de l'application de la présente loi (ci-après :
+département).
+2 Le département exécute les tâches relevant
+du service de la protection des eaux, de la police de la protection des eaux et
+du service d'intervention en cas d'accident au sens de l'article 49 de la loi
+fédérale.
+3 Le département peut déléguer à des
+entités de droit public ou de droit privé l'accomplissement de tâches
+d'exécution, notamment en matière de contrôle, de surveillance et
+d'intervention en cas d'accident.
+4 Le département délivre les autorisations
+prévues par la présente loi, sous réserve de dispositions particulières qui
+attribuent cette compétence à une autre autorité. Il publie les requêtes et les
+autorisations dans la Feuille d'avis officielle.
+Art. 8 Situations
+particulières
+1 Il y a situation particulière dans les cas
+où un risque majeur, tel qu'une pollution, une inondation, une pénurie ou une
+sécheresse, est avéré, notamment pour :
+a) le bon fonctionnement du lac, des cours d'eau et des
+eaux souterraines;
+b) la santé et la sécurité publiques;
+c) l'économie ou d'autres secteurs vitaux de la
+société.
+2 En cas de situation particulière, le Conseil
+d'Etat prend, par voie d'arrêté, des mesures de limitation ou de suspension des
+usages non prioritaires pour les particuliers et les professionnels
+conformément aux principes de cohérence et d'arbitrage de l'article 29, alinéa
+2. Celles-ci sont destinées à faire cesser, à limiter dans le temps ou à
+prévenir les dangers et les atteintes à l'environnement, à la société ou à
+l'économie.
+3 Ces mesures peuvent être ponctuelles ou
+prolongées. Elles sont prises de manière graduelle, en tenant compte de seuils
+de gravité prédéterminés. Elles sont levées dans les meilleurs délais.
+4 Le département élabore par anticipation un
+catalogue de mesures avec l'appui de la commission consultative de l'eau,
+conformément à l'article 9, alinéa 1, lettre b.
+5 L'article 113 de la constitution de la
+République et canton de Genève, du 14 octobre 2012, et le règlement sur
+l'organisation en cas de catastrophe et de situation exceptionnelle, du 6
+décembre 2017, sont réservés.
+Art. 9 Commission
+consultative de l'eau
+1 Il est créé une commission consultative de
+l'eau (ci-après : la commission consultative), laquelle a pour mission
+d'assister le département dans le cadre de :
+a) l'établissement de la planification directrice au
+sens de l'article 11;
+b) l'évaluation des situations particulières au sens de
+l'article 8;
+c) la gestion du Rhône et de l'Arve;
+d) toute autre question que le département décide de
+lui soumettre.
+2 La commission consultative est une
+commission officielle au sens de la loi sur les commissions officielles, du 18
+septembre 2009.
+3 Elle est composée des acteurs concernés par
+les divers usages de l'eau sur le territoire genevois et ses alentours,
+soit :
+a) une représentante ou un représentant du département,
+qui préside la commission consultative;
+b) une représentante ou un représentant des communes,
+proposé par l'Association des communes genevoises;
+c) une représentante ou un représentant des milieux de
+protection de la nature;
+d) une représentante ou un représentant des Services
+industriels de Genève;
+e) une représentante ou un représentant des milieux
+agricoles;
+f) une représentante ou un représentant des
+milieux immobiliers;
+g) une représentante ou un représentant des milieux du
+commerce et de l'industrie;
+h) une représentante ou un représentant des entités
+publiques situées à l'amont du territoire genevois;
+i) une représentante ou un représentant des
+entités publiques situées à l'aval du territoire genevois.
+4 La commission consultative peut faire appel
+à des expertes ou à des experts. Ses modalités de fonctionnement sont définies
+par voie réglementaire.
+Chapitre III 
+Stratégie et planification
+Art. 10 Stratégie
+1 Le département propose au Conseil d'Etat une
+stratégie cantonale de l'eau, destinée à piloter et à coordonner la gestion
+publique des eaux, en tenant compte notamment :
+a) des principes de gestion intégrée et durable;
+b) du contexte régional et transfrontalier;
+c) des coordinations transversales nécessaires;
+d) de l'état et de l'évolution des ressources en eau et
+des écosystèmes qui en dépendent;
+e) des usages de l'eau, en particulier des besoins en
+eau potable et en eaux brutes;
+f) de l'évolution de la situation climatique,
+écologique et socio-économique.
+2 La stratégie cantonale de l'eau est adoptée
+par le Conseil d'Etat, qui en informe le Grand Conseil, et revue
+périodiquement, au moins tous les 15 ans.
+Art. 11 Planification directrice
+1 Le département établit la planification
+directrice de l'eau au moyen des schémas de protection, d'aménagement et de
+gestion des eaux, par bassin versant hydrologique. Il tient compte de la
+planification des ressources du sous-sol au sens de la loi sur les ressources
+du sous-sol, du 7 avril 2017, ainsi que des planifications concernant les
+autres ressources naturelles.
+2 Les schémas de protection, d'aménagement et
+de gestion des eaux déterminent les objectifs à atteindre, les actions à mener
+par bassin versant hydrologique et les calendriers, pour répondre aux principes
+et aux buts de la présente loi. Les éléments constitutifs des schémas de
+protection, d'aménagement et de gestion des eaux sont définis par voie
+réglementaire.
+3 Le département consulte les communes, les
+partenaires transfrontaliers et les milieux concernés, ainsi que la commission
+consultative.
+4 Les schémas de protection, d'aménagement et
+de gestion des eaux sont approuvés par arrêté du Conseil d'Etat et publiés dans
+la Feuille d'avis officielle. Ils sont révisés au moins tous les 12 ans.
+5 Ils ont force obligatoire pour les autorités
+et doivent notamment être pris en compte dans les documents de planification
+directrice territoriale.
+Art. 12 Système d'information
+sur les eaux et études de base
+1 Afin de garantir une bonne connaissance de
+l'état et de l'évolution des eaux et de soutenir la mise en œuvre de la
+présente loi, le département gère un système d'information sur les eaux, en
+coordination avec les partenaires concernés.
+2 Le département effectue et coordonne
+notamment les relevés, la saisie et la collecte des données, la réalisation des
+cartes et les études de base d'intérêt régional et cantonal utiles à la
+stratégie, à la planification directrice et à la surveillance, conformément aux
+modalités définies par voie réglementaire et aux dispositions de la loi sur la
+géoinformation, du 21 juin 2024.
+3 Il met en place les systèmes de veille et
+d'alerte nécessaires en vue d'anticiper les dangers et les situations
+particulières.
+Titre
+II 
+Grand cycle de l'eau
+Chapitre
+I Généralités
+Art. 13 Principes
+1 Il est interdit de porter atteinte aux eaux,
+notamment par des rejets polluants ou par des travaux, et de jeter, de déposer
+ou de déverser dans les eaux ou hors des eaux des substances de toute nature
+pouvant, soit directement, soit indirectement, les polluer ou les altérer d'une
+façon quelconque.
+2 Le lac, les cours d'eau, leurs rives et les
+eaux souterraines, et en particulier les ressources destinées à
+l'approvisionnement en eau potable, doivent être protégés afin de préserver et
+de rétablir leurs fonctions, notamment hydrauliques, écologiques et sociales.
+Le fonctionnement naturel des régimes hydrologiques et sédimentaires doit être
+préservé ou reconstitué autant que possible.
+3 Dans toute la mesure du possible, les eaux
+pluviales doivent être valorisées au plus près de l'endroit où elles tombent,
+en particulier en milieu urbain, ainsi que pour la création de stockage d'eau
+en zone agricole.
+Chapitre II 
+Protection et gestion des eaux
+Art. 14 Secteurs, zones et
+périmètres de protection
+1 Afin de garantir la qualité et la quantité
+des eaux, le département délimite les secteurs de protection des eaux, les
+zones de protection des eaux souterraines et les périmètres de protection des
+eaux souterraines au sens des articles 19 à 21 de la loi fédérale, ainsi que
+les aires d'alimentation.
+2 Dans ce cadre, le département établit et
+tient à jour les cartes de protection des eaux, conformément à l'article 30 de
+l'ordonnance fédérale sur la protection des eaux, du 28 octobre 1998. Ces
+cartes ont force obligatoire pour les autorités et sont intégrées au plan
+directeur cantonal.
+3 L'établissement des études nécessaires à la
+délimitation des zones et périmètres de protection incombe aux détenteurs de
+captages d'eaux souterraines. Des exceptions peuvent être prévues par voie
+réglementaire.
+Art. 15 Espace réservé aux eaux
+et espace minimal
+1 Afin de garantir les fonctions biologiques et
+hydrauliques des eaux superficielles, des espaces nécessaires aux eaux,
+dénommés espaces réservés aux eaux et espaces minimaux, sont définis.
+2 L'espace réservé aux eaux est déterminé
+conformément à l'article 36a de la loi fédérale et aux articles 41a et 41b de
+l'ordonnance fédérale sur la protection des eaux, du 28 octobre 1998.
+3 L'espace minimal correspond au minimum à
+l'espace réservé aux eaux, mais il peut être supérieur à celui-ci. Il est
+déterminé par le département sur la base des conditions locales, en
+particulier :
+a) des surfaces inondables;
+b) des dynamiques naturelles des eaux superficielles;
+c) des surfaces d'érosion; 
+d) des fonctions écologiques des eaux superficielles.
+4 Le département établit une cartographie de
+l'espace réservé aux eaux et de l'espace minimal, adoptée et modifiée selon la
+procédure prévue par la loi générale sur les zones de développement, du 29 juin
+1957, pour les plans localisés de quartier, appliquée par analogie.
+5 L'espace réservé aux eaux et l'espace
+minimal doivent demeurer libres de constructions, d'installations et
+d'exploitations. Sous réserve de l'article 16 de la présente loi, des
+dérogations peuvent être octroyées par l'autorité compétente :
+a) dans l'espace réservé aux eaux, dans les limites de
+l'article 41c de l'ordonnance fédérale sur la protection des eaux, du 28
+octobre 1998;
+b) dans l'espace minimal, pour autant que les fonctions
+biologiques et hydrauliques des eaux superficielles soient préservées.
+Art. 16 Surfaces
+inconstructibles
+1 Afin de garantir la protection des eaux au
+sens de l'article 17, alinéa 1, lettre a, de la loi fédérale sur
+l'aménagement du territoire, du 22 juin 1979, tout en permettant un aménagement
+cohérent des parcelles sises à proximité du lac et des cours d'eau, une surface
+inconstructible est définie.
+2 Aucune construction ou installation, ni en
+sous-sol ni en élévation, ne peut être édifiée à une distance de moins
+de :
+a) 10 mètres, 30 mètres ou 50 mètres de la limite d'un
+cours d'eau, en fonction de l'importance de ce dernier et du contexte
+territorial;
+b) 15 mètres, 30 mètres ou 50 mètres de la limite du
+lac, en fonction du contexte territorial.
+3 Le département établit une cartographie des
+surfaces inconstructibles, adoptée et modifiée selon la procédure prévue par la
+loi générale sur les zones de développement, du 29 juin 1957, pour les plans
+localisés de quartier, appliquée par analogie.
+4 En dérogation à l'alinéa 2 du présent
+article, la surface inconstructible peut être adaptée par un plan de zone à
+protéger ou un plan de site adopté selon la loi sur la protection des
+monuments, de la nature et des sites, du 4 juin 1976 :
+a) après remise à ciel ouvert d'un cours d'eau en zone
+densément bâtie, sous réserve de l'espace réservé aux eaux;
+b) pour des constructions ou installations d'intérêt
+général.
+5 Dans le cadre de projets de construction, et
+après consultation des communes concernées, le département chargé des
+constructions peut, sur préavis du département, accorder des dérogations, pour
+autant que celles-ci ne portent pas atteinte aux fonctions du lac, du cours
+d'eau et de leurs rives ni à la sécurité des personnes et des biens,
+pour :
+a) des constructions ou installations d'intérêt général
+dont l'emplacement est imposé par leur destination;
+b) des constructions ou installations en relation avec
+le lac ou le cours d'eau;
+c) des objets de faible importance, qui se situent hors
+de l'espace minimal;
+d) la construction de piscines au bord du lac, pour
+autant que celles-ci ne dépassent pas le niveau moyen du terrain naturel.
+6 Ces dérogations peuvent être assorties de
+charges ou de conditions.
+7 Les constructions et installations existantes
+dûment autorisées, qui peuvent être utilisées conformément à leur destination
+mais qui ne sont pas conformes à l'affectation de la zone, bénéficient en
+principe de la garantie de la situation acquise. Le département chargé des
+constructions, sur préavis du département, peut autoriser la rénovation de
+telles constructions et installations, leur transformation partielle, leur
+agrandissement mesuré ou leur reconstruction, pour autant que ces travaux ne
+portent pas atteinte aux fonctions du lac, du cours d'eau et de leurs rives ni
+à la sécurité des personnes et des biens.
+8 Les surfaces inconstructibles prévues par
+les plans d'affectation du sol visés aux alinéas 3 et 4 entrent dans le calcul
+de l'indice d'utilisation du sol, pour autant qu'elles se superposent à des
+zones à bâtir adoptées conformément aux buts, aux principes et aux procédures
+prévus par la loi fédérale sur l'aménagement du territoire, du 22 juin 1979, ou
+à des secteurs déjà largement bâtis.
+Art. 17 Protection des personnes
+et des biens contre les effets dommageables des eaux superficielles
+1 Afin d'assurer la protection des personnes
+et des biens matériels importants contre les effets dommageables des eaux
+superficielles, le département met en place une gestion intégrée des risques.
+2 Le département établit et tient à jour les
+études de base au sens de l'article 5 de l'ordonnance fédérale sur
+l'aménagement des cours d'eau, du 25 juin 2025, lesquelles permettent
+d'identifier, de localiser et de quantifier les types de danger, les événements
+et les risques afférents. Ces études désignent notamment des cartes des dangers
+et des plans d'urgence en cas de sinistre qui ont force obligatoire pour les
+autorités et doivent être pris en compte dans les plans directeurs.
+3 Les zones de danger désignées conformément à
+l'article 5 de l'ordonnance fédérale sur l'aménagement des cours d'eau, du 25
+juin 2025, se répartissent en 4 catégories, à savoir :
+a) les zones de danger élevé, où toute
+construction doit être interdite, à l'exception d'ouvrages dont l'emplacement
+est imposé par leur destination et sous réserve d'un agrandissement de peu
+d'importance, d'une adaptation ou d'une transformation, qui peuvent être
+autorisés sous certaines conditions;
+b) les zones de danger moyen, où seuls peuvent
+être autorisés les ouvrages qui ne mettent pas en danger des personnes ou des
+biens et qui ne sont pas de nature à polluer les eaux;
+c) les zones de danger faible, où les
+constructions peuvent faire l'objet de restrictions particulières, seules les
+constructions particulièrement vulnérables étant interdites;
+d) les zones de danger résiduel, où les
+constructions sont autorisées, mais où les constructions particulièrement
+vulnérables peuvent faire l'objet de réserves et de mesures de protection
+spécifiques.
+4 Les zones de danger sont comprises dans les
+plans d'affectation du sol prévus aux articles 12 et 13 de la loi d'application
+de la loi fédérale sur l'aménagement du territoire, du 4 juin 1987, et soumises
+aux dispositions de l'article 29, alinéas 2 à 4, de cette loi.
+5 Dans le cadre de la gestion intégrée des
+risques, la protection des personnes et des biens matériels importants est
+assurée en priorité par des mesures d'aménagement du territoire et d'entretien.
+Lorsque ces mesures ne suffisent pas, des mesures de renaturation et de
+protection sont réalisées, pour ramener les risques à un niveau acceptable et
+améliorer les fonctions naturelles du lac et des cours d'eau.
+6 Les surfaces inondables ne peuvent être
+réduites que si ces réductions ne portent pas atteinte aux fonctions du lac et
+des cours d'eau ni à la sécurité des personnes et des biens matériels
+importants.
+7 Dans les zones de danger élevé ou moyen,
+lorsque des constructions et installations existantes dûment autorisées
+présentent un déficit flagrant de protection, le département détermine les
+mesures adaptées pour protéger les personnes et les biens, après en avoir
+évalué l'opportunité et la faisabilité, et veille à leur exécution par les
+autorités compétentes.
+Art. 18 Participation aux coûts
+et indemnisation
+1 Dans le cadre des mesures mentionnées à
+l'article 17, alinéa 7, les bénéficiaires de concessions ou d'autorisations
+d'utilisation du domaine public, ainsi que les titulaires de droits mobiliers
+ou immobiliers, qui profitent directement ou indirectement des améliorations
+induites par ces mesures peuvent être tenus de participer de manière équitable
+à leurs coûts.
+2 Dans les surfaces inondables définies par le
+département pour participer à la réduction du risque pour l'aval d'un bassin
+versant hydrologique, les exploitantes et les exploitants qui subissent des
+dommages économiques en raison d'un événement pluviométrique d'une gravité
+exceptionnelle peuvent être indemnisés par le canton. Les conditions de cette
+indemnisation sont fixées par voie réglementaire et dans les limites de
+l'allocation financière fixée par le Grand Conseil. 
+Chapitre III 
+Aménagement et renaturation des eaux superficielles
+Section
+1 Principes
+et devoirs d'intervention
+Art. 19 Principes
+Dans le cadre du grand cycle de l'eau, tous les travaux
+d'aménagement, d'entretien et de renaturation du lac, des cours d'eau et de
+leurs rives doivent être exécutés de manière à garantir autant que possible et
+à favoriser leurs fonctions biologiques, sociales et hydrauliques, en
+particulier leur capacité d'écoulement, en tenant compte notamment de la
+protection des sites, de la faune et de la flore et en visant à atténuer les
+effets dommageables dus à l'eau.
+Art. 20 Entretien courant du
+lac, des cours d'eau, des rives et de la rade
+1 L'entretien des rives du lac et des cours
+d'eau est à la charge de la ou du propriétaire du fonds.
+2 Les propriétaires sont tenus d'exécuter, à
+leurs frais, les petits travaux d'entretien courant et le nettoyage des rives
+du lac et des cours d'eau contigus à leur bien-fonds, notamment pour
+l'enlèvement de déchets et de dépôts indésirables amenés naturellement.
+3 Le département peut exiger de la ou du
+propriétaire l'enlèvement des arbres ou d'autres obstacles de son bien-fonds
+tombés dans le cours d'eau, l'abattage de la végétation pouvant compromettre la
+stabilité des rives et le reboisement nécessaire pour la protection des rives.
+4 Sur le domaine public communal ou sur les
+biens-fonds privés, le canton peut indemniser, totalement ou partiellement,
+l'entretien courant qui présente un intérêt général, notamment en ce qui
+concerne les dangers naturels et la biodiversité.
+5 Les dragages de la rade sont à la charge des
+Services industriels de Genève.
+6 Les modalités relatives au faucardage du lac
+sont précisées par voie réglementaire.
+Art. 21 Travaux
+1 Les travaux d'aménagement, de protection et
+d'entretien qui vont au-delà de l'entretien courant font l'objet d'une
+autorisation dont les conditions sont fixées par voie réglementaire. 
+2 Ils sont étudiés et planifiés :
+a) pour le domaine public cantonal, par le département;
+b) pour le domaine public communal, par les communes,
+éventuellement avec l'appui du département;
+c) pour les biens-fonds privés, par les propriétaires,
+éventuellement avec l'appui du département.
+3 Les travaux sont exécutés aux frais et sous
+la direction des entités mentionnées à l'alinéa 2. Sur le domaine public
+communal ou sur les biens-fonds privés, le canton peut indemniser, totalement
+ou partiellement, des travaux d'aménagement, de protection ou d'entretien qui
+présentent un intérêt général.
+4 Les alinéas 1 à 3 sont applicables par
+analogie aux mesures de protection contre les effets dommageables des eaux. 
+Art. 22 Obligation des communes
+et participation des tiers
+1 En cas de carence des communes ou de
+désaccord entre elles, le Conseil d'Etat peut faire exécuter, à leurs frais,
+les travaux d'aménagement, de protection et d'entretien des rives du lac et des
+cours d'eau. 
+2 Les bénéficiaires de concessions ou
+d'autorisations d'utilisation du domaine public, ainsi que les titulaires de
+droits mobiliers ou immobiliers qui profitent directement ou indirectement des
+travaux d'aménagement, de protection et d'entretien des rives du lac et des
+cours d'eau réalisés, peuvent être tenus de participer de manière équitable à
+leurs coûts, y compris ceux des études préalables réalisées.
+Section
+2 
+Renaturation des eaux superficielles
+Art. 23 Principes
+1 Dans la perspective du développement durable
+et de l'adaptation aux changements touchant le climat et la biodiversité, le
+lac, les cours d'eau, leurs rives et leur environnement proche sont renaturés
+en application de la loi fédérale.
+2 A cet effet, il convient notamment de :
+a) maintenir et laisser libre de toute intervention
+leur linéaire encore naturel ou proche de l'état naturel;
+b) reconstituer les conditions permettant aux eaux
+superficielles de s'écouler dans un tracé naturel et de retrouver un régime
+hydrologique et des biotopes proches de l'état naturel, chaque fois que cela
+est possible;
+c) réaménager le lit et les rives afin qu'elles
+puissent, chaque fois que cela est possible, retrouver leurs fonctions;
+d) remettre à ciel ouvert les tronçons des cours d'eau
+enterrés, chaque fois que cela est possible;
+e) préserver ou compenser les surfaces d'assolement.
+Art. 24 Mise en œuvre
+1 La renaturation s'applique au lac, aux cours
+d'eau, à leurs rives, à leur environnement proche et, lorsque cela est
+nécessaire, à la maîtrise de l'hydrologie et de l'hydrogéologie. Au besoin,
+elle peut faire l'objet d'un plan de zone à protéger ou d'un plan de site.
+2 Le département établit, au début de chaque
+législature, un bilan et un programme de renaturation du lac, des cours d'eau
+et de leurs rives, qui définit les projets prioritaires et fixe le calendrier
+et les ressources nécessaires à sa réalisation.
+3 Le programme est approuvé par le Conseil
+d'Etat, qui en fait rapport au Grand Conseil.
+Art. 25 Financement
+1 Le programme de renaturation est à la charge
+du canton, qui en assure le financement conformément à la loi sur la gestion
+administrative et financière de l'Etat, du 4 octobre 2013.
+2 Le Conseil d'Etat soumet en particulier au
+Grand Conseil les projets de loi d'investissement nécessaires à la réalisation
+du programme de renaturation.
+Titre
+III 
+Usages des eaux
+Chapitre
+I Généralités
+Art. 26 Principes
+1 Le département met en œuvre toute démarche
+utile à la sensibilisation de la population et des acteurs concernant la
+provenance et la valeur des eaux, ainsi que l'empreinte hydrique liée à leur
+consommation et à leur usage.
+2 Le département veille à faire connaître
+toute mesure visant à la gestion parcimonieuse et aux économies nécessaires de
+la ressource en eau, en coopération avec tout opérateur chargé de
+l'approvisionnement ou tout bénéficiaire d'une concession d'utilisation.
+3 Le département met en place des indicateurs
+clés permettant l'évaluation des fuites et des équipements obsolètes.
+Art. 27 Usage commun
+1 Chacune et chacun peut, dans les limites des
+lois et des règlements et dans la mesure où elle ou il ne porte pas atteinte à
+la nature ni aux droits privés d'autrui, utiliser les eaux, notamment pour
+naviguer, se baigner, abreuver les animaux ou capter de l'eau sans moyen
+mécanique.
+2 Les secteurs de baignade des rives du lac,
+propriété des collectivités publiques, sont accessibles au public en principe
+gratuitement. Un accès différencié en fonction du domicile est prohibé.
+3 Demeure réservé l'accès aux secteurs de
+baignade disposant d'infrastructures ou offrant des prestations d'une certaine
+importance, qui peut être payant. Les prix d'entrée différenciés en fonction du
+domicile sont prohibés. La tarification ne doit pas constituer une mesure
+excluant de l'accès aux secteurs de baignade certaines catégories de la
+population.
+4 Les eaux souterraines du domaine public sont
+soustraites à l'usage commun.
+Art. 28 Usage accru
+Toute utilisation des eaux qui excède l'usage commun, notamment
+par prélèvement à des fins énergétiques, industrielles, agricoles, ou
+d'approvisionnement en eaux brutes ou en eau potable, est subordonnée à une
+concession ou à une autorisation.
+Art. 29 Principes de cohérence
+et d'arbitrage
+1 Le département veille à la cohérence entre
+l'usage commun et les usages accrus des eaux. Il encourage les usages partagés
+et la mutualisation des réseaux d'eau.
+2 En cas de situation particulière au sens de
+l'article 8, la sauvegarde du fonctionnement des écosystèmes aquatiques,
+l'approvisionnement de la population en eau potable et la production de biens
+alimentaires pour l'approvisionnement local sont privilégiés.
+Chapitre II 
+Concessions et autorisations
+Art. 30 Compétences
+particulières et délégation
+1 Tout prélèvement ou toute utilisation des
+eaux, quelle que soit sa durée, est soumis à une concession délivrée par le
+Conseil d'Etat.
+2 Pour des installations de peu d'importance
+ou pour une utilisation de courte durée, le Conseil d'Etat peut, par voie
+réglementaire, déléguer au département la compétence de délivrer une
+autorisation.
+Art. 31 Conditions
+1 L'autorité compétente accorde les
+concessions et les autorisations en tenant compte, en particulier, d'une
+utilisation parcimonieuse de la ressource en eau et du principe de cohérence
+fixé à l'article 29, alinéa 1.
+2 L'autorité compétente peut imposer des
+charges et conditions et prescrire un mode d'exploitation collectif, en vue de
+respecter les buts de la présente loi.
+3 L'octroi d'une concession ou d'une
+autorisation peut être refusé ou retiré, notamment lorsqu'il est de nature à
+porter atteinte :
+a) aux objectifs généraux de la législation
+environnementale ainsi qu'aux objectifs prévus dans les schémas de protection,
+d'aménagement et de gestion des eaux et dans le plan de gestion des ressources
+du sous-sol;
+b) à la qualité et au débit des eaux, ainsi qu'à la
+qualité des espèces qui en dépendent ou des milieux naturels et aux biotopes et
+espèces menacées ou dignes de protection;
+c) à la fertilité du sol ou à la stabilité du terrain;
+d) aux intérêts de la pêche, de la sylviculture, de
+l'agriculture et de la protection des sites;
+e) à l'exercice d'un droit, à l'exploitation
+d'installations existantes ou à la création et à l'extension futures
+d'installations d'intérêt public.
+4 Les bénéficiaires de concessions ou
+d'autorisations sont tenus de tolérer, sans indemnité, toute restriction
+temporaire de leur exploitation résultant de travaux ou d'entretiens d'intérêt
+public ou de mesures liées à la lutte contre l'incendie, la pollution, la
+pénurie, la sécheresse et autres risques naturels.
+5 Lorsque l'utilisation prend fin, pour
+quelque cause que ce soit, le bénéficiaire est tenu, à la demande du
+département et conformément à ses prescriptions, de procéder à la suppression
+ou à la démolition totale ou partielle des ouvrages et des installations, ainsi
+qu'à la remise en état des lieux.
+6 Pour le surplus, les dispositions de la loi
+sur le domaine public, du 24 juin 1961, s'appliquent.
+Art. 32 Utilisation de la force
+hydraulique
+1 Les conditions d'octroi de la concession de
+force hydraulique sont régies par la loi fédérale sur l'utilisation des forces
+hydrauliques, du 22 décembre 1916.
+2 La concession est délivrée par le Grand
+Conseil. Si elle porte sur une puissance inférieure à 1 MW, elle est délivrée
+par le Conseil d'Etat, qui peut déléguer par voie réglementaire cette
+compétence au département pour des installations de peu d'importance ou pour
+une utilisation de courte durée.
+3 Le département soumet la demande de
+concession de force hydraulique et les plans aux communes intéressées et aux
+autorités fédérales compétentes pour préavis et il ouvre simultanément une
+enquête publique d'une durée de 30 jours.
+Art. 33 Utilisation de la nappe
+du Genevois
+1 Afin d'assurer la pérennité de la ressource
+en eau et de garantir la capacité de prélèvement d'eau destinée à
+l'alimentation en eau potable, la nappe du Genevois fait l'objet d'une
+réalimentation artificielle, assurée par les Services industriels de Genève.
+2 Afin d'assurer la couverture de leurs coûts,
+les Services industriels de Genève peuvent demander une participation
+financière proportionnée aux autres bénéficiaires prélevant de l'eau dans la
+nappe du Genevois. Sont réservées les dispositions de la convention relative à
+la protection, à l'utilisation, à la réalimentation et au suivi de la nappe
+d'eau souterraine franco-suisse du Genevois, du 2 décembre 2024.
+3 Les modalités de cette participation sont
+fixées par voie réglementaire.
+Art. 34 Utilisation de matériaux
+du lit des cours d'eau
+1 L'extraction de matériaux du lit des cours
+d'eau ou du fond du lac au moyen d'installations temporaires ou permanentes ou
+à des fins commerciales ou industrielles est interdite.
+2 Des dérogations peuvent être prévues par
+voie réglementaire, si l'extraction ne nuit pas aux fonctions des cours d'eau
+ou du lac et des écosystèmes qui en dépendent, aux espèces protégées ou dignes
+de protection ou à la sécurité des personnes et des biens.
+Art. 35 Exécution et entretien
+des ouvrages et installations
+1 Les ouvrages et installations doivent être
+construits et entretenus conformément aux conditions de la concession ou de
+l'autorisation et à l'état de la technique.
+2 Les bénéficiaires de concessions ou
+d'autorisations sont tenus de vérifier, au minimum tous les 10 ans, si leurs
+ouvrages ou installations sont conformes à l'état de la technique et de
+procéder aux adaptations nécessaires.
+3 Les bénéficiaires de concessions ou
+d'autorisations sont responsables du dommage direct ou indirect causé à la
+propriété publique ou à des tiers par la présence de leurs ouvrages et de leurs
+installations ou par l'exploitation de ceux-ci.
+Art. 36 Emoluments et redevances
+1 Les concessions et autorisations sont
+soumises au paiement d'un émolument administratif et d'une redevance annuelle.
+2 Les émoluments administratifs sont perçus
+lors de la délivrance de la concession ou de l'autorisation et lors de son
+renouvellement ou de sa modification.
+3 Le montant de l'émolument administratif
+varie entre 100 francs et 50 000 francs, en fonction de la
+complexité ou de la durée d'examen du dossier.
+4 Les redevances annuelles sont
+calculées :
+a) pour l'utilisation de l'eau comme force hydraulique,
+conformément à la loi fédérale sur l'utilisation des forces hydrauliques, du 22
+décembre 1916, et au règlement du Conseil fédéral concernant le calcul des
+redevances en matière de droits d'eau, du 12 février 1918;
+b) pour le prélèvement destiné à toute autre
+utilisation des eaux, en fonction de la capacité de prélèvement, de la quantité
+prélevée, de leur destination ou de leur transformation, selon un montant
+variant de 2 à 10 centimes par m³ d'eau utilisée.
+5 Le département peut renoncer temporairement
+à prélever tout ou partie des redevances annuelles pour des concessions ou des
+autorisations concernant des projets d'intérêt général.
+6 En cas de défaut de paiement de la redevance
+annuelle :
+a) la concession ou l'autorisation peut être retirée;
+b) les ouvrages ou installations peuvent être enlevés
+d'office, aux frais, risques et périls de l'intéressé.
+7 Le règlement d'application de la présente loi
+fixe les modalités de calcul et de perception des émoluments et redevances. Il
+précise également la procédure en cas de défaut de paiement.
+Titre
+IV 
+Petit cycle de l'eau
+Chapitre
+I Généralités
+Art.
+37 Principes
+1 Le canton veille
+à ce que les systèmes d'approvisionnement et d'assainissement soient développés
+et exploités de façon efficiente.
+2 Le département
+promeut les solutions innovantes et celles favorisant l'usage partagé. En
+particulier, il veille à ce que chaque usage soit approvisionné par le
+prélèvement et le réseau adéquats.
+3 Les principes
+relatifs à la protection et à la gestion des eaux mentionnés à l'article 13
+s'appliquent également aux eaux du petit cycle de l'eau.
+Chapitre
+II Eaux brutes
+Art. 38 Principes
+1 Le canton soutient l'usage des eaux brutes
+et le développement d'installations d'approvisionnement en eaux brutes.
+2 Il veille en particulier :
+a) à l'établissement d'une coopération entre le canton,
+les communes et l'ensemble des usagers concernés; 
+b) au développement de synergies entre les usages
+bénéficiant d'eaux brutes;
+c) à l'équilibre entre les coûts d'investissement des
+installations et les coûts d'exploitation des eaux brutes.
+Art. 39 Utilisations
+Les eaux brutes peuvent être utilisées, notamment, à des fins
+industrielles, énergétiques, agricoles, domestiques, d'arrosage ou de nettoyage
+de surfaces, à titre public ou privé.
+Art. 40 Installations
+L'approvisionnement en eaux brutes est réalisé par le biais
+d'une hiérarchie de réseaux, soit :
+a) une partie structurante permettant d'amener la
+ressource d'une masse d'eau au cœur d'un bassin de distribution de plusieurs
+usagers;
+b) les branches principales de distribution sur un
+territoire partagé par plusieurs usagers;
+c) les raccordements aux parcelles des usagers
+concernés.
+Art. 41 Mise en œuvre
+1 Le département établit, au début de chaque
+législature, un bilan et un programme d'approvisionnement en eaux brutes, en y
+associant les usagers concernés. Ce programme définit les projets prioritaires
+et fixe le calendrier et les ressources nécessaires à sa réalisation.
+2 Le programme est approuvé par le Conseil
+d'Etat, qui en fait rapport au Grand Conseil. 
+Art. 42 Financement
+1 La réalisation des installations
+d'approvisionnement en eaux brutes est à la charge des usagers concernés.
+2 Le canton peut soutenir, totalement ou
+partiellement, des travaux d'étude ou de réalisation relatifs aux parties
+structurantes et aux branches principales des installations d'approvisionnement
+en eaux brutes qui présentent un intérêt général, notamment pour la production
+de biens alimentaires.
+3 Le Conseil d'Etat soumet au Grand Conseil,
+le cas échéant, les projets de loi d'investissement nécessaires à cette fin.
+Chapitre III Eau
+potable
+Art. 43 Principes
+Le canton veille notamment à ce que :
+a) la ressource en eau potable soit préservée,
+valorisée et utilisée de façon parcimonieuse, rationnelle et durable;
+b) l'approvisionnement en eau potable soit garanti en
+quantité et en qualité suffisantes en tout temps;
+c) l'eau potable soit économiquement accessible à tout
+un chacun.
+Art. 44 Qualité de l'eau potable
+Dans le cadre de la protection de la santé humaine et du
+contrôle de la qualité de l'eau potable, la compétence du service de la
+consommation et des affaires vétérinaires est réservée, conformément à la loi
+d'application de la législation fédérale sur les denrées alimentaires et les
+objets usuels, du 13 septembre 2019.
+Art. 45 Echanges intercantonaux
+et internationaux
+1 Les échanges d'eau potable importée de
+l'extérieur du canton ou exportée hors du canton sont soumis à l'approbation du
+Conseil d'Etat, qui en fixe les conditions. Ce dernier peut déléguer au
+département les cas de peu d'importance.
+2 Demeurent réservées les exigences liées à la
+loi fédérale sur les denrées alimentaires et les objets usuels, du 20 juin
+2014.
+Art. 46 Installations publiques
+1 Le réseau public
+d'approvisionnement en eau potable est constitué de toutes les conduites et
+installations de traitement et de distribution d'eau potable jusqu'à la limite de
+propriété, le cas échéant jusqu'au dispositif de prise sur ou sous le domaine
+privé, selon les prescriptions autonomes adoptées par l'exploitant.
+2 Ce réseau est
+propriété des Services industriels de Genève, en leur qualité d'exploitant du
+réseau public d'approvisionnement en eau potable, à l'exception de celui de la
+commune de Céligny, qui est desservie par les Services industriels de Nyon.
+Art. 47 Planification directrice
+technique
+1 En collaboration avec l'ensemble des
+services cantonaux concernés, les Services industriels de Genève établissent
+une planification directrice technique, qui est adoptée par le conseil
+d'administration et approuvée par le Conseil d'Etat. Celle-ci est revue
+périodiquement, au moins tous les 15 ans.
+2 Cette planification doit tenir compte
+notamment :
+a) de l'inventaire des ressources, des installations et
+des équipements publics et des quantités minimales fixées par le canton, qui
+sont nécessaires à l'approvisionnement en cas de pénurie grave;
+b) de la qualité et de la quantité d'eau nécessaires à
+l'usage commun;
+c) du potentiel foncier nécessaire à
+l'approvisionnement futur;
+d) des potentialités d'échange d'eau et de coopération
+à l'échelle régionale et transfrontalière.
+Art. 48 Mise en œuvre et
+exploitation
+1 Les dispositions techniques de mise en œuvre
+et d'exploitation du réseau public d'approvisionnement en eau potable sont
+fixées dans les directives de la branche et dans les prescriptions autonomes
+adoptées par l'exploitant.
+2 L'exploitation du réseau public
+d'approvisionnement en eau potable est soumise au contrôle du département. A
+cette fin, l'exploitant soumet chaque année au département, pour approbation,
+un rapport d'exploitation du réseau.
+Art. 49 Installations privées
+1 La réalisation et l'entretien des
+installations privées sont à la charge de leurs propriétaires et doivent
+respecter les exigences figurant dans les prescriptions autonomes adoptées par
+l'exploitant du réseau public d'approvisionnement en eau potable, ainsi que les
+bonnes pratiques de la branche.
+2 Dans les bâtiments neufs ou subissant une
+transformation lourde et utilisés par plusieurs personnes, des sous-compteurs
+individuels doivent être mis en place par les propriétaires, afin de déterminer
+la consommation effective de chaque utilisatrice ou utilisateur et de répartir
+la facture d'eau.
+3 Le département peut prévoir des dérogations,
+si la mise en place de sous-compteurs engendre des coûts disproportionnés.
+Art. 50 Financement
+1 Le coût de réalisation, d'extension, de
+transformation, d'entretien, d'exploitation et de gestion du réseau public
+d'approvisionnement en eau potable est financé en majeure partie par la taxe
+liée à la consommation d'eau, en fonction du volume d'eau potable fournie par
+les services et entreprises de distribution d'eau, ainsi que par des taxes ou
+des contributions spéciales, liées notamment à la consommation d'eau non
+enregistrée par un compteur, à la finance de branchement, aux droits de
+raccordement et à la mise à disposition de la capacité d'eau en cas d'incendie.
+2 Ces taxes sont calculées de manière à
+couvrir notamment :
+a) les coûts de fonctionnement afférents
+à la réalisation, à l'extension, à la transformation, à l'entretien, à
+l'exploitation et à la gestion du réseau public d'approvisionnement en eau
+potable;
+b) les coûts des capitaux investis;
+c) les amortissements;
+d) les redevances liées au prélèvement au sens de
+l'article 36, alinéa 4, lettre b, ainsi qu'aux activités du réseau public d'approvisionnement en eau potable;
+e) les coûts des programmes visant à sensibiliser à la
+gestion parcimonieuse et aux économies nécessaires de la ressource en eau.
+Art. 51 Tarification
+1 La tarification est fixée de façon à respecter
+les principes de causalité, d'équivalence et de couverture des coûts effectifs.
+2 La taxe de
+consommation d'eau enregistrée par un compteur fait l'objet d'un tarif
+constitué par :
+a) un montant fixe annuel de base de 90 francs au
+maximum;
+b) un prix au mètre cube d'eau distribué variant en
+fonction de plusieurs tranches de consommation, le montant maximal étant de
+3,70 francs par m³;
+c) les compteurs fixes et mobiles utilisés à des fins
+d'irrigation agricole font l'objet d'une facturation au mètre cube d'eau
+calculée sur la base du total de tous les compteurs attribués à la même
+exploitation.
+3 Demeurent réservés les tarifs spéciaux
+pouvant être octroyés pour un usage ou des conditions de distribution
+spécifiques, ainsi que les exonérations justifiées par un intérêt public.
+4 Les critères de détermination des tarifs des
+taxes ou contributions spéciales liées à la consommation d'eau non enregistrée
+par un compteur, à la finance de branchement, aux droits de raccordement et à
+la mise à disposition de la capacité d'eau en cas d'incendie sont fixés par les
+Services industriels de Genève.
+5 Tous les tarifs s'entendent hors taxe sur la
+valeur ajoutée, laquelle est facturée en sus.
+6 Dans tous les cas, les tarifs sont fixés par
+le conseil d'administration des Services industriels de Genève. Ils sont
+approuvés par le Conseil d'Etat après consultation du Surveillant des prix et
+de la commission consultative. En cas de désaccord entre le conseil
+d'administration des Services industriels de Genève, la commission consultative
+et le Conseil d'Etat, le Conseil d'Etat propose un tarif au Grand Conseil, qui
+se détermine par voie de résolution dans un délai de 3 mois. Passé ce délai, la
+proposition du Conseil d'Etat est considérée comme validée.
+Chapitre
+IV Assainissement et gestion des eaux
+Section
+1 Généralités
+Art.
+52 Principes
+1 La gestion des eaux des zones urbanisées est
+assurée par un système d'assainissement, qui se compose des installations de
+collecte, de gestion, de valorisation, d'évacuation, de transport et de
+traitement des eaux.
+2 La gestion des eaux pluviales est assurée
+par infiltration dans les sols perméables ou par rétention en surface dans des
+installations de valorisation destinées à faire circuler les eaux pluviales en
+surface et en gravitaire, avant qu'elles soient acheminées dans le système
+d'assainissement.
+3 Dans tous les cas, les performances des
+systèmes d'assainissement doivent être optimisées pour garantir, selon l'état
+de la technique, les rejets qualitatifs et quantitatifs les plus favorables
+pour les milieux récepteurs.
+Art.
+53 Objectifs
+Les systèmes d'assainissement
+doivent notamment répondre aux objectifs suivants :
+a) protéger la population et les milieux naturels
+contre les risques sanitaires et environnementaux liés aux eaux polluées;
+b) protéger la population et les biens contre les
+dommages dus aux eaux pluviales;
+c) diminuer les rejets anthropogènes dans le milieu
+naturel;
+d) conserver ou rétablir un régime hydrologique des
+cours d'eau aussi naturel que possible;
+e) obtenir une valorisation optimale des eaux
+pluviales, en tant que ressource et élément nécessaire à la qualité des sols, à
+la végétalisation, à l'arborisation et au paysage, tant sur le domaine privé
+que sur le domaine public, en vue d'offrir plus de résilience et de protection
+face aux événements climatiques exceptionnels et de tendre vers un cycle de
+l'eau aussi naturel que possible.
+Art.
+54 Plans généraux d'évacuation des eaux
+1 Les communes établissent et adoptent des
+plans généraux d'évacuation des eaux, en application des concepts de gestion,
+d'évacuation et de traitement des eaux définis dans les schémas de protection,
+d'aménagement et de gestion des eaux et conformément aux directives du
+département.
+2 Le département valide les plans généraux
+d'évacuation des eaux et leur calendrier d'exécution adoptés par les communes,
+avant leur entrée en vigueur.
+3 Le département assure la coordination des
+plans généraux d'évacuation des eaux dans le cadre des schémas de protection,
+d'aménagement et de gestion des eaux.
+Art.
+55 Plans détaillés de gestion et d'évacuation des
+eaux
+1 Les communes ou le département peuvent
+établir des plans détaillés de gestion et d'évacuation des eaux, à l'échelle
+d'un ensemble de parcelles, destinés à régir précisément l'implantation et les
+caractéristiques techniques d'installations relevant du réseau secondaire ou
+destinées à y être intégrées.
+2 Si les plans détaillés de gestion et
+d'évacuation des eaux sont établis par les communes, ils doivent être validés
+par le département selon la procédure définie par voie réglementaire.
+3 Les plans détaillés sont opposables aux
+tiers.
+Art. 56 Exigence d'autorisation
+pour les installations publiques et privées
+1 Aucune installation d'assainissement ne peut
+être établie ou modifiée sans autorisation préalable.
+2 Le département peut imposer des charges et conditions
+particulières en vue de respecter les buts de la présente loi. 
+3 Les éventuels frais d'expertise sont à la
+charge des propriétaires des installations.
+Section
+2 
+Installations publiques
+Art.
+57 Réseau primaire et réseau secondaire
+1 Le réseau primaire comprend les stations
+d'épuration ainsi que les ouvrages de transport des eaux usées, notamment les
+canalisations et les stations de pompage, déclarés d'intérêt général par le
+Conseil d'Etat.
+2 Les installations et bâtiments du réseau
+primaire sont propriété des Services industriels de Genève, qui les exploitent,
+à l'exception des terrains, qui peuvent rester propriété du canton.
+3 Le réseau secondaire comprend toutes les
+autres installations publiques des systèmes d'assainissement, y compris les
+installations de collecte, de gestion, de valorisation, d'évacuation et de
+traitement des eaux pluviales afférentes aux voiries communales en zones
+urbanisées. Pour les autres voies publiques, ces installations relèvent de
+l'équipement routier, cantonal ou fédéral, qu'elles desservent.
+4 Le réseau secondaire est propriété des
+communes, qui le louent au Fonds intercommunal d'assainissement tel que défini
+à la section 5 du présent chapitre, ce fonds étant chargé de sa gestion, sous
+la surveillance du canton.
+Art. 58 Compétences
+particulières et délégations
+1 Le Conseil d'Etat approuve et fixe les conditions
+de l'évacuation et du traitement des eaux importées de l'extérieur du canton ou
+exportées hors du canton. Il peut déléguer au département les cas de peu
+d'importance.
+2 Le Conseil d'Etat intervient en prenant les
+mesures nécessaires à la réalisation des objectifs issus de la planification du
+réseau secondaire, en cas de carence des communes ou de désaccord entre elles.
+3 Le conseil du Fonds intercommunal
+d'assainissement peut déléguer à l'exploitant du réseau primaire, par contrat,
+tout ou partie des tâches de planification, de réalisation, de cadastration et
+d'entretien du réseau secondaire, pour autant que la commune concernée donne
+son accord.
+Art.
+59 Réalisation
+1 Les Services industriels de Genève réalisent
+les installations du réseau primaire.
+2 Les communes réalisent les installations du
+réseau secondaire.
+3 Les communes peuvent déléguer
+conventionnellement la réalisation d'installations destinées au réseau
+secondaire à des constructeurs privés.
+4 Les collecteurs du réseau secondaire se
+trouvant sous les voies publiques cantonales sont, en règle générale, réalisés
+sous la coordination de l'autorité cantonale chargée de la gestion desdites
+voies, en accord avec la commune intéressée.
+5 L'intégration formelle aux réseaux primaire
+ou secondaire des installations réalisées est précisée par voie réglementaire.
+Art.
+60 Cadastration
+1 Le cadastre du réseau primaire est tenu à
+jour par les Services industriels de Genève.
+2 Les communes réalisent et tiennent à jour le
+cadastre des autres installations d'évacuation et de traitement des eaux
+situées sur leur territoire, au minimum les installations du réseau secondaire
+et les installations collectives privées reconnues d'intérêt local par décision
+du département.
+3 Le département édicte les directives pour la
+réalisation du cadastre et tranche par décision en cas de contestation sur le
+statut des installations.
+Art.
+61 Entretien et exploitation
+1 Les Services industriels de Genève et les
+communes doivent exploiter et entretenir l'ensemble des installations
+publiques, en vue de les maintenir en parfait état de fonctionnement.
+2 En fonction des enjeux et des risques
+environnementaux liés à la configuration des réseaux et des milieux récepteurs,
+les Services industriels de Genève et les communes peuvent être tenus de mettre
+en place un autocontrôle de leurs réseaux.
+3 Le département fixe les conditions
+d'exploitation des installations publiques, les objectifs à atteindre, les
+modalités de l'autocontrôle, ainsi que le contenu du rapport d'exploitation.
+4 Les Services industriels de Genève et les
+communes soumettent chaque année au département, pour approbation, un rapport
+d'exploitation de leur réseau.
+Art. 62 Entretien des réseaux
+sur terrains privés
+Les propriétaires sont tenus de
+tolérer les travaux d'entretien, de réparation ou de reconstruction, pour les
+réseaux publics d'assainissement sis sur leurs terrains. Demeure réservée la
+réparation des dommages causés par ces travaux.
+Art.
+63 Intégration des branchements privés au réseau
+secondaire
+1 Pour leur part située sur ou sous le domaine
+public, les branchements nouveaux ou remis à neuf des biens-fonds privés
+connectés au réseau secondaire sont intégrés à ce dernier, à condition d'être
+conformes aux directives du département.
+2 L'intégration au réseau secondaire des
+branchements existants intervient après réalisation des travaux de
+réhabilitation ou de mise aux normes, effectués par la commune selon ses
+priorités de renouvellement du réseau secondaire et à condition d'être
+conformes aux directives du département.
+3 L'intégration au réseau secondaire se
+produit formellement par la cadastration des installations selon
+l'article 60, conformément aux directives du département.
+4 Aucune indemnité n'est due aux propriétaires
+concernés.
+Art.
+64 Intégration des installations collectives
+privées au réseau secondaire
+1 Les installations collectives privées
+situées sur ou sous des parcelles privées sont intégrées au réseau secondaire
+si l'ensemble des propriétaires concernés en fait la demande au département,
+qui statue après consultation de la commune, sous réserve de la constitution
+des servitudes nécessaires et de la conformité des installations aux directives
+du département.
+2 L'intégration de telles installations ne
+peut intervenir qu'après l'achèvement des travaux idoines, exécutés par la
+commune selon ses priorités de renouvellement du réseau secondaire.
+3 Lors du transfert d'une voie privée au
+domaine public, les réseaux d'assainissement collectifs privés qui s'y trouvent
+sont intégrés au réseau secondaire.
+4 L'intégration se produit formellement par
+la cadastration des installations selon l'article 60, conformément aux
+directives du département, le cas échéant après réception conforme des travaux
+y relatifs.
+5 Aucune indemnité n'est due aux propriétaires
+concernés.
+6 Demeure réservée l'intégration au réseau
+secondaire par expropriation pour cause d'utilité publique, en exécution d'un
+plan détaillé de gestion et d'évacuation des eaux et conformément à la loi sur
+l'expropriation pour cause d'utilité publique, du 10 juin 1933.
+Art. 65 Valorisation thermique
+des eaux polluées
+1 Le canton encourage la valorisation
+thermique des eaux polluées circulant dans le système d'assainissement.
+2 La valorisation thermique des eaux polluées
+fait l'objet d'une autorisation dont les conditions sont fixées par voie
+réglementaire, sous réserve qu'elle ne péjore pas le fonctionnement du système
+d'assainissement, en particulier de la station d'épuration.
+3 Les conditions techniques liées à
+l'implantation de l'installation dans un collecteur public et à son
+exploitation sont fixées par la ou le propriétaire du réseau correspondant.
+Section
+3 
+Installations privées et obligations des particuliers
+Art.
+66 Gestion des eaux pluviales
+1 Les particuliers sont tenus de mettre en œuvre des mesures de
+valorisation et de gestion des eaux à la parcelle, fixées par le département,
+notamment des mesures d'infiltration. Les zones concernées et la nature
+des mesures figurent dans les schémas de protection, d'aménagement et de
+gestion des eaux, les plans généraux d'évacuation des eaux ou les plans
+détaillés de gestion et d'évacuation des eaux.
+2 Le financement des installations de gestion des eaux à la
+parcelle est à la charge des propriétaires. Toutefois, afin d'encourager la
+réalisation d'installations de gestion des eaux à la parcelle respectueuse du
+cycle de l'eau et valorisant les eaux pluviales, des abattements de la taxe
+unique de raccordement sont possibles conformément à l'article 87, alinéa 2.
+3 Les eaux pluviales qui
+ne peuvent pas être infiltrées et valorisées sont soumises à l'obligation de
+raccordement, sauf si elles peuvent être déversées directement dans les eaux
+superficielles en tenant compte des exigences de qualité du rejet.
+Art.
+67 Obligation de raccordement
+1 Les propriétaires sont tenus de raccorder
+leurs branchements au réseau public d'assainissement, sous réserve des
+dérogations visées par l'article 69. 
+2 Ces travaux doivent être exécutés
+conformément aux directives émises par le département et selon les règles de
+l'art.
+3 Le département peut fixer des conditions
+spécifiques d'évacuation des eaux et de raccordement aux canalisations. 
+4 Les branchements et les raccordements sont
+exécutés aux frais des propriétaires.
+Art. 68 Propriété des
+branchements
+Les branchements et raccordements au réseau d'assainissement
+public sont réputés partie intégrante de l'immeuble dont ils proviennent, tant
+qu'ils n'ont pas été intégrés au réseau secondaire conformément aux articles 63
+et 64.
+Art.
+69 Dérogations à l'obligation de raccordement
+1 Le département peut, à la demande de la ou
+du propriétaire, exempter de l'obligation de raccordement si :
+a) elle n'est pas considérée comme opportune et
+raisonnablement envisageable au sens de l'ordonnance fédérale sur la protection
+des eaux, du 28 octobre 1998, ou si le raccordement au système public
+d'assainissement nécessite la construction d'une canalisation dépassant 300
+mètres; dans ces cas, une installation d'épuration particulière, conforme aux
+prescriptions légales, doit être réalisée dans le délai fixé par le
+département;
+b) un système local de valorisation des eaux polluées
+peut être autorisé;
+c) la ou le propriétaire de constructions ou
+d'installations existantes s'engage à les démolir dans le délai fixé par le
+département.
+2 Lorsque les causes de la dérogation
+n'existent plus, le raccordement doit être exécuté dans le délai fixé par le
+département.
+Art. 70 Cadastration
+Les installations doivent faire l'objet d'une cadastration,
+aux frais des propriétaires, selon les directives du département et les
+modalités prévues par voie réglementaire.
+Art.
+71 Fonctionnement et entretien des installations
+privées
+1 Les installations privées doivent être
+maintenues par leurs propriétaires en parfait état de fonctionnement et
+entretenues régulièrement, selon une fréquence adaptée aux exigences
+techniques. Elles doivent être facilement accessibles.
+2 Les propriétaires doivent disposer d'un plan
+à jour de leurs installations privées.
+Art.
+72 Surveillance
+1 Les installations privées sont soumises à la
+surveillance du département.
+2 Le département peut imposer aux
+propriétaires un contrôle de leurs installations privées, à leurs frais.
+Art.
+73 Dimensions supérieures
+1 Le département peut, dans l'intérêt public,
+exiger, pour les installations privées, des implantations adaptées et des
+dimensions supérieures à celles qu'aurait nécessité l'assainissement des
+constructions ou des biens-fonds intéressés.
+2 Les frais supplémentaires qui en
+résultent sont supportés par les autorités intéressées ou reportés à la charge
+des propriétaires des biens-fonds bénéficiaires.
+Art.
+74 Installations individuelles d'assainissement
+1 Les conditions que doivent respecter les installations
+individuelles d'assainissement sont fixées par voie réglementaire.
+2 Au fur et à mesure de la construction
+d'installations publiques d'évacuation et de traitement des eaux, les
+propriétaires sont tenus de mettre leurs installations privées hors service.
+Art.
+75 Installations agricoles
+1 Les conditions générales que doivent
+respecter les installations liées aux exploitations agricoles sont fixées par
+voie réglementaire.
+2 Le département peut fixer des conditions particulières par voie de
+directive.
+3 Les conditions fixées par le département
+doivent prévoir des compensations pour les cas où elles dépassent ce qu'exige
+la loi fédérale. 
+Art.
+76 Installations d'entreposage de liquides
+pouvant polluer les eaux
+1 Le département veille au respect des
+prescriptions techniques générales en matière d'installations d'entreposage de
+liquides pouvant polluer les eaux.
+2 Le département peut fixer des conditions
+particulières.
+Art.
+77 Déversement des eaux industrielles
+Le déversement des eaux industrielles dans le système
+d'assainissement fait l'objet d'une autorisation dont les conditions sont
+fixées par voie réglementaire.
+Art.
+78 Responsabilités des propriétaires
+Les propriétaires des installations privées sont responsables,
+vis-à-vis des pouvoirs publics, de tout dommage consécutif à un vice de
+construction, à un défaut d'entretien ou à l'inobservation des prescriptions
+légales et réglementaires.
+Section
+4 Financement
+de l'assainissement
+Sous-section 1 Généralités
+Art.
+79 Principes
+1 Le financement du
+réseau primaire est assuré en majeure partie par le paiement d'une taxe
+annuelle d'épuration.
+2 Le financement du réseau secondaire est assuré en majeure
+partie par le paiement :
+a) d'une taxe unique de raccordement;
+b) d'une taxe annuelle d'utilisation du réseau
+secondaire.
+3 Tout déversement d'eaux polluées dans le réseau public
+d'assainissement est soumis à la taxe annuelle d'épuration et à la taxe
+annuelle d'utilisation du réseau secondaire, même si les eaux polluées ne
+proviennent pas du réseau de distribution d'eau potable.
+4 Les voiries publiques
+sont soumises à la taxe unique de raccordement ainsi qu'à la taxe annuelle
+d'utilisation du réseau secondaire. 
+5 Les tarifs des taxes
+sont fixés de façon à respecter les principes de causalité, d'équivalence et de
+couverture des coûts effectifs, tout en incitant à la préservation de la
+ressource en eau. Ils s'entendent hors taxe sur la valeur ajoutée, laquelle est
+facturée en sus.
+Sous-section 2 Financement du réseau primaire
+Art.
+80 Taxe annuelle d'épuration
+1 La taxe annuelle
+d'épuration est calculée de manière à couvrir notamment :
+a) les coûts de fonctionnement afférents
+à la réalisation, à l'extension, à la transformation, à l'entretien, à
+l'exploitation et à la gestion du réseau primaire;
+b) les coûts des capitaux investis;
+c) les amortissements;
+d) les redevances liées aux activités du réseau
+primaire;
+e) les frais du canton pour la planification et le
+suivi des travaux de l'ensemble des systèmes d'assainissement publics et
+privés.
+2 Elle est fixée en
+fonction du volume d'eau potable fourni par les services et entreprises de
+distribution d'eau et du volume mesuré ou estimé des eaux de toute autre
+provenance.
+Art.
+81 Perception de la taxe annuelle d'épuration
+1 La taxe annuelle
+d'épuration est exigible pour toute construction, nouvelle ou existante, dès
+que celle-ci est raccordée au réseau public d'évacuation des eaux.
+2 Elle est perçue, en même temps que leurs propres factures, par les
+services et entreprises de distribution d'eau.
+Art.
+82 Tarification de la taxe annuelle d'épuration
+1 La taxe annuelle d'épuration fait l'objet d'un tarif
+constitué par :
+a) un montant fixe annuel de base de 90 francs au
+maximum;
+b) un prix au mètre cube d'eau consommée variant en
+fonction de plusieurs tranches de consommation, le montant maximal étant de
+3,60 francs par m³.
+2 Les cas d'exonération, en l'absence de déversement dans un réseau
+public d'assainissement, sont fixés par voie réglementaire.
+3 Pour les entreprises artisanales et industrielles, la taxe
+annuelle d'épuration peut être majorée par le département jusqu'à concurrence
+de dix fois le montant de base, selon la nature et la charge polluante des eaux
+à évacuer. Les modalités de cette majoration sont fixées par voie
+réglementaire.
+4 Le tarif de la
+taxe annuelle d'épuration est fixé par le conseil d'administration des Services
+industriels de Genève. Il est approuvé par le Conseil d'Etat après consultation
+du Surveillant des prix et de la commission consultative. En cas de désaccord entre
+le conseil d'administration des Services industriels de Genève, la commission
+consultative et le Conseil d'Etat, le Conseil d'Etat propose un tarif au Grand
+Conseil, qui se détermine par voie de résolution dans un délai de 3 mois. Passé
+ce délai, la proposition du Conseil d'Etat est considérée comme validée.
+Art. 83 Taxe fédérale sur les
+eaux usées
+1 En application de l'article
+60b de la loi fédérale et des articles 51a et suivants de l'ordonnance fédérale
+sur la protection des eaux, du 28 octobre 1998, qui instaurent une taxe pour
+financer l'indemnisation des mesures destinées à éliminer les composés traces
+organiques (micropolluants), la taxe annuelle d'épuration est majorée d'un
+montant maximal de 11 centimes par m³,
+intégralement reversé à la Confédération.
+2 Le montant de
+cette majoration est adopté par le conseil d'administration des Services
+industriels de Genève et approuvé par le Conseil d'Etat.
+Sous-section 3 Financement du réseau secondaire
+Art. 84 Perception de la taxe
+unique de raccordement
+1 La taxe unique de raccordement est exigible
+pour toute nouvelle construction ou pour toute construction existante, y
+compris toute voirie publique, lors de son raccordement au réseau secondaire.
+2 La taxe unique de raccordement est fixée par
+décision du département, lors de la délivrance de l'autorisation de construire
+ou du raccordement d'une construction existante au réseau secondaire. Elle est
+perçue directement par le Fonds intercommunal d'assainissement.
+3 Toute modification des surfaces raccordées
+ou du débit maximal rejeté doit être annoncée au département, en vue du
+réexamen de la taxe. 
+Art.
+85 Composantes de la taxe unique de raccordement
+La taxe unique de raccordement est constituée des 2
+composantes suivantes :
+a) une composante pour l'évacuation des eaux usées,
+calculée en fonction de l'affectation des bâtiments ou de la nature de leurs
+activités;
+b) une composante pour l'évacuation des eaux pluviales,
+calculée en fonction de la surface imperméabilisée raccordée.
+Art.
+86 Tarification de la composante pour
+l'évacuation des eaux usées
+1 Pour les eaux
+usées issues d'activités industrielles, le tarif de la composante pour
+l'évacuation des eaux usées est fixé en fonction du débit maximal rejeté, à
+raison d'un maximum de 10 000 francs par m³/h.
+2 Pour tous les
+autres bâtiments, le tarif maximal est de 25 francs par m2 de
+surface brute de plancher, variant en fonction des affectations selon des bases
+de calcul fixées par voie réglementaire.
+3 Le tarif de la composante pour l'évacuation
+des eaux usées est fixé par le conseil du Fonds intercommunal d'assainissement.
+Il est approuvé par le Conseil d'Etat après consultation du Surveillant des
+prix et de la commission consultative. En cas de désaccord entre le conseil du
+Fonds intercommunal d'assainissement, la commission consultative et le Conseil
+d'Etat, le Conseil d'Etat propose un tarif au Grand Conseil, qui se détermine
+par voie de résolution dans un délai de 3 mois. Passé ce délai, la proposition
+du Conseil d'Etat est considérée comme validée.
+Art.
+87 Tarification de la composante pour
+l'évacuation des eaux pluviales
+1 Le tarif de la
+composante pour l'évacuation des eaux pluviales est fixé en fonction de la
+surface imperméabilisée raccordée, à raison d'un maximum de 50 francs par
+m2.
+2 En cas de gestion des eaux pluviales à la parcelle, des
+abattements sont possibles, selon des modalités fixées par voie
+réglementaire.
+3 Le tarif de la composante pour l'évacuation
+des eaux pluviales est fixé par le conseil du Fonds intercommunal
+d'assainissement. Il est approuvé par le Conseil d'Etat après consultation du
+Surveillant des prix et de la commission consultative. En cas de désaccord
+entre le conseil du Fonds intercommunal d'assainissement, la commission
+consultative et le Conseil d'Etat, le Conseil d'Etat propose un tarif au Grand
+Conseil, qui se détermine par voie de résolution dans un délai de 3 mois. Passé
+ce délai, la proposition du Conseil d'Etat est considérée comme validée.
+Art.
+88 Perception de la taxe annuelle d'utilisation
+du réseau secondaire
+1 La taxe annuelle d'utilisation du réseau
+secondaire est exigible pour toute construction nouvelle ou existante, y
+compris toute voirie publique, dès que celle-ci est raccordée au réseau public
+d'évacuation des eaux.
+2 La taxe annuelle d'utilisation du réseau secondaire
+est perçue par les services et entreprises de distribution d'eau, au nom et
+pour le compte du Fonds intercommunal d'assainissement, auquel elle est
+reversée.
+3 Pour les voiries publiques, la taxe annuelle
+d'utilisation du réseau secondaire est perçue par le Fonds intercommunal
+d'assainissement.
+Art.
+89 Tarification de la taxe annuelle d'utilisation
+du réseau secondaire
+1 La taxe annuelle d'utilisation du réseau secondaire fait l'objet
+d'un tarif constitué par :
+a) un montant fixe annuel de base de 24 francs au
+maximum;
+b) un prix au mètre cube d'eau consommée variant en
+fonction de plusieurs tranches de consommation, le montant maximal étant de
+0,80 franc par m³.
+2 Pour les voiries publiques, la taxe annuelle d'utilisation du
+réseau secondaire, perçue auprès des communes et du canton, est fixée en
+fonction de la surface imperméable. Le montant maximal de cette taxe est de
+0,80 franc par m2 de surface
+imperméable.
+3 Les cas d'exonération, en l'absence de déversement dans un réseau
+public d'assainissement, sont fixés par voie réglementaire.
+4 Le tarif de la
+taxe annuelle d'utilisation du réseau secondaire est fixé par le conseil du
+Fonds intercommunal d'assainissement. Il est approuvé par le Conseil d'Etat
+après consultation du Surveillant des prix et de la commission consultative. En
+cas de désaccord entre le conseil du Fonds intercommunal d'assainissement, la
+commission consultative et le Conseil d'Etat, le Conseil d'Etat propose un
+tarif au Grand Conseil, qui se détermine par voie de résolution dans un délai
+de 3 mois. Passé ce délai, la proposition du Conseil d'Etat est considérée
+comme validée.
+Section
+5 Fonds
+intercommunal d'assainissement
+Art.
+90 Fonds intercommunal d'assainissement
+Le Fonds intercommunal d'assainissement
+(ci-après : fonds) est une fondation de droit public dotée de la
+personnalité juridique, destinée à assurer le financement de la réalisation, de
+l'extension, de la transformation, de l'entretien et de l'exploitation du
+réseau secondaire des communes.
+Art.
+91 Ressources
+1 Le fonds est alimenté par :
+a) les taxes uniques de raccordement;
+b) les taxes annuelles d'utilisation du réseau
+secondaire.
+2 Les taxes sont calculées de manière à
+couvrir, notamment :
+a) les coûts d'entretien et d'exploitation du réseau
+secondaire;
+b) les amortissements des investissements afférents à
+la mise aux normes des installations du réseau secondaire existant ou en vue de
+leur intégration à ce dernier selon les articles 63 et 64, notamment la
+réhabilitation, la mise en séparatif et la gestion centralisée des eaux
+pluviales des zones bâties existantes;
+c) les investissements afférents à la réalisation des
+équipements du réseau secondaire desservant les nouveaux quartiers situés en
+zone de développement;
+d) le coût des capitaux investis;
+e) les frais de fonctionnement du fonds.
+3 A concurrence du juste prix, déterminé sur la base d'un décompte
+financier, le montant de la location du réseau secondaire, facturé par les
+communes au fonds, doit permettre de couvrir les frais prévus à l'alinéa 2,
+lettres b, c et d, ainsi que les amortissements selon l'article 110, alinéa 9.
+4 Dans les zones de développement industriel gérées par une fondation,
+celle-ci facture au fonds le montant de la location du réseau secondaire, afin
+de couvrir les coûts d'investissement prévus à l'alinéa 2, lettre c.
+5 Les coûts d'entretien et d'exploitation du réseau
+secondaire, ainsi que les frais de fonctionnement du fonds prévus à l'alinéa 2,
+lettres a et e, sont assumés directement par le fonds, en tant que gestionnaire
+du réseau, au moyen des ressources à sa disposition.
+Art.
+92 Utilité publique
+Le fonds est déclaré d'utilité
+publique et exonéré de tous les impôts directs, cantonaux ou communaux.
+Art. 93(1) 
+Organisation et régime juridique
+1 L'organisation, les modalités de
+fonctionnement et la surveillance du fonds sont définies par ses statuts.
+2 Pour le surplus, la loi sur les institutions
+autonomes communales et intercommunales de droit public, du 11 décembre 2025,
+est applicable.
+Titre
+V 
+Devoirs, mesures administratives, sanctions et voies de droit
+Chapitre
+I Devoirs
+Art.
+94 Obligations de renseigner et de collaborer
+1 Toute personne ou autorité publique est
+tenue de :
+a) fournir au département les renseignements et données
+nécessaires à l'application de la présente loi et, s'il le faut, de contribuer
+à des enquêtes ou de les tolérer;
+b) communiquer au département les résultats d'études,
+de campagnes, de mesures ou de forages qu'elle a entrepris ainsi que les
+renseignements s'y rapportant;
+c) faciliter l'exercice de leur mandat aux agentes et
+agents chargés de l'application de la présente loi et de ses dispositions
+d'application;
+d) se conformer aux décisions et ordonnances des
+autorités.
+2 Les propriétaires ou locataires de terrains
+bordant les cours d'eau ou le lac ou pourvus d'installations d'évacuation,
+d'épuration, de surveillance ou de mesures, doivent permettre l'accès aux
+rives, y compris à la rive droite du Foron, ainsi qu'aux installations, aux
+services publics chargés de l'application de la présente loi et aux personnes
+affectées aux interventions décidées par ces services.
+3 En particulier, les agentes et agents des
+services publics d'incendie et de secours ont accès aux propriétés privées,
+pour mettre fin à tout danger ou à toute atteinte liés aux eaux et pour en
+prévenir et en limiter les conséquences, notamment en cas d'événement pouvant
+générer une pollution des eaux.
+Art. 95 Interdictions
+Il est notamment interdit de :
+a) déverser, introduire ou infiltrer dans les eaux,
+directement ou indirectement, des substances de nature à les polluer;
+b) obstruer ou porter atteinte d'une autre manière aux
+systèmes d'évacuation et de traitement des eaux;
+c) déplacer, enlever ou détériorer des instruments ou
+installations de mesures et de surveillance des eaux;
+d) détériorer ou déplacer des ouvrages ou parties
+d'ouvrages de protection établis dans le lac, les cours d'eau ou sur leurs
+rives;
+e) faire, sans autorisation préalable de l'autorité
+compétente, des constructions, des dépôts ou déblais de matériaux et dresser
+des clôtures dans le lac, les cours d'eau ou sur leurs rives;
+f) faire, sans autorisation préalable, des
+excavations pouvant porter préjudice aux eaux ainsi qu'aux rives ou au régime
+des cours d'eau;
+g) modifier, sans autorisation préalable, la
+topographie du lac, des cours d'eau ou de leurs rives ou porter atteinte à
+l'habitat de leur faune et de leur flore, notamment en pratiquant des barrages,
+des dérivations d'eau, des rigoles ou des excavations, en asséchant ou en
+créant des bras secondaires, ou en diminuant leur débit.
+Chapitre II 
+Mesures administratives
+Art. 96 Nature des mesures
+En cas de violation des obligations découlant de la présente
+loi, de ses dispositions d'application, d'une concession ou d'une autorisation
+accordée conformément aux dispositions de la présente loi, le département peut
+ordonner notamment les mesures suivantes :
+a) l'exécution de travaux;
+b) la suspension ou l'interdiction de travaux;
+c) la remise en état des lieux;
+d) la suppression ou la démolition d'un ouvrage ou
+d'une installation;
+e) l'usage spécifique d'un ouvrage ou d'une
+installation ou l'interdiction d'utiliser celui-ci ou celle-ci;
+f) la suspension, partielle ou totale, d'une
+exploitation;
+g) le retrait d'une concession ou d'une autorisation.
+Art. 97 Procédure
+1 Le département notifie aux personnes
+intéressées les mesures qu'il ordonne. Sous réserve des cas prévus à l'article
+99, il fixe un délai approprié pour leur exécution.
+2 La preuve de l'exécution des mesures incombe
+à la contrevenante ou au contrevenant.
+Art.
+98 Réfection des travaux
+Les travaux qui ne sont pas exécutés conformément aux mesures
+prescrites doivent être refaits sur demande du département et sont, au besoin,
+exécutés d'office.
+Art. 99 Travaux d'office
+1 En cas de danger imminent, le département peut
+prendre immédiatement les mesures nécessaires. Il en informe les personnes
+intéressées dans les plus brefs délais.
+2 En cas d'urgence, les mesures qui n'ont pas
+été exécutées dans les 24 heures suivant la notification peuvent être
+entreprises d'office par le département.
+3 Dans les autres cas, si le délai d'exécution
+est échu sans résultat, le département impartit un délai supplémentaire d'au
+moins 5 jours. Au terme de celui-ci, il peut procéder d'office aux mesures
+requises.
+Art. 100 Frais, participations et
+intérêts
+1 Le département met à la charge des personnes
+intéressées :
+a) les frais résultant de l'exécution des travaux
+d'office; 
+b) les contributions au sens des articles 18, alinéa 1,
+et 22, alinéa 2.
+2 La créance de l'Etat est productive
+d'intérêts au taux de 5% par année dès la notification du bordereau.
+Art. 101 Hypothèque légale
+Le paiement des taxes, des frais, des participations, des
+intérêts et des amendes administratives en faveur du canton, des communes ou du
+Fonds est garanti par une hypothèque légale au sens de l'article 836 du code
+civil suisse, du 10 décembre 1907, inscrite au registre foncier. Les
+modalités sont fixées par voie réglementaire.
+Art. 102 Poursuites
+Conformément à l'article 55, alinéa 1, de la loi sur la
+procédure administrative, du 12 septembre 1985, les décisions définitives
+relatives aux émoluments et redevances, aux taxes, aux frais, aux
+participations, aux intérêts et aux amendes administratives, sont assimilées à
+des jugements exécutoires au sens de la loi fédérale sur la poursuite pour
+dettes et la faillite, du 11 avril 1889.
+Art. 103 Responsabilités
+L'exécution des décisions du département ne libère pas les
+personnes concernées de leurs responsabilités pour les dommages causés à des
+tiers ou aux eaux, avant, pendant ou après l'exécution des travaux, ni ne les
+libère des conséquences civiles, pénales ou administratives qu'elles peuvent
+encourir.
+Chapitre III 
+Sanctions
+Art. 104 Amendes administratives
+1 Est passible d'une amende administrative
+allant de 100 francs à 100 000 francs toute contrevenante ou
+tout contrevenant :
+a) à la présente loi ou à ses dispositions d'exécution;
+b) aux ordres donnés par le département, dans les
+limites de la présente loi et de ses dispositions d'exécution;
+c) aux obligations contenues dans sa concession ou son
+autorisation.
+2 Il est tenu compte, dans la fixation de
+l'amende, du degré de gravité de l'infraction, de la négligence et de la
+récidive éventuelles.
+3 Les amendes peuvent être infligées tant à
+des personnes morales qu'à des personnes physiques.
+4 Le délai de prescription de la poursuite et
+de la sanction est de 7 ans.
+5 Les amendes sont infligées par le
+département, sans préjudice de plus fortes peines en cas de crimes ou de
+délits.
+6 Un émolument peut être perçu.
+Chapitre IV Voies de
+droit
+Art. 105 Recours
+Toute décision prise en application de la présente loi peut
+faire l'objet d'un recours auprès du Tribunal administratif de première
+instance, dans sa composition prévue par l'article 143 de la loi sur les
+constructions et les installations diverses, du 14 avril 1988.
+Titre
+VI 
+Dispositions finales et transitoires
+Chapitre
+I Dispositions finales
+Art. 106 Indexation
+Le Conseil d'Etat peut adapter les montants maximaux des
+tarifs des taxes, des redevances et des émoluments en fonction de l'indice
+genevois des prix à la consommation, dès que celui-ci a subi une variation de 5
+points depuis l'entrée en vigueur de la présente loi ou depuis la dernière
+adaptation.
+Art. 107 Dispositions d'application
+Le Conseil d'Etat édicte les dispositions nécessaires à
+l'application de la présente loi.
+Art. 108 Clause abrogatoire
+La loi sur les eaux, du 5 juillet 1961, est abrogée.
+Art. 109 Entrée en vigueur
+Le Conseil d'Etat fixe la date d'entrée en vigueur de la
+présente loi.
+Chapitre II 
+Dispositions transitoires
+Art. 110 Dispositions transitoires
+Espace minimal
+1 L'espace minimal pour les cours d'eau défini
+conformément à la loi sur les eaux, du 5 juillet 1961, s'applique jusqu'à
+l'adoption de la cartographie de l'espace réservé aux eaux et de l'espace
+minimal en application de l'article 15, alinéa 4.
+Surfaces inconstructibles
+2 La carte des surfaces inconstructibles
+définie conformément à la loi sur les eaux, du 5 juillet 1961, s'applique
+jusqu'à l'adoption de la cartographie des surfaces inconstructibles en
+application de l'article 16, alinéa 3.
+Planification directrice technique des eaux brutes
+3 Le département établit une planification
+directrice technique des eaux brutes, approuvée par le Conseil d'Etat et
+intégrée dans les schémas de protection, d'aménagement et de gestion des eaux
+au gré de leur révision.
+Plans régionaux d'évacuation des eaux
+4 Les mesures fixées par les plans régionaux
+d'évacuation des eaux encore non réalisées lors de l'entrée en vigueur de la
+loi restent valides jusqu'à leur intégration formelle dans les schémas de
+protection, d'aménagement et de gestion des eaux correspondants, afin de
+garantir leur exécution.
+Installations privées d'approvisionnement en eau potable
+5 L'article 49, alinéa 2, ne s'applique pas
+aux projets de construction ou de rénovation de bâtiments pour lesquels une
+requête en autorisation de construire a été déposée avant l'entrée en vigueur
+de la présente loi.
+Tarification transitoire de l'eau potable
+6 L'article 51, alinéa 2, s'applique à compter
+de l'approbation par le Conseil d'Etat du tarif y relatif. Dans l'intervalle,
+le tarif applicable à la fourniture d'eau potable avant l'entrée en vigueur de
+la présente loi demeure applicable, mais au maximum pendant 2 ans après
+l'entrée en vigueur de la loi.
+Tarification transitoire de la taxe annuelle d'épuration
+7 L'article 82, alinéa 1, s'applique à compter
+de l'approbation par le Conseil d'Etat du tarif y relatif. Dans l'intervalle,
+le tarif applicable conformément à la loi sur les eaux, du 5 juillet 1961,
+demeure applicable, mais au maximum pendant 2 ans après l'entrée en vigueur de
+la loi.
+Tarification transitoire de la taxe annuelle d'utilisation du réseau secondaire
+8 L'article 89, alinéa 1, s'applique à compter
+de l'approbation par le Conseil d'Etat du tarif y relatif. Dans l'intervalle,
+le tarif applicable conformément à la loi sur les eaux, du 5 juillet 1961,
+demeure applicable, mais au maximum pendant 2 ans après l'entrée en vigueur de
+la loi.
+Gestion transitoire du financement du réseau secondaire
+9 Le fonds verse aux communes concernées le
+solde des amortissements des investissements afférents à la réalisation, à
+l'extension et à la transformation du réseau secondaire réalisés avant le 1er
+janvier 2015, dont l'échéance est postérieure à l'entrée en vigueur de la
+présente loi.
+ RSG 
+ Intitulé
+ Date d'adoption
+ Entrée en vigueur
+ L 2 05 L sur les
+ eaux
+ 19.03.2026
+ 04.07.2026
+ Modification :
+ 1. n.t. : 93
+ 11.12.2025
+ 01.09.2026
