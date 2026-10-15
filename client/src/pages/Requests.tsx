@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
+import { GenevaView, type GenevaAnswer } from "@/components/GenevaView";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,9 +27,13 @@ interface BuildingInfo {
   views: { lake_view?: string | null; mountain_view?: string | null } | null;
 }
 
+type LimitSource = "regulation" | "geoportal" | "spatial_analysis" | null;
+
 interface RatioIndex {
   current: number | null;
   max: number | null;
+  // "spatial_analysis": Popety's own estimate from what is built nearby, not a legal limit
+  maxSource?: LimitSource;
   usedPct: number | null;
 }
 
@@ -60,6 +65,7 @@ interface Profile {
     maxHeightM: number | null;
     maxFacadeHeightM: number | null;
     maxLengthM: number | null;
+    sources?: Partial<Record<"allowedUse" | "maxHeightM" | "maxFacadeHeightM" | "maxLengthM", LimitSource>>;
   };
   builtVsAllowed: Record<"siteCoverage" | "floorAreaRatio" | "grossFloorRatio" | "volumeRatio", RatioIndex>;
 }
@@ -81,7 +87,7 @@ interface Combined {
   sameZone: boolean;
   buildingCount: number;
   builtVsAllowed: Profile["builtVsAllowed"];
-  floorArea: { currentM2: number | null; allowedM2: number | null; remainingM2: number | null };
+  floorArea: { currentM2: number | null; allowedM2: number | null; remainingM2: number | null; estimate?: boolean };
   map: (MapWindow & { parcelsPixels: [number, number][][] }) | null;
 }
 
@@ -138,6 +144,7 @@ interface PlatformRequest {
   candidates?: { landId: string; address: string | null }[];
   profiles?: Profile[];
   combined?: Combined;
+  geneva?: GenevaAnswer[];
   plotErrors?: { plot: string; error: string }[];
   results?: ModelResult[];
   popetyCostChf: number;
@@ -309,13 +316,35 @@ function ProfileView({ p }: { p: Profile }) {
           <Row k="Municipal plan" v={`${z.municipalPlan ?? "—"}${z.planAdopted ? ` (adopted ${z.planAdopted})` : ""}`} />
           <Row k="Federal zone" v={z.federalZone ?? "—"} />
           <Row k="Allowed use" v={z.allowedUse ?? "—"} />
-          <Row k="Max height" v={`${num(z.maxHeightM, " m")}${z.maxFacadeHeightM != null ? ` (facade ${z.maxFacadeHeightM} m)` : ""}`} />
-          <Row k="Max building length" v={num(z.maxLengthM, " m")} />
+          <Row
+            k="Max height"
+            v={
+              <>
+                {num(z.maxHeightM, " m")} <Estimate source={z.sources?.maxHeightM} />
+                {z.maxFacadeHeightM != null && (
+                  <>
+                    {" "}(facade {z.maxFacadeHeightM} m <Estimate source={z.sources?.maxFacadeHeightM} />)
+                  </>
+                )}
+              </>
+            }
+          />
+          <Row k="Max building length" v={<>{num(z.maxLengthM, " m")} <Estimate source={z.sources?.maxLengthM} /></>} />
         </dl>
       </div>
 
       <RatioTable ratios={p.builtVsAllowed} />
     </div>
+  );
+}
+
+// Popety's own estimate (built nearby), not the rulebook: say so next to the number.
+function Estimate({ source }: { source?: LimitSource }) {
+  if (source !== "spatial_analysis") return null;
+  return (
+    <Badge variant="outline" className="border-transparent bg-amber-500/10 text-amber-700 font-normal" title="Popety's estimate from what is built nearby, not a legal limit">
+      estimate
+    </Badge>
   );
 }
 
@@ -337,7 +366,9 @@ function RatioTable({ ratios, title = "Built today vs. allowed" }: { ratios: Pro
             <TableRow key={k} className="hover:bg-transparent">
               <TableCell>{RATIO_LABEL[k] ?? k}</TableCell>
               <TableCell className="text-right tabular-nums">{num(r.current)}</TableCell>
-              <TableCell className="text-right tabular-nums">{num(r.max)}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {num(r.max)} <Estimate source={r.maxSource} />
+              </TableCell>
               <TableCell>
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden" title={r.usedPct != null ? `${r.usedPct}%` : ""}>
                   <div className="h-full bg-primary" style={{ width: `${Math.min(100, r.usedPct ?? 0)}%` }} />
@@ -368,8 +399,8 @@ function CombinedView({ c, profiles }: { c: Combined; profiles: Profile[] }) {
         <Row k="Zone" v={c.sameZone ? c.zones[0] ?? "—" : `Different zones: ${c.zones.join(" / ")}`} />
         <Row k="Buildings" v={num(c.buildingCount)} />
         <Row k="Floor area built" v={num(c.floorArea.currentM2, " m²")} />
-        <Row k="Floor area allowed" v={num(c.floorArea.allowedM2, " m²")} />
-        <Row k="Floor area left to build" v={num(c.floorArea.remainingM2, " m²")} />
+        <Row k="Floor area allowed" v={<>{num(c.floorArea.allowedM2, " m²")} {c.floorArea.estimate && <Estimate source="spatial_analysis" />}</>} />
+        <Row k="Floor area left to build" v={<>{num(c.floorArea.remainingM2, " m²")} {c.floorArea.estimate && <Estimate source="spatial_analysis" />}</>} />
       </dl>
       <RatioTable ratios={c.builtVsAllowed} title="Built today vs. allowed, all plots" />
       {!c.sameZone && (
@@ -613,8 +644,12 @@ type Outcome = { label: string; tone: string; detail?: string };
 function outcomeOf(r: PlatformRequest): Outcome {
   if (r.kind === "address") {
     if (r.status === "error") return { label: "Failed", tone: "bg-red-500/10 text-red-700" };
-    return r.profile || r.combined
-      ? { label: "Property data", tone: "bg-emerald-500/10 text-emerald-700" }
+    return r.profile || r.combined || r.geneva?.length
+      ? {
+          label: "Property data",
+          tone: "bg-emerald-500/10 text-emerald-700",
+          detail: r.geneva?.length ? `Geneva data · ${r.geneva.map((g) => `${g.parcel.commune} ${g.parcel.no_parcelle}`).join(", ")}` : undefined,
+        }
       : { label: "Not found", tone: "bg-muted text-muted-foreground" };
   }
   const results = r.results ?? [];
@@ -790,6 +825,7 @@ function RequestDetails({ r }: { r: PlatformRequest }) {
       ))}
       {r.kind === "address" && r.combined && <CombinedView c={r.combined} profiles={r.profiles ?? []} />}
       {r.kind === "address" && r.profile && <ProfileView p={r.profile} />}
+      {r.kind === "address" && r.geneva?.map((g) => <GenevaView key={g.parcel.egrid} a={g} />)}
       {r.kind === "listing" && (
         <>
           {(r.input.listingUrl || r.input.radarUrl) && (

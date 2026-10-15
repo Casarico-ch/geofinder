@@ -25,7 +25,7 @@ import { startChallenge, viewChallenge } from "./challenge";
 import { MODELS, costUsd, elapsedMs, getJob, listJobs, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
-import { genevaAnswer, genevaEgridAt, genevaEgridAtAddress, genevaEgridsByPlot, isGenevaEgrid } from "./geneva";
+import { genevaAnswer, genevaEgridAt, genevaEgridAtAddress, genevaEgridsByPlot, genevaPlotOfEgrid, isGenevaEgrid } from "./geneva";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -91,6 +91,11 @@ const resolvePlot = async (p: PlotInput) => {
 // null: not in Geneva (or not found there) — the Popety path decides.
 const resolveGeneva = async (p: PlotInput): Promise<string | null> => {
   if ("egrid" in p && p.egrid && isGenevaEgrid(p.egrid)) return p.egrid;
+  // A Geneva building right (DDP) has its own EGRID: answer for the plot under it.
+  if ("egrid" in p && p.egrid && !("plot" in p)) {
+    const plot = await genevaPlotOfEgrid(p.egrid);
+    if (plot) return plot;
+  }
   if ("plot" in p) {
     const hits = genevaEgridsByPlot(p.commune, p.plot);
     return hits.length === 1 ? hits[0] : null;

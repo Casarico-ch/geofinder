@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { plotAt } from "./proof";
+import { plotByEgrid } from "./proof";
 
 const DIR = process.env.GENEVA_DIR ?? path.resolve(process.cwd(), "geneva");
 const SEARCH = "https://api3.geo.admin.ch/rest/services/api/SearchServer";
@@ -168,11 +168,35 @@ export function genevaEgridsByPlot(communeName: string, plot: string): string[] 
 // Geneva's cantonal outline, loosely: a point outside it never needs a lookup.
 const inGenevaBox = (lat: number, lon: number) => lat > 46.12 && lat < 46.37 && lon > 5.95 && lon < 6.32;
 
+const IDENTIFY = "https://api3.geo.admin.ch/rest/services/api/MapServer/identify";
+
 /** The Geneva plot under a point, or null (outside Geneva, or no plot there). */
 export async function genevaEgridAt(lat: number, lon: number): Promise<string | null> {
   if (!inGenevaBox(lat, lon)) return null;
-  const p = await plotAt(lat, lon);
-  return p?.egrid && isGenevaEgrid(p.egrid) ? p.egrid : null;
+  // A building right (DDP) is its own register entry over the plot, often listed
+  // first (Genève-Cité 3901 over 3900, 15.10): take the entry that is a plot.
+  try {
+    const d = 0.001;
+    const res = await fetch(
+      `${IDENTIFY}?geometry=${lon},${lat}&geometryType=esriGeometryPoint&layers=all:ch.kantone.cadastralwebmap-farbe&tolerance=0&sr=4326` +
+        `&returnGeometry=false&mapExtent=${lon - d},${lat - d},${lon + d},${lat + d}&imageDisplay=800,600,96`,
+      { signal: AbortSignal.timeout(15_000) },
+    );
+    if (!res.ok) return null;
+    const hits: string[] = ((await res.json()).results ?? []).map((r: any) => r.attributes?.egris_egrid).filter(Boolean);
+    return hits.find(isGenevaEgrid) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** A Geneva EGRID that is not a plot (a building right, DDP): the plot it stands on. */
+export async function genevaPlotOfEgrid(egrid: string): Promise<string | null> {
+  if (isGenevaEgrid(egrid)) return egrid;
+  const p = await plotByEgrid(egrid).catch(() => null);
+  if (!p?.bbox) return null;
+  const [w, s, e, n] = p.bbox;
+  return genevaEgridAt((s + n) / 2, (w + e) / 2);
 }
 
 const GWR_FIND = "https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.bfs.gebaeude_wohnungs_register&searchField=egid&returnGeometry=false&searchText=";
