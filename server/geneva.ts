@@ -175,6 +175,20 @@ export async function genevaEgridAt(lat: number, lon: number): Promise<string | 
   return p?.egrid && isGenevaEgrid(p.egrid) ? p.egrid : null;
 }
 
+const GWR_FIND = "https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.bfs.gebaeude_wohnungs_register&searchField=egid&returnGeometry=false&searchText=";
+
+// The EGRID the building register records for a building.
+async function registerEgrid(egid: string): Promise<string | null> {
+  try {
+    const res = await fetch(GWR_FIND + encodeURIComponent(egid), { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return null;
+    const hit = ((await res.json()).results ?? []).find((r: any) => String(r.attributes?.egid) === egid);
+    return hit?.attributes?.egrid ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The Geneva plot at an address (swisstopo's address search, free), or null. */
 export async function genevaEgridAtAddress(address: string): Promise<{ egrid: string; label: string } | null> {
   const ctl = new AbortController();
@@ -187,8 +201,14 @@ export async function genevaEgridAtAddress(address: string): Promise<{ egrid: st
     if (!res.ok) return null;
     const hit = ((await res.json()).results ?? [])[0]?.attrs;
     if (!hit || typeof hit.lat !== "number" || typeof hit.lon !== "number") return null;
+    const label = String(hit.label ?? address).replace(/<[^>]+>/g, "");
+    // The building register names the plot a building stands on; an address point can
+    // sit on a neighbouring access-road plot (3 of 200 Geneva addresses, 15.10).
+    const egid = String(hit.featureId ?? "").split("_")[0];
+    const registered = /^\d+$/.test(egid) ? await registerEgrid(egid) : null;
+    if (registered && isGenevaEgrid(registered)) return { egrid: registered, label };
     const egrid = await genevaEgridAt(hit.lat, hit.lon);
-    return egrid ? { egrid, label: String(hit.label ?? address).replace(/<[^>]+>/g, "") } : null;
+    return egrid ? { egrid, label } : null;
   } catch {
     return null;
   } finally {
