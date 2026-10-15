@@ -1,0 +1,307 @@
+{
+ "28495-B": {
+  "kind": "PDZI building zones",
+  "confidence": "medium",
+  "buildings": 12,
+  "outside": 3,
+  "share_outside": 0.25,
+  "footprint_share_outside": 0.088,
+  "flag": true
+ },
+ "29108": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 82,
+  "outside": 75,
+  "share_outside": 0.915,
+  "footprint_share_outside": 0.894,
+  "flag": false
+ },
+ "29165": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 38,
+  "outside": 35,
+  "share_outside": 0.921,
+  "footprint_share_outside": 0.928,
+  "flag": false
+ },
+ "29184": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 154,
+  "outside": 148,
+  "share_outside": 0.961,
+  "footprint_share_outside": 0.942,
+  "flag": false
+ },
+ "29292": {
+  "kind": "PDZI building zones",
+  "confidence": "medium",
+  "buildings": 168,
+  "outside": 25,
+  "share_outside": 0.149,
+  "footprint_share_outside": 0.096,
+  "flag": false
+ },
+ "29376": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 89,
+  "outside": 84,
+  "share_outside": 0.944,
+  "footprint_share_outside": 0.911,
+  "flag": false
+ },
+ "29394": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 41,
+  "outside": 38,
+  "share_outside": 0.927,
+  "footprint_share_outside": 0.952,
+  "flag": false
+ },
+ "29400": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 82,
+  "outside": 82,
+  "share_outside": 1.0,
+  "footprint_share_outside": 1.0,
+  "flag": false
+ },
+ "29431": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 74,
+  "outside": 70,
+  "share_outside": 0.946,
+  "footprint_share_outside": 0.913,
+  "flag": false
+ },
+ "29479": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 61,
+  "outside": 58,
+  "share_outside": 0.951,
+  "footprint_share_outside": 0.919,
+  "flag": false
+ },
+ "29484": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 55,
+  "outside": 53,
+  "share_outside": 0.964,
+  "footprint_share_outside": 0.797,
+  "flag": false
+ },
+ "29541": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 42,
+  "outside": 41,
+  "share_outside": 0.976,
+  "footprint_share_outside": 0.987,
+  "flag": false
+ },
+ "29543": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 39,
+  "outside": 38,
+  "share_outside": 0.974,
+  "footprint_share_outside": 0.98,
+  "flag": false
+ },
+ "29589": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 4,
+  "outside": 0,
+  "share_outside": 0.0,
+  "footprint_share_outside": 0.0,
+  "flag": false
+ },
+ "29718": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 178,
+  "outside": 166,
+  "share_outside": 0.933,
+  "footprint_share_outside": 0.947,
+  "flag": false
+ },
+ "29745-A": {
+  "kind": "PDZI building zones",
+  "confidence": "medium",
+  "buildings": 12,
+  "outside": 0,
+  "share_outside": 0.0,
+  "footprint_share_outside": 0.0,
+  "flag": false
+ },
+ "29792": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 52,
+  "outside": 51,
+  "share_outside": 0.981,
+  "footprint_share_outside": 0.97,
+  "flag": false
+ },
+ "29953": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 21,
+  "outside": 20,
+  "share_outside": 0.952,
+  "footprint_share_outside": 0.961,
+  "flag": false
+ },
+ "29961": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 20,
+  "outside": 14,
+  "share_outside": 0.7,
+  "footprint_share_outside": 0.749,
+  "flag": false
+ },
+ "29962": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 28,
+  "outside": 26,
+  "share_outside": 0.929,
+  "footprint_share_outside": 0.945,
+  "flag": false
+ },
+ "29969": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 23,
+  "outside": 14,
+  "share_outside": 0.609,
+  "footprint_share_outside": 0.444,
+  "flag": false
+ },
+ "29975-A": {
+  "kind": "PDZI building zones",
+  "confidence": "medium",
+  "buildings": 89,
+  "outside": 20,
+  "share_outside": 0.225,
+  "footprint_share_outside": 0.133,
+  "flag": true
+ },
+ "29975-B": {
+  "kind": "PDZI building zones",
+  "confidence": "medium",
+  "buildings": 52,
+  "outside": 11,
+  "share_outside": 0.212,
+  "footprint_share_outside": 0.036,
+  "flag": true
+ },
+ "29976": {
+  "kind": "PDZI building zones",
+  "confidence": "low",
+  "buildings": 123,
+  "outside": 12,
+  "share_outside": 0.098,
+  "footprint_share_outside": 0.01,
+  "flag": false
+ },
+ "29993": {
+  "kind": "plan de site new-building areas",
+  "confidence": "high",
+  "buildings": 19,
+  "outside": 19,
+  "share_outside": 1.0,
+  "footprint_share_outside": 1.0,
+  "flag": false
+ },
+ "29994": {
+  "kind": "PDZI building zones",
+  "confidence": "medium",
+  "buildings": 15,
+  "outside": 0,
+  "share_outside": 0.0,
+  "footprint_share_outside": 0.0,
+  "flag": false
+ },
+ "29995": {
+  "kind": "PDZI building zones",
+  "confidence": "low",
+  "buildings": 7,
+  "outside": 0,
+  "share_outside": 0.0,
+  "footprint_share_outside": 0.0,
+  "flag": false
+ },
+ "29999": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 5,
+  "outside": 4,
+  "share_outside": 0.8,
+  "footprint_share_outside": 0.904,
+  "flag": false
+ },
+ "30036": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 250,
+  "outside": 240,
+  "share_outside": 0.96,
+  "footprint_share_outside": 0.979,
+  "flag": false
+ },
+ "30074": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 21,
+  "outside": 20,
+  "share_outside": 0.952,
+  "footprint_share_outside": 0.991,
+  "flag": false
+ },
+ "30079": {
+  "kind": "plan de site new-building areas",
+  "confidence": "low",
+  "buildings": 234,
+  "outside": 232,
+  "share_outside": 0.991,
+  "footprint_share_outside": 0.992,
+  "flag": false
+ },
+ "30097": {
+  "kind": "PDZI building zones",
+  "confidence": "low",
+  "buildings": 9,
+  "outside": 0,
+  "share_outside": 0.0,
+  "footprint_share_outside": 0.0,
+  "flag": false
+ },
+ "30111": {
+  "kind": "plan de site new-building areas",
+  "confidence": "medium",
+  "buildings": 43,
+  "outside": 43,
+  "share_outside": 1.0,
+  "footprint_share_outside": 1.0,
+  "flag": false
+ },
+ "_review": {
+  "method": "flagged PDZI plans (>20% of existing buildings outside the drawn building zones) inspected on overlays georef/evidence/gap_<plan>.png",
+  "28495-B": "3 of 12 buildings (8.8% of footprint) outside: one building south of the S implantation sector and neighbours at the perimeter edge - genuinely outside the drawn sectors, no trace gap",
+  "29975-A": "20 of 89 (13% of footprint) outside: buildings in the north-south road reserve, in the hatched gas-pipeline corridor and small sheds in recul bands - genuinely outside the aires de localisation, no trace gap",
+  "29975-B": "11 of 52 (3.6% of footprint) outside: small sheds in road / recul bands - no trace gap",
+  "29292": "after re-trace (flood fill) 25 of 168 (9.6% of footprint) outside: buildings in green / river buffer bands; was a gap on Satigny 7739 before (audit 5 #138), now 72% of 7739 inside (~43,900 m2)",
+  "plans de site": "drawn areas are areas for NEW buildings, so existing buildings are expected outside (90-100% for most plans); not a gap indicator"
+ }
+}

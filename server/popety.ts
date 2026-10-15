@@ -107,6 +107,9 @@ export async function findLandByPlot(commune: string, plot: string): Promise<Lan
 
 export type PropertyProfile = ReturnType<typeof toPropertyProfile>;
 
+/** Where a Popety limit comes from; "spatial_analysis" is Popety's own estimate. */
+export type LimitSource = "regulation" | "geoportal" | "spatial_analysis" | null;
+
 /** What one profile costs on Popety, in CHF (1 credit = CHF 1). */
 export const PROFILE_COST_CHF = 3.8;
 
@@ -194,10 +197,20 @@ export function toPropertyProfile(matchedAddress: string | null, land: any, buil
   const regs = zoning.general_plans?.[0]?.regulations ?? {};
   const plan = zoning.general_plans?.[0];
   const ui = land.current_use_indices ?? {};
-  const index = (current: number | null, max: number | null) => ({
+  // Popety tags every limit with where it comes from: "regulation" (the rulebook),
+  // "geoportal" (official GIS) or "spatial_analysis" — its own estimate from what is
+  // built nearby (2 in 3 Geneva values on 10 plots, 14.10), which is not a legal limit.
+  const source = (r: any): LimitSource => r?.source ?? null;
+  // Floor area: the Ausnützungsziffer / IUS is the legal one where the rulebook gives it;
+  // CUS is otherwise Popety's estimate (Geneva Zone 5: IUS 0.3 from LCI art. 59, CUS 0.37 estimated).
+  const legal = (r: any) => source(r) === "regulation" || source(r) === "geoportal";
+  const floorMax = legal(regs.max_ius_az) || (!legal(regs.max_cus) && value(regs.max_ius_az) != null) ? regs.max_ius_az : regs.max_cus;
+  const floorCurrent = floorMax === regs.max_ius_az ? ui.ius_az ?? ui.cus ?? null : ui.cus ?? null;
+  const index = (current: number | null, maxRec: any) => ({
     current,
-    max,
-    usedPct: current != null && max ? Math.round((current / max) * 100) : null,
+    max: value(maxRec) as number | null,
+    maxSource: source(maxRec),
+    usedPct: current != null && value(maxRec) ? Math.round((current / value(maxRec)) * 100) : null,
   });
 
   const center = land.location?.geo_center ?? null;
@@ -245,12 +258,18 @@ export function toPropertyProfile(matchedAddress: string | null, land: any, buil
       maxHeightM: value(regs.max_height_m),
       maxFacadeHeightM: value(regs.max_facade_height_m),
       maxLengthM: value(regs.max_length_m),
+      sources: {
+        allowedUse: source(regs.allowed_use),
+        maxHeightM: source(regs.max_height_m),
+        maxFacadeHeightM: source(regs.max_facade_height_m),
+        maxLengthM: source(regs.max_length_m),
+      },
     },
     builtVsAllowed: {
-      siteCoverage: index(ui.cos ?? null, value(regs.max_cos)),
-      floorAreaRatio: index(ui.cus ?? null, value(regs.max_cus)),
-      grossFloorRatio: index(ui.ibus_gfz ?? null, value(regs.max_ibus_gfz)),
-      volumeRatio: index(ui.im_bmz ?? null, value(regs.max_im_bmz)),
+      siteCoverage: index(ui.ios_uz ?? ui.cos ?? null, legal(regs.max_ios_uz) ? regs.max_ios_uz : regs.max_cos),
+      floorAreaRatio: index(floorCurrent, floorMax),
+      grossFloorRatio: index(ui.ibus_gfz ?? null, regs.max_ibus_gfz),
+      volumeRatio: index(ui.im_bmz ?? null, regs.max_im_bmz),
     },
   };
 }
@@ -273,9 +292,12 @@ export function combineProfiles(profiles: PropertyProfile[]) {
     keys.map((k) => {
       const current = weighted((p) => p.builtVsAllowed[k].current);
       const max = weighted((p) => p.builtVsAllowed[k].max);
-      return [k, { current, max, usedPct: current != null && max ? Math.round((current / max) * 100) : null }];
+      // One estimated plot makes the site's maximum an estimate.
+      const sources = profiles.map((p) => p.builtVsAllowed[k].maxSource);
+      const maxSource: LimitSource = sources.includes("spatial_analysis") ? "spatial_analysis" : sources.find((x) => x) ?? null;
+      return [k, { current, max, maxSource, usedPct: current != null && max ? Math.round((current / max) * 100) : null }];
     }),
-  ) as Record<RatioKey, { current: number | null; max: number | null; usedPct: number | null }>;
+  ) as Record<RatioKey, { current: number | null; max: number | null; maxSource: LimitSource; usedPct: number | null }>;
   // Floor area in m² = floor area ratio × plot area.
   const fa = builtVsAllowed.floorAreaRatio;
   const currentM2 = fa.current != null ? Math.round(fa.current * total) : null;
@@ -295,6 +317,8 @@ export function combineProfiles(profiles: PropertyProfile[]) {
       currentM2,
       allowedM2,
       remainingM2: currentM2 != null && allowedM2 != null ? Math.max(0, allowedM2 - currentM2) : null,
+      // The allowed floor area rests on Popety's estimate, not the rulebook.
+      estimate: fa.maxSource === "spatial_analysis",
     },
     map: polygons.length ? mapWindow(polygons) : null,
   };

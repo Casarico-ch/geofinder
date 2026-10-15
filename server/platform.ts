@@ -25,6 +25,7 @@ import { startChallenge, viewChallenge } from "./challenge";
 import { MODELS, costUsd, elapsedMs, getJob, listJobs, type KnownModel, type ModelId } from "./jobs";
 import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
 import { profileByLandId } from "./popety-store";
+import { genevaAnswer, genevaEgridAt, genevaEgridAtAddress, genevaEgridsByPlot, genevaPlotOfEgrid, isGenevaEgrid } from "./geneva";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -84,6 +85,24 @@ const resolvePlot = async (p: PlotInput) => {
   if ("plot" in p) return findLandByPlot(p.commune, p.plot);
   if ("latitude" in p) return findLandByCoordinates(p.latitude, p.longitude);
   return { kind: "none" } as const;
+};
+
+// A Geneva plot is answered from geneva/data, never from Popety (geneva.ts).
+// null: not in Geneva (or not found there) — the Popety path decides.
+const resolveGeneva = async (p: PlotInput): Promise<string | null> => {
+  if ("egrid" in p && p.egrid && isGenevaEgrid(p.egrid)) return p.egrid;
+  // A Geneva building right (DDP) has its own EGRID: answer for the plot under it.
+  if ("egrid" in p && p.egrid && !("plot" in p)) {
+    const plot = await genevaPlotOfEgrid(p.egrid);
+    if (plot) return plot;
+  }
+  if ("plot" in p) {
+    const hits = genevaEgridsByPlot(p.commune, p.plot);
+    return hits.length === 1 ? hits[0] : null;
+  }
+  if ("latitude" in p) return genevaEgridAt(p.latitude, p.longitude);
+  if ("address" in p) return (await genevaEgridAtAddress(p.address))?.egrid ?? null;
+  return null;
 };
 
 const describePlot = (p: PlotInput) =>
@@ -151,9 +170,12 @@ function publicView(r: PlatformRequest) {
     finishedAt: r.finishedAt ?? null,
     input: r.input,
     ...(r.kind === "address"
-      ? r.combined
-        ? { profiles: r.profiles ?? [], combined: r.combined, plotErrors: r.plotErrors }
-        : { profile: r.profile ?? null, candidates: r.candidates, plotErrors: r.plotErrors }
+      ? {
+          ...(r.combined
+            ? { profiles: r.profiles ?? [], combined: r.combined, plotErrors: r.plotErrors }
+            : { profile: r.profile ?? null, candidates: r.candidates, plotErrors: r.plotErrors }),
+          ...(r.geneva?.length ? { geneva: r.geneva } : {}),
+        }
       : {
           results: (r.results ?? []).map((m) => ({
             model: m.model,
@@ -316,18 +338,29 @@ export function registerPlatformRoutes(app: Express) {
       res.status(status).json(publicView(record));
     };
     try {
+      // Geneva plots first: answered from our own data, free (geneva.ts).
+      const genevaHits = await Promise.all(plots.map((p) => resolveGeneva(p).catch(() => null)));
+      const answers = genevaHits.flatMap((e) => (e ? [genevaAnswer(e)].filter((a) => a != null) : []));
+      if (answers.length) record.geneva = answers;
+      const rest = plots.filter((_, i) => !genevaHits[i]);
+      if (!rest.length) {
+        record.status = "done";
+        await saveRequest(record);
+        res.json(publicView(record));
+        return;
+      }
       // Finding the parcels is free; only fetch (and pay for) data once every plot is pinned.
-      const matches = await Promise.all(plots.map(resolvePlot));
+      const matches = await Promise.all(rest.map(resolvePlot));
       const problems = matches.flatMap((m, i) =>
-        m.kind === "match" ? [] : [{ input: plots[i], kind: m.kind, match: m }],
+        m.kind === "match" ? [] : [{ input: rest[i], kind: m.kind, match: m }],
       );
       if (problems.length) {
-        if (plots.length === 1) {
+        if (rest.length === 1) {
           const m = matches[0];
           if (m.kind === "ambiguous") {
             record.candidates = m.candidates;
             await fail(300, "Several parcels match this address; send one of the candidate addresses.");
-          } else await fail(404, notFoundMessage(plots[0]));
+          } else await fail(404, notFoundMessage(rest[0]));
           return;
         }
         record.plotErrors = problems.map((p) => ({
@@ -339,7 +372,7 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
 
-      const pinned = matches.map((m, i) => ({ ...(m as Extract<typeof m, { kind: "match" }>), plot: plots[i] }));
+      const pinned = matches.map((m, i) => ({ ...(m as Extract<typeof m, { kind: "match" }>), plot: rest[i] }));
       const unique = pinned.filter((m, i) => pinned.findIndex((o) => o.landId === m.landId) === i);
       // A plot bought before comes from the store for free (popety-store.ts).
       const looked = await Promise.all(

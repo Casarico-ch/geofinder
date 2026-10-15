@@ -15,6 +15,7 @@ import { RUNS_ROOT } from "./sandbox";
 import { deleteJob, getJob, costUsd, listJobs, type Answer, type Job, type JobStatus, type KnownModel } from "./jobs";
 import type { Challenge } from "./challenge";
 import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
+import type { GenevaAnswer } from "./geneva";
 
 // "paused" is display-only: a request whose unfinished runs are all paused.
 export type RequestStatus = "running" | "paused" | "done" | "error";
@@ -59,6 +60,8 @@ export interface PlatformRequest {
   // multi-plot property requests
   profiles?: PropertyProfile[];
   combined?: CombinedSite;
+  // Geneva plots, answered from geneva/data without Popety (geneva.ts)
+  geneva?: GenevaAnswer[];
   plotErrors?: { plot: string; error: string; candidates?: LandCandidate[] }[];
   // listing requests
   results?: ModelResult[];

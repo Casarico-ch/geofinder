@@ -1,0 +1,3034 @@
+{
+ "meta": {
+  "generated": "2026-10-14",
+  "source_layer": "RDPPF_PDZI",
+  "legal_basis": "LZIAM art. 2 al.1 let. h (gabarits) and l (min/max IUS); art. 4 al.1: approval of plan + règlement directeur enables industrial-zone (or mixed) norms",
+  "note": "Keyed exactly like parcels.pdzi_id: NO_PLAN-INDICE (e.g. 26615-N, 29975-A) or plain NO_PLAN when SITG INDICE is \"-\". Each entry also stores no_plan and indice. Sector-specific values under \"sectors\"; parcel placement in parcel_sectors.csv."
+ },
+ "plans": {
+  "29995": {
+   "key": "29995",
+   "no_plan": "29995",
+   "indice": null,
+   "name": "Bois-Brûlé (Grand-Saconnex / Bellevue)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29995",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Bellevue",
+     "Grand-Saconnex"
+    ],
+    "lieu": "BOIS-BRÛLÉ",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29995ALL.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29995REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29995ALL.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "rule": "zone 2 gabarit (LCI 80 al.1, 23); airport ceiling"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "La hauteur des constructions doit se conformer aux dispositions de la 2ème zone de construction"
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": 0.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "Pour les secteurs de densification A, B et C, l’IUS minimum doit être de 0.8 et l’IOS maximum de 0.5."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29995.geojson"
+     }
+    },
+    "B": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": 0.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "Pour les secteurs de densification A, B et C, l’IUS minimum doit être de 0.8 et l’IOS maximum de 0.5."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29995.geojson"
+     }
+    },
+    "C": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": 0.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "Pour les secteurs de densification A, B et C, l’IUS minimum doit être de 0.8 et l’IOS maximum de 0.5."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29995.geojson"
+     }
+    },
+    "D": {
+     "density": {
+      "value": {
+       "IUS_min": 0.5,
+       "IOS_max": 0.3
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "Pour le secteur de densification D, l’IUS minimum doit être de 0.5 et l’IOS maximum de 0.3."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29995.geojson"
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "density"
+   ],
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29995REGLEMENT.raw.txt",
+      "page": 4,
+      "article": "art. 5 (auto-located)",
+      "quote": "déterminent les secteurs constructibles hors sol et sous-sol."
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29995.geojson"
+   },
+   "sector_placement": {
+    "kind": "parcels",
+    "note": "parcel labels on plan 29995 + sector areas (A 7305 m2 ~ parcel 2110; B 5552 ~ 693; C 6025 ~ 3476+3477+1430; D 2473 ~ 3094+3095+part of 3313)",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29995\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "A:density",
+    "B:density",
+    "C:density",
+    "D:density"
+   ],
+   "height_status": "determined"
+  },
+  "26615-N": {
+   "key": "26615-N",
+   "no_plan": "26615",
+   "indice": "N",
+   "name": "ZIMEYSA (Satigny / Meyrin) - règlement 27111A [OCR]",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "26615",
+    "INDICE": "N",
+    "communes_SITG": [
+     "Meyrin",
+     "Satigny"
+    ],
+    "lieu": "ZIMEYSA",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/26615ALL.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/27111AREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/27111AREGLEMENT.ocr.txt",
+    "ge_rules/pdzi_dl/26615ALL.ocr.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Exclusively industrial or assimilated activities; housing only for guarding",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/27111AREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 2 (auto-located)",
+       "quote": "sont réservés exclusivement à des constructions affectées à des activités industrielles ou assimilées."
+      }
+     ]
+    },
+    "height": {
+     "value": {
+      "rule": "industrial-zone default: règlement directeur 27111A sets no gabarit, so the industrial-zone norms enabled by LZIAM art. 4 apply = zone 2 gabarit (LCI art. 80 al. 1, art. 23)",
+      "street_formula": "H <= D + 3",
+      "max_m": 24,
+      "source": "default (rules_catalogue.json zone DIA/IA)"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/27111AREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 2 (auto-located)",
+       "quote": "sont réservés exclusivement à des constructions affectées à des activités industrielles ou assimilées."
+      }
+     ],
+     "law_citations": [
+      {
+       "id": "LZIAM4.1",
+       "law": "LZIAM (rsGE L 1 45)",
+       "article": "4",
+       "paragraph": "al. 1",
+       "quote": "le Conseil d'Etat peut, en vue de la délivrance de l'autorisation de construire, autoriser l'application des normes de la zone industrielle ou de la zone de développement d'activités mixtes au sens de la loi d'application de la loi fédérale sur l'aménagement du territoire, du 4 juin 1987. Cette décision est subordonnée à l'approbation préalable :",
+       "source_file": "ge_rules/laws/rsg_l1_45.txt"
+      },
+      {
+       "id": "LCI80.1",
+       "law": "LCI (rsGE L 5 05)",
+       "article": "80",
+       "paragraph": "al. 1",
+       "quote": "sont soumises aux dispositions applicables à la 2e zone, sous réserve, en zone ferroviaire, des exceptions prévues par l'article 19, alinéa 5, dernière phrase, de ladite loi.",
+       "source_file": "rules/lci.txt"
+      },
+      {
+       "id": "LCI23.1",
+       "law": "LCI (rsGE L 5 05)",
+       "article": "23",
+       "paragraph": "al. 1",
+       "quote": "A front ou en retrait des voies publiques ou privées, la hauteur du gabarit ne peut dépasser de plus de 3 m la distance fixée entre alignements (H ≤ D + 3).",
+       "source_file": "rules/lci.txt"
+      },
+      {
+       "id": "LCI23.6",
+       "law": "LCI (rsGE L 5 05)",
+       "article": "23",
+       "paragraph": "al. 6",
+       "quote": "La hauteur de la ligne verticale du gabarit ne peut dépasser nulle part 24 m (H ≤ 24). Afin de permettre la construction de logements supplémentaires au sens des alinéas 3 à 5, la hauteur de la ligne verticale du gabarit ne peut dépasser nulle part 30 m (H ≤ 30).",
+       "source_file": "rules/lci.txt"
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "allowed_per_zone",
+    "note": "industrial-zone norms; non-building strips along roads (art. 4) drawn on the sheet",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/27111AREGLEMENT.ocr.txt",
+      "page": 3,
+      "article": "art. 2 (auto-located)",
+      "quote": "sont réservés exclusivement à des constructions affectées à des activités industrielles ou assimilées."
+     }
+    ]
+   },
+   "sector_placement": {
+    "kind": "whole",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 26615-N\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "height"
+   ],
+   "height_status": "determined"
+  },
+  "29702": {
+   "key": "29702",
+   "no_plan": "29702",
+   "indice": null,
+   "name": "Rue Kazem-Radjavi (Sécheron, Ville de Genève) - zone 2 activités mixtes",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29702",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Genève"
+    ],
+    "lieu": "RUE KAZEM-RADJAVI",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29702.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29702REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29702REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29702.raw.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Min 25% industrial/artisanal, max 75% administrative",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29702REGLEMENT.raw.txt",
+       "page": 1,
+       "article": "art. 3 (auto-located)",
+       "quote": "zone 2 affectée à des activités mixtes est destinée à raison d’au minimum 25 % à des activités industrielles et artisanales, et d’au maximum 75 % à des activités administratives."
+      }
+     ]
+    },
+    "height": {
+     "value": {
+      "max_roof_slab_altitude_m": 418.0
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29702.raw.txt",
+       "page": 1,
+       "article": null,
+       "quote": "ALTITUDE MAXIMALE DE LA DALLE DE COUVERTURE 418.00 m"
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "IUS_min": 2,
+      "IUS_max": 4.0,
+      "SBP_max_m2": 48000
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29702REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 4 (auto-located)",
+       "quote": "ne peut être inférieur à 2."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29702.raw.txt",
+       "page": 1,
+       "article": null,
+       "quote": "ace brute de plancher (SBP) est limitée à 48000 m2, soit un indice d'utilisation du sol (IUS) de 4,0 maximum"
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "allowed_per_zone",
+    "note": "industrial-zone norms (LZIAM 4) with plan limits",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29702REGLEMENT.raw.txt",
+      "page": 1,
+      "article": "art. 3 (auto-located)",
+      "quote": "zone 2 affectée à des activités mixtes est destinée à raison d’au minimum 25 % à des activités industrielles et artisanales, et d’au maximum 75 % à des activités administratives."
+     }
+    ]
+   },
+   "sector_placement": {
+    "kind": "whole",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29702\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "height",
+    "density"
+   ],
+   "height_status": "determined"
+  },
+  "28495-B": {
+   "key": "28495-B",
+   "no_plan": "28495",
+   "indice": "B",
+   "name": "La Palanterie (Collonge-Bellerive) [OCR]",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "28495",
+    "INDICE": "B",
+    "communes_SITG": [
+     "Collonge-Bellerive"
+    ],
+    "lieu": "LA PALANTERIE",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28495B.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28495BREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+    "ge_rules/pdzi_dl/28495B.ocr.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Priority industrial and artisanal; industrial-zone rules (LCI 80-81)",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+       "page": 1,
+       "article": "art. 3 (auto-located)",
+       "quote": "sont affectés prioritairement à des activités-industrielles et artisanalès"
+      }
+     ]
+    },
+    "height_rule": {
+     "value": "Plan fixes max gabarit per sector",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28495B.ocr.txt",
+       "page": 1,
+       "article": null,
+       "quote": "LE CHIFFRE INDIQUE LE GABARIT MAXIMUM"
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "implantation sector W (gabarit 9 m)": {
+     "height": {
+      "value": {
+       "max_gabarit_m": 9,
+       "source": "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495B.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LE CHIFFRE INDIQUE LE GABARIT MAXIMUM"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+        "page": 2,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le plan indique les secteurs d'implantation des constructions nouvelles et fixe"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_28495-B.geojson"
+     }
+    },
+    "implantation sector S (gabarit 9 m)": {
+     "height": {
+      "value": {
+       "max_gabarit_m": 9,
+       "source": "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495B.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LE CHIFFRE INDIQUE LE GABARIT MAXIMUM"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+        "page": 2,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le plan indique les secteurs d'implantation des constructions nouvelles et fixe"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_28495-B.geojson"
+     }
+    },
+    "implantation sector centre (gabarit 12 m)": {
+     "height": {
+      "value": {
+       "max_gabarit_m": 12,
+       "source": "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495B.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LE CHIFFRE INDIQUE LE GABARIT MAXIMUM"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+        "page": 2,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le plan indique les secteurs d'implantation des constructions nouvelles et fixe"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_28495-B.geojson"
+     }
+    },
+    "implantation sector NE (gabarit 12 m + attique)": {
+     "height": {
+      "value": {
+       "max_gabarit_m": 12,
+       "attique": true,
+       "except": "silo des Moulins (A)",
+       "source": "figure read visually on the plan image (georef/evidence/28495B_gabarits.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495B.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LE CHIFFRE INDIQUE LE GABARIT MAXIMUM"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+        "page": 2,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le plan indique les secteurs d'implantation des constructions nouvelles et fixe"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_28495-B.geojson"
+     }
+    },
+    "outside implantation sectors (roads, free areas)": {
+     "new_construction": {
+      "value": "No building outside the implantation sectors",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495B.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "SECTEUR D'IMPLANTATION DES. CONSTRUCTIONS"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "forbidden",
+      "note": "outside the drawn implantation sectors",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+        "page": 2,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le plan indique les secteurs d'implantation des constructions nouvelles et fixe"
+       }
+      ]
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "height"
+   ],
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/28495BREGLEMENT.ocr.txt",
+      "page": 2,
+      "article": "art. 3 (auto-located)",
+      "quote": "Le plan indique les secteurs d'implantation des constructions nouvelles et fixe"
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_28495-B.geojson"
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 28495-B\")",
+    "polygons": "ge_rules/georef/sectors_28495-B.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "implantation sector W (gabarit 9 m):height",
+    "implantation sector S (gabarit 9 m):height",
+    "implantation sector centre (gabarit 12 m):height",
+    "implantation sector NE (gabarit 12 m + attique):height",
+    "outside implantation sectors (roads, free areas):new_construction"
+   ],
+   "height_status": "determined per sector"
+  },
+  "28689-A": {
+   "key": "28689-A",
+   "no_plan": "28689",
+   "indice": "A",
+   "name": "La Pallanterie-Est (Meinier / Collonge-Bellerive) [OCR]",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "28689",
+    "INDICE": "A",
+    "communes_SITG": [
+     "Collonge-Bellerive",
+     "Meinier"
+    ],
+    "lieu": "LA PALLANTERIE-EST",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28689A.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28689AREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/28689AREGLEMENT.ocr.txt",
+    "ge_rules/pdzi_dl/28689A.ocr.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Industrial and artisanal activities",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28689AREGLEMENT.ocr.txt",
+       "page": 2,
+       "article": "art. 2 (auto-located)",
+       "quote": "Les terrains sont affectés à des activités industrielles et artisanales"
+      }
+     ]
+    },
+    "height": {
+     "value": {
+      "max_m": 10,
+      "measured": "mean natural ground to top of roof slab, excl. superstructures"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28689AREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 4 (auto-located)",
+       "quote": "La hauteur du gabarit, mesurée à partir du niveau moyen du terrain naturel adjacent jusqu'au sommet de la dalle brute de couverture est de 10 mètres au maximum, superstructures non comprises."
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "allowed_per_zone",
+    "note": "industrial-zone norms (LZIAM 4) with plan limits",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/28689AREGLEMENT.ocr.txt",
+      "page": 2,
+      "article": "art. 2 (auto-located)",
+      "quote": "Les terrains sont affectés à des activités industrielles et artisanales"
+     }
+    ]
+   },
+   "sector_placement": {
+    "kind": "whole",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 28689-A\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "height"
+   ],
+   "height_status": "determined"
+  },
+  "29362": {
+   "key": "29362",
+   "no_plan": "29362",
+   "indice": null,
+   "name": "Route des Fayards (Versoix)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29362",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Versoix"
+    ],
+    "lieu": "ROUTE DES FAYARDS",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29362.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29362REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29362.raw.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Industrial and artisanal constructions",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+       "page": 1,
+       "article": "art. 4 (auto-located)",
+       "quote": "terrains situés dans le périmètre de la zone de développement industriel et artisanal sont affectés aux constructions industrielles et artisanales."
+      }
+     ]
+    },
+    "height": {
+     "value": {
+      "max_altitude_m": 398
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 5 (auto-located)",
+       "quote": "gabarits du ou des bâtiments ne peuvent dépasser la cote d'altitude de 398 mètres."
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "IUS_max": 0.45,
+      "IOS_max": 0.45,
+      "reference_area_m2": 11650
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 5 (auto-located)",
+       "quote": "ne peut excéder le taux de 0,45."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 5 (auto-located)",
+       "quote": "ne peut excéder 0,45."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 5 (auto-located)",
+       "quote": "soit environ 11 650 m2"
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "allowed_per_zone",
+    "note": "industrial-zone norms (LZIAM 4) with plan limits",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29362REGLEMENT.raw.txt",
+      "page": 1,
+      "article": "art. 4 (auto-located)",
+      "quote": "terrains situés dans le périmètre de la zone de développement industriel et artisanal sont affectés aux constructions industrielles et artisanales."
+     }
+    ]
+   },
+   "sector_placement": {
+    "kind": "whole",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29362\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "height",
+    "density"
+   ],
+   "height_status": "determined"
+  },
+  "27953": {
+   "key": "27953",
+   "no_plan": "27953",
+   "indice": null,
+   "name": "La Susette (Grand-Saconnex) [OCR, heavily garbled]",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "27953",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Grand-Saconnex"
+    ],
+    "lieu": "LA SUSETTE",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/27953.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/27953.ocr.txt"
+   ],
+   "limits": {
+    "density": {
+     "value": {
+      "IUS": 1.2,
+      "IUS_if_height_over_12m": 1.5,
+      "footprint_max": "2/3 of initial surface",
+      "note": "OCR garbled; values confirmed visually on the sheet (georef/evidence/27953_art5_values.png)"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+       "page": 1,
+       "article": "art. 5 (auto-located)",
+       "quote": "u = 1,2"
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+       "page": 1,
+       "article": "art. 6 (auto-located)",
+       "quote": "peut Être porté à 1,5"
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+       "page": 1,
+       "article": "art. 12 (auto-located)",
+       "quote": "excéder les 2/3 de la surfase"
+      }
+     ]
+    },
+    "height_rule": {
+     "value": "Plan fixes max height per implantation sector (roof gabarit not included); figures read visually on the plan, see sectors",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+       "page": 1,
+       "article": "art. 5 (auto-located)",
+       "quote": "u = 1,2"
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "a (south-west, 10 m)": {
+     "height": {
+      "value": {
+       "max_m": 10,
+       "source": "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 5 (auto-located)",
+        "quote": "u = 1,2"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: new buildings in the drawn 'secteurs d'implantation des constructions nouvelles' (max height written in each)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 12 (auto-located)",
+        "quote": "Secteur d'implantation des constructions nouvelles"
+       }
+      ],
+      "drawn_areas": null,
+      "drawn_areas_missing_reason": "implantation sectors not traced (1985 scan)"
+     }
+    },
+    "b (hotel, 21 m)": {
+     "height": {
+      "value": {
+       "max_m": 21,
+       "source": "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 5 (auto-located)",
+        "quote": "u = 1,2"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: new buildings in the drawn 'secteurs d'implantation des constructions nouvelles' (max height written in each)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 12 (auto-located)",
+        "quote": "Secteur d'implantation des constructions nouvelles"
+       }
+      ],
+      "drawn_areas": null,
+      "drawn_areas_missing_reason": "implantation sectors not traced (1985 scan)"
+     }
+    },
+    "c (administrative centre, 16 m)": {
+     "height": {
+      "value": {
+       "max_m": 16,
+       "source": "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 5 (auto-located)",
+        "quote": "u = 1,2"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: new buildings in the drawn 'secteurs d'implantation des constructions nouvelles' (max height written in each)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 12 (auto-located)",
+        "quote": "Secteur d'implantation des constructions nouvelles"
+       }
+      ],
+      "drawn_areas": null,
+      "drawn_areas_missing_reason": "implantation sectors not traced (1985 scan)"
+     }
+    },
+    "d (north-east, 16 m)": {
+     "height": {
+      "value": {
+       "max_m": 16,
+       "source": "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 5 (auto-located)",
+        "quote": "u = 1,2"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: new buildings in the drawn 'secteurs d'implantation des constructions nouvelles' (max height written in each)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 12 (auto-located)",
+        "quote": "Secteur d'implantation des constructions nouvelles"
+       }
+      ],
+      "drawn_areas": null,
+      "drawn_areas_missing_reason": "implantation sectors not traced (1985 scan)"
+     }
+    },
+    "other implantation sectors (16 m north / 12 m centre-east / 10 m south)": {
+     "height": {
+      "value": {
+       "max_m": [
+        16,
+        12,
+        10
+       ],
+       "source": "figure read visually on the plan image (georef/evidence/27953_gabarits_plan.png, 27953_hotel_b_21m.png, 27953_d_16m.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 5 (auto-located)",
+        "quote": "u = 1,2"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: new buildings in the drawn 'secteurs d'implantation des constructions nouvelles' (max height written in each)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+        "page": 1,
+        "article": "art. 12 (auto-located)",
+        "quote": "Secteur d'implantation des constructions nouvelles"
+       }
+      ],
+      "drawn_areas": null,
+      "drawn_areas_missing_reason": "implantation sectors not traced (1985 scan)"
+     }
+    }
+   },
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "new buildings in the drawn 'secteurs d'implantation des constructions nouvelles' (max height written in each)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/27953.ocr.txt",
+      "page": 1,
+      "article": "art. 12 (auto-located)",
+      "quote": "Secteur d'implantation des constructions nouvelles"
+     }
+    ],
+    "drawn_areas": null,
+    "drawn_areas_missing_reason": "implantation sectors not traced (1985 scan)"
+   },
+   "sector_placement": {
+    "kind": "unplaced",
+    "reason": "gabarit figures per implantation sector read on the 1985 scanned plan, but sector outlines were not traced/georeferenced",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 27953\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "density",
+    "a (south-west, 10 m):height",
+    "b (hotel, 21 m):height",
+    "c (administrative centre, 16 m):height",
+    "d (north-east, 16 m):height",
+    "other implantation sectors (16 m north / 12 m centre-east / 10 m south):height"
+   ],
+   "height_status": "determined per sector"
+  },
+  "28460-B": {
+   "key": "28460-B",
+   "no_plan": "28460",
+   "indice": "B",
+   "name": "ZODIM (Meyrin) [OCR]",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "28460",
+    "INDICE": "B",
+    "communes_SITG": [
+     "Meyrin"
+    ],
+    "lieu": "ZODIM",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28460BALL.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28460BREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/28460BREGLEMENT.ocr.txt",
+    "ge_rules/pdzi_dl/28460BALL.ocr.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Industrial, artisanal and distribution activities",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28460BREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 3 (auto-located)",
+       "quote": "les terrains sont affectés à des activités industrielles, artisanales et de distri"
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "IUS_max": 2.0,
+      "footprint_max": "2/3 of initial parcel area",
+      "green_min": "15% of parcel"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28460BREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 3 (auto-located)",
+       "quote": "ne peut excéder le taux de 2,0."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/28460BREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 3 (auto-located)",
+       "quote": "L'occupation des bâtiments hors-sol ne peut excéder les deux tiers de la surface initiale des parcelles"
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/28460BREGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 3 (auto-located)",
+       "quote": "surface résultante sera équivalente au minimum à 15 % de la surface de"
+      }
+     ]
+    },
+    "height_rule": {
+     "value": "Max height indicated per perimeter on plan",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+       "page": 1,
+       "article": null,
+       "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "zone de transition (west)": {
+     "height": {
+      "value": {
+       "max_m": 15,
+       "superstructures": "not included",
+       "source": "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; height per perimeter (15/12/10/6 m)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     }
+    },
+    "secteur à gabarit limité H=12 m (north)": {
+     "height": {
+      "value": {
+       "max_m": 12,
+       "superstructures": "not included",
+       "source": "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; height per perimeter (15/12/10/6 m)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     }
+    },
+    "secteurs à gabarit limité H max 15 m / 10 m (south-east): 15 m part": {
+     "height": {
+      "value": {
+       "max_m": 15,
+       "superstructures": "included",
+       "source": "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; height per perimeter (15/12/10/6 m)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     }
+    },
+    "secteurs à gabarit limité H max 15 m / 10 m (south-east): 10 m part": {
+     "height": {
+      "value": {
+       "max_m": 10,
+       "superstructures": "included",
+       "source": "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; height per perimeter (15/12/10/6 m)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     }
+    },
+    "rest of perimeter (industrial-zone norms)": {
+     "height": {
+      "value": {
+       "rule": "no height written for this part: industrial-zone default (LZIAM 4 al. 1 -> LCI 80 al. 1, 23): H <= D + 3, max 24 m",
+       "max_m": 24
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ],
+      "law_citations": [
+       {
+        "id": "LZIAM4.1",
+        "law": "LZIAM (rsGE L 1 45)",
+        "article": "4",
+        "paragraph": "al. 1",
+        "quote": "le Conseil d'Etat peut, en vue de la délivrance de l'autorisation de construire, autoriser l'application des normes de la zone industrielle ou de la zone de développement d'activités mixtes au sens de la loi d'application de la loi fédérale sur l'aménagement du territoire, du 4 juin 1987. Cette décision est subordonnée à l'approbation préalable :",
+        "source_file": "ge_rules/laws/rsg_l1_45.txt"
+       },
+       {
+        "id": "LCI80.1",
+        "law": "LCI (rsGE L 5 05)",
+        "article": "80",
+        "paragraph": "al. 1",
+        "quote": "sont soumises aux dispositions applicables à la 2e zone, sous réserve, en zone ferroviaire, des exceptions prévues par l'article 19, alinéa 5, dernière phrase, de ladite loi.",
+        "source_file": "rules/lci.txt"
+       },
+       {
+        "id": "LCI23.1",
+        "law": "LCI (rsGE L 5 05)",
+        "article": "23",
+        "paragraph": "al. 1",
+        "quote": "A front ou en retrait des voies publiques ou privées, la hauteur du gabarit ne peut dépasser de plus de 3 m la distance fixée entre alignements (H ≤ D + 3).",
+        "source_file": "rules/lci.txt"
+       },
+       {
+        "id": "LCI23.6",
+        "law": "LCI (rsGE L 5 05)",
+        "article": "23",
+        "paragraph": "al. 6",
+        "quote": "La hauteur de la ligne verticale du gabarit ne peut dépasser nulle part 24 m (H ≤ 24). Afin de permettre la construction de logements supplémentaires au sens des alinéas 3 à 5, la hauteur de la ligne verticale du gabarit ne peut dépasser nulle part 30 m (H ≤ 30).",
+        "source_file": "rules/lci.txt"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; height per perimeter (15/12/10/6 m)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     }
+    },
+    "secteur à gabarit limité H=6 m (east, incl. zone NNI A)": {
+     "height": {
+      "value": {
+       "max_m": 6,
+       "superstructures": "included",
+       "source": "annotation read visually on the plan image (georef/evidence/28460B_gabarit_annotations.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; height per perimeter (15/12/10/6 m)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+       }
+      ]
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "height"
+   ],
+   "new_buildings": {
+    "value": "allowed_per_zone",
+    "note": "industrial-zone norms; height per perimeter (15/12/10/6 m)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/28460BALL.ocr.txt",
+      "page": 1,
+      "article": null,
+      "quote": "LA HAUTEUR MAXIMUM DES CONSTRUCTIONS EST INDIQUEE DANS CHAQUE PERIMETRE"
+     }
+    ]
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 28460-B\")",
+    "polygons": "ge_rules/georef/sectors_28460-B.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "density",
+    "zone de transition (west):height",
+    "secteur à gabarit limité H=12 m (north):height",
+    "secteurs à gabarit limité H max 15 m / 10 m (south-east): 15 m part:height",
+    "secteurs à gabarit limité H max 15 m / 10 m (south-east): 10 m part:height",
+    "rest of perimeter (industrial-zone norms):height",
+    "secteur à gabarit limité H=6 m (east, incl. zone NNI A):height"
+   ],
+   "height_status": "determined per sector"
+  },
+  "29292": {
+   "key": "29292",
+   "no_plan": "29292",
+   "indice": null,
+   "name": "Bois-de-Bay (Satigny)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29292",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Satigny"
+    ],
+    "lieu": "BOIS-DE-BAY",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29292.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29292REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29292REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29292.ocr.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Priority to construction sector and recycling",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29292REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 4 (auto-located)",
+       "quote": "sont réservés à des constructions et installations affectées en priorité au secteur de la construction et aux entreprises assimilées, ainsi qu’au recyclage de divers matériaux."
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "IUS_min": "may be imposed by CE at permit stage (no figure)"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29292REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 4 (auto-located)",
+       "quote": "imposer un indice d'utilisation du sol minimum."
+      }
+     ]
+    },
+    "height": {
+     "value": {
+      "rule": "industrial-zone default: règlement directeur sets no gabarit, so the industrial-zone norms enabled by LZIAM art. 4 apply = zone 2 gabarit (LCI art. 80 al. 1, art. 23); building limit lines on the plan sheet",
+      "street_formula": "H <= D + 3",
+      "max_m": 24,
+      "source": "default (rules_catalogue.json zone DIA/IA)"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29292REGLEMENT.raw.txt",
+       "page": 2,
+       "article": "art. 4 (auto-located)",
+       "quote": "imposer un indice d'utilisation du sol minimum."
+      }
+     ],
+     "law_citations": [
+      {
+       "id": "LZIAM4.1",
+       "law": "LZIAM (rsGE L 1 45)",
+       "article": "4",
+       "paragraph": "al. 1",
+       "quote": "le Conseil d'Etat peut, en vue de la délivrance de l'autorisation de construire, autoriser l'application des normes de la zone industrielle ou de la zone de développement d'activités mixtes au sens de la loi d'application de la loi fédérale sur l'aménagement du territoire, du 4 juin 1987. Cette décision est subordonnée à l'approbation préalable :",
+       "source_file": "ge_rules/laws/rsg_l1_45.txt"
+      },
+      {
+       "id": "LCI80.1",
+       "law": "LCI (rsGE L 5 05)",
+       "article": "80",
+       "paragraph": "al. 1",
+       "quote": "sont soumises aux dispositions applicables à la 2e zone, sous réserve, en zone ferroviaire, des exceptions prévues par l'article 19, alinéa 5, dernière phrase, de ladite loi.",
+       "source_file": "rules/lci.txt"
+      },
+      {
+       "id": "LCI23.1",
+       "law": "LCI (rsGE L 5 05)",
+       "article": "23",
+       "paragraph": "al. 1",
+       "quote": "A front ou en retrait des voies publiques ou privées, la hauteur du gabarit ne peut dépasser de plus de 3 m la distance fixée entre alignements (H ≤ D + 3).",
+       "source_file": "rules/lci.txt"
+      },
+      {
+       "id": "LCI23.6",
+       "law": "LCI (rsGE L 5 05)",
+       "article": "23",
+       "paragraph": "al. 6",
+       "quote": "La hauteur de la ligne verticale du gabarit ne peut dépasser nulle part 24 m (H ≤ 24). Afin de permettre la construction de logements supplémentaires au sens des alinéas 3 à 5, la hauteur de la ligne verticale du gabarit ne peut dépasser nulle part 30 m (H ≤ 30).",
+       "source_file": "rules/lci.txt"
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "industrial-zone norms inside the building limit lines (art. 9); remaining land under non-building servitudes; ORNI/OLEI reserved near the HV line",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29292REGLEMENT.raw.txt",
+      "page": 4,
+      "article": "art. 9 (auto-located)",
+      "quote": "Les limites de construction circonscrivent les secteurs constructibles de la zone de"
+     },
+     {
+      "source_file": "ge_rules/pdzi_dl/29292REGLEMENT.raw.txt",
+      "page": 4,
+      "article": "art. 9 (auto-located)",
+      "quote": "Consécutivement, les surfaces restantes sont soumises à des servitudes de non-bâtir"
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29292.geojson"
+   },
+   "sector_placement": {
+    "kind": "whole",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29292\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "density",
+    "height"
+   ],
+   "height_status": "determined"
+  },
+  "29994": {
+   "key": "29994",
+   "no_plan": "29994",
+   "indice": null,
+   "name": "La Pallanterie Sud (Meinier / Collonge-Bellerive)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29994",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Collonge-Bellerive",
+     "Meinier"
+    ],
+    "lieu": "LA PALLANTERIE SUD",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29994.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29994REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29994.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "max_m": 23,
+      "max_altitude_m": 453,
+      "community_building_altitude_m": 458,
+      "max_levels": "R+3"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 4 (auto-located)",
+       "quote": "e gabarit des bâtiments ne peut pas excéder 23 mètres et la cote d’altitude de 453 m."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 4 (auto-located)",
+       "quote": "ne peuvent abriter plus de 4 niveaux en surface (R+3)."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 4 (auto-located)",
+       "quote": "peut atteindre la cote d’altitude de 458 m."
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "density": {
+      "value": {
+       "IUS_min": 1.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 4 (auto-located)",
+        "quote": "Dans l’aire de localisation « A », l’IUS minimal à atteindre est de 1,5."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "aire de localisation",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 3,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le périmètre du PDZIA est découpé en cinq aires de localisation : « A », « B »,"
+       }
+      ]
+     }
+    },
+    "B": {
+     "density": {
+      "value": {
+       "IUS_min": 1.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 4 (auto-located)",
+        "quote": "Dans l’aire de localisation « B », l’IUS minimal à atteindre est de 1,5."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "aire de localisation",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 3,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le périmètre du PDZIA est découpé en cinq aires de localisation : « A », « B »,"
+       }
+      ]
+     }
+    },
+    "C": {
+     "density": {
+      "value": {
+       "IUS_min": 1.7
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 4 (auto-located)",
+        "quote": "Dans l’aire de localisation « C », l’IUS minimal à atteindre est de 1,7."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "aire de localisation",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 3,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le périmètre du PDZIA est découpé en cinq aires de localisation : « A », « B »,"
+       }
+      ]
+     }
+    },
+    "D": {
+     "density": {
+      "value": {
+       "IUS_min": 1.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 4 (auto-located)",
+        "quote": "Dans l’aire de localisation « D », l’IUS minimal à atteindre est de 1,5."
+       }
+      ]
+     },
+     "height": {
+      "value": {
+       "community_building_altitude_m": 458,
+       "note": "community/services building between aire D and the landscape space"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 4 (auto-located)",
+        "quote": "peut atteindre la cote d’altitude de 458 m."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "aire de localisation",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 3,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le périmètre du PDZIA est découpé en cinq aires de localisation : « A », « B »,"
+       }
+      ]
+     }
+    },
+    "E": {
+     "density": {
+      "value": {
+       "IUS_min": 1.9
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 4 (auto-located)",
+        "quote": "Dans l’aire de localisation « E », l’IUS minimal à atteindre est de 1,9."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "aire de localisation",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 3,
+        "article": "art. 3 (auto-located)",
+        "quote": "Le périmètre du PDZIA est découpé en cinq aires de localisation : « A », « B »,"
+       }
+      ]
+     }
+    },
+    "outside aires de localisation (espace naturel paysager, roads)": {
+     "new_buildings": {
+      "value": "forbidden",
+      "note": "espace naturel paysager non constructible; roads",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+        "page": 6,
+        "article": "art. 5 (auto-located)",
+        "quote": "Hormis les aménagements destinés aux fonctions indiquées ci-dessus, cet espace doit être maintenu libre de constructions"
+       }
+      ]
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "density"
+   ],
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29994REGLEMENT.raw.txt",
+      "page": 3,
+      "article": "art. 3 (auto-located)",
+      "quote": "Le périmètre du PDZIA est découpé en cinq aires de localisation : « A », « B »,"
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29994.geojson"
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29994\")",
+    "polygons": "ge_rules/georef/sectors_29994.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "A:density",
+    "B:density",
+    "C:density",
+    "D:density",
+    "D:height",
+    "E:density"
+   ],
+   "height_status": "determined"
+  },
+  "29976": {
+   "key": "29976",
+   "no_plan": "29976",
+   "indice": null,
+   "name": "ZIMOGA - zone industrielle de Mouille-Galand (Vernier / Meyrin / Satigny)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29976",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Meyrin",
+     "Satigny",
+     "Vernier"
+    ],
+    "lieu": "ZIMOGA",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29976ALL.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29976REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29976ALL.ocr.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "rule": "zone 2 gabarit (LCI 80 al.1, 23); airport ceiling"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+       "page": 5,
+       "article": "art. 5 (auto-located)",
+       "quote": "La hauteur des constructions doit se conformer aux dispositions de la 2ème zone de construction"
+      }
+     ]
+    },
+    "distances": {
+     "value": "Min 6 m setback",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+       "page": 5,
+       "article": "art. 5 (auto-located)",
+       "quote": "Un recul des constructions d'au minimum 6 mètres est exigé le long des dessertes industrielles et/ou du domaine public."
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": "none"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum IOS maximum Secteur de densification A 0.8 néant Secteur de densification B 0.8 néant Secteur de densification C 0.8 0.5 Secteur de densification D 1.5 0.5"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29976.geojson"
+     }
+    },
+    "B": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": "none"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum IOS maximum Secteur de densification A 0.8 néant Secteur de densification B 0.8 néant Secteur de densification C 0.8 0.5 Secteur de densification D 1.5 0.5"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29976.geojson"
+     }
+    },
+    "C": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": 0.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum IOS maximum Secteur de densification A 0.8 néant Secteur de densification B 0.8 néant Secteur de densification C 0.8 0.5 Secteur de densification D 1.5 0.5"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29976.geojson"
+     }
+    },
+    "D": {
+     "density": {
+      "value": {
+       "IUS_min": 1.5,
+       "IOS_max": 0.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum IOS maximum Secteur de densification A 0.8 néant Secteur de densification B 0.8 néant Secteur de densification C 0.8 0.5 Secteur de densification D 1.5 0.5"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+        "page": 5,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29976.geojson"
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "density"
+   ],
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29976REGLEMENT.raw.txt",
+      "page": 5,
+      "article": "art. 5 (auto-located)",
+      "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29976.geojson"
+   },
+   "sector_placement": {
+    "kind": "raster",
+    "note": "densification sectors A-D = grey shades on the georeferenced plan 29976 (homography, residuals 1-6 m)",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29976\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "distances",
+    "A:density",
+    "B:density",
+    "C:density",
+    "D:density"
+   ],
+   "height_status": "determined"
+  },
+  "29975-A": {
+   "key": "29975-A",
+   "no_plan": "29975",
+   "indice": "A",
+   "name": "ZIBAT Sud (Vernier / Meyrin)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29975",
+    "INDICE": "A",
+    "communes_SITG": [
+     "Meyrin",
+     "Vernier"
+    ],
+    "lieu": "ZIBAT SUD",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29975A.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29975AREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29975A.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "rule": "zone 2 gabarit (LCI 80 al.1, 23): street H <= D+3, max 24 m; airport ceiling"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "La hauteur des constructions doit se conformer aux dispositions de la 2ème zone de construction"
+      }
+     ]
+    },
+    "distances": {
+     "value": "Min 6 m setback from industrial roads / public domain",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "Un recul des constructions d'au minimum 6 mètres est exigé le long des dessertes industrielles et/ou du domaine public."
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "density": {
+      "value": {
+       "IUS_min": 0.4
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum Secteur de densification A 0.4 Secteur de densification B 0.8 IOS maximum 0.5"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29975-A.geojson"
+     }
+    },
+    "B": {
+     "density": {
+      "value": {
+       "IUS_min": 0.8,
+       "IOS_max": 0.5
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum Secteur de densification A 0.4 Secteur de densification B 0.8 IOS maximum 0.5"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29975-A.geojson"
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "density"
+   ],
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29975AREGLEMENT.raw.txt",
+      "page": 4,
+      "article": "art. 5 (auto-located)",
+      "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29975-A.geojson"
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29975-A\")",
+    "polygons": "ge_rules/georef/sectors_29975-A.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "distances",
+    "A:density",
+    "B:density"
+   ],
+   "height_status": "determined"
+  },
+  "29975-B": {
+   "key": "29975-B",
+   "no_plan": "29975",
+   "indice": "B",
+   "name": "ZIBAT Nord (Vernier)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29975",
+    "INDICE": "B",
+    "communes_SITG": [
+     "Vernier"
+    ],
+    "lieu": "ZIBAT NORD",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29975B.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29975BREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29975B.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "rule": "zone 2 gabarit (LCI 80 al.1, 23); airport ceiling"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "La hauteur des constructions doit se conformer aux dispositions de la 2ème zone de construction"
+      }
+     ]
+    },
+    "distances": {
+     "value": "Min 6 m setback",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "Un recul des constructions d'au minimum 6 mètres est exigé le long des dessertes industrielles et/ou du domaine public."
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "density": {
+      "value": {
+       "IUS_min": 0.4,
+       "IOS_max": 0.7
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum Secteur de densification A 0.4 Secteur de densification C 1 IOS maximum 0.7"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29975-B.geojson"
+     }
+    },
+    "C": {
+     "density": {
+      "value": {
+       "IUS_min": 1.0,
+       "IOS_max": 0.7
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "IUS minimum Secteur de densification A 0.4 Secteur de densification C 1 IOS maximum 0.7"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+        "page": 4,
+        "article": "art. 5 (auto-located)",
+        "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_29975-B.geojson"
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "density"
+   ],
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29975BREGLEMENT.raw.txt",
+      "page": 4,
+      "article": "art. 5 (auto-located)",
+      "quote": "aménagement) déterminent les secteurs constructibles hors sol et sous-sol."
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29975-B.geojson"
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29975-B\")",
+    "polygons": "ge_rules/georef/sectors_29975-B.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "distances",
+    "A:density",
+    "C:density"
+   ],
+   "height_status": "determined"
+  },
+  "29745-A": {
+   "key": "29745-A",
+   "no_plan": "29745",
+   "indice": "A",
+   "name": "Valavran II (Bellevue)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29745",
+    "INDICE": "A",
+    "communes_SITG": [
+     "Bellevue"
+    ],
+    "lieu": "VALAVRAN II",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29745AALL.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29745AREGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29745AREGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29745AALL.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "max_height_m": 16.0,
+      "note": "per parcel group on plan d'aménagement; airport ceiling applies"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29745AREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "Pour chaque parcelle ou groupe de parcelles, le gabarit maximum admis est fixé par le plan d’aménagement n° 29'745A."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29745AALL.raw.txt",
+       "page": 1,
+       "article": null,
+       "quote": "Haut. max (m) : 16.0"
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "IUS_min": 0.61,
+      "ID_min": 0.8,
+      "footprint_max": "40% of parcel"
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29745AREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "L’indice d’utilisation du sol (ci-après IUS) doit être au minimum de 0.61 (correspondant à un indice de densité (ci-après ID) de 0.8)."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/29745AREGLEMENT.raw.txt",
+       "page": 4,
+       "article": "art. 5 (auto-located)",
+       "quote": "L’emprise des bâtiments au sol ne peut pas excéder 40% de la surface de la parcelle."
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29745AREGLEMENT.raw.txt",
+      "page": 4,
+      "article": "art. 5 (auto-located)",
+      "quote": "déterminent les secteurs constructibles hors sol et sous-sol de la ZDIA de Valavran."
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29745-A.geojson"
+   },
+   "sector_placement": {
+    "kind": "whole",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29745-A\")"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "density"
+   ],
+   "height_status": "determined"
+  },
+  "30097": {
+   "key": "30097",
+   "no_plan": "30097",
+   "indice": null,
+   "name": "Les Rouettes (Bernex)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "30097",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Bernex"
+    ],
+    "lieu": "LES ROUETTES",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/30097.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/30097REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/30097.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "max_m": 24,
+      "reduced_m": 18,
+      "reduced_where": "fronts on ch. des Rouettes / retention basin over 20 m depth (areas C, D)",
+      "min_m_boulevard_des_Abarois": 15
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+       "page": 10,
+       "article": "art. 10 (auto-located)",
+       "quote": "La hauteur maximale des constructions est de 24 m, conformément aux articles 23 et 80 de la loi sur les constructions et les installations diverses"
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+       "page": 10,
+       "article": "art. 10 (auto-located)",
+       "quote": "une hauteur maximale réduite à 18 m est applicable sur une profondeur d’au minimum 20 m"
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+       "page": 10,
+       "article": "art. 10 (auto-located)",
+       "quote": "Boulevard des Abarois : une hauteur minimale de 15 m est ap"
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "SBP_min_total_m2": 88568,
+      "IUS_min_global": 1.0,
+      "IUS_min": {
+       "A": 0.84,
+       "B": 1.12,
+       "C": 0.95,
+       "D": 0.85
+      },
+      "ID_min": 1.31
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+       "page": 8,
+       "article": "art. 7 (auto-located)",
+       "quote": "un minimum de 88'568 m2 de SBP est prévu, représentant un IUS minimum (IUS min) d’environ 1.0."
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+       "page": 8,
+       "article": "art. 7 (auto-located)",
+       "quote": "Pièce urbaine A : IUS min de 0.84 et SBP min de 8'533 m2"
+      },
+      {
+       "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+       "page": 8,
+       "article": "art. 7 (auto-located)",
+       "quote": "Pour chaque pièce urbaine, l’indice de densité minimum (ID min) est de 1.31."
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "density": {
+      "value": {
+       "IUS_min": 0.84,
+       "SBP_min_m2": 8533,
+       "ID_min": 1.31
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pièce urbaine A : IUS min de 0.84 et SBP min de 8'533 m2"
+       },
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pour chaque pièce urbaine, l’indice de densité minimum (ID min) est de 1.31."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 8 (auto-located)",
+        "quote": "peuvent être implantées librement dans les aires d’implantation des constructions prévues par le plan, volet"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_30097.geojson"
+     }
+    },
+    "B": {
+     "density": {
+      "value": {
+       "IUS_min": 1.12,
+       "SBP_min_m2": 43137,
+       "ID_min": 1.31
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pièce urbaine B : IUS min de 1.12 et SBP min de 43'137 m2"
+       },
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pour chaque pièce urbaine, l’indice de densité minimum (ID min) est de 1.31."
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 8 (auto-located)",
+        "quote": "peuvent être implantées librement dans les aires d’implantation des constructions prévues par le plan, volet"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_30097.geojson"
+     }
+    },
+    "C": {
+     "density": {
+      "value": {
+       "IUS_min": 0.95,
+       "SBP_min_m2": 27498,
+       "ID_min": 1.31
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pièce urbaine C : IUS min de 0.95 et SBP min de 27'498 m2"
+       },
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pour chaque pièce urbaine, l’indice de densité minimum (ID min) est de 1.31."
+       }
+      ]
+     },
+     "height": {
+      "value": {
+       "max_m": 24,
+       "reduced_m": 18,
+       "where": "fronts on ch. des Rouettes / retention basin, over min. 20 m depth"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 10,
+        "article": "art. 10 (auto-located)",
+        "quote": "La hauteur maximale des constructions est de 24 m"
+       },
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 10,
+        "article": "art. 10 (auto-located)",
+        "quote": "une hauteur maximale réduite à 18 m est applicable sur une profondeur d’au minimum 20 m"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 8 (auto-located)",
+        "quote": "peuvent être implantées librement dans les aires d’implantation des constructions prévues par le plan, volet"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_30097.geojson"
+     }
+    },
+    "D": {
+     "density": {
+      "value": {
+       "IUS_min": 0.85,
+       "SBP_min_m2": 9400,
+       "ID_min": 1.31
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pièce urbaine D : IUS min de 0.85 et SBP min de 9'400 m2"
+       },
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 7 (auto-located)",
+        "quote": "Pour chaque pièce urbaine, l’indice de densité minimum (ID min) est de 1.31."
+       }
+      ]
+     },
+     "height": {
+      "value": {
+       "max_m": 24,
+       "reduced_m": 18,
+       "where": "fronts on ch. des Rouettes / retention basin, over min. 20 m depth"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 10,
+        "article": "art. 10 (auto-located)",
+        "quote": "La hauteur maximale des constructions est de 24 m"
+       },
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 10,
+        "article": "art. 10 (auto-located)",
+        "quote": "une hauteur maximale réduite à 18 m est applicable sur une profondeur d’au minimum 20 m"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "only_in_drawn_areas",
+      "note": "plan-wide value applies: only inside the aires de localisation / implantation of the plan (volet aménagement)",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+        "page": 8,
+        "article": "art. 8 (auto-located)",
+        "quote": "peuvent être implantées librement dans les aires d’implantation des constructions prévues par le plan, volet"
+       }
+      ],
+      "drawn_areas": "ge_rules/georef/build_areas_30097.geojson"
+     }
+    }
+   },
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "only inside the aires de localisation / implantation of the plan (volet aménagement)",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/30097REGLEMENT.raw.txt",
+      "page": 8,
+      "article": "art. 8 (auto-located)",
+      "quote": "peuvent être implantées librement dans les aires d’implantation des constructions prévues par le plan, volet"
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_30097.geojson"
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 30097\")",
+    "polygons": "ge_rules/georef/sectors_30097.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "density",
+    "A:density",
+    "B:density",
+    "C:density",
+    "C:height",
+    "D:density",
+    "D:height"
+   ],
+   "height_status": "determined"
+  },
+  "29968": {
+   "key": "29968",
+   "no_plan": "29968",
+   "indice": null,
+   "name": "Les Cherpines (Confignon / Plan-les-Ouates)",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "29968",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Confignon",
+     "Plan-les-Ouates"
+    ],
+    "lieu": "LES CHERPINES",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29968.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/29968REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/29968REGLEMENT.raw.txt",
+    "ge_rules/pdzi_dl/29968.raw.txt"
+   ],
+   "limits": {
+    "height": {
+     "value": {
+      "max_m": 24,
+      "max_route_de_Base_m": 27
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29968REGLEMENT.raw.txt",
+       "page": 9,
+       "article": "art. 7 (auto-located)",
+       "quote": "Le gabarit maximum est de 24 m pour les bâtiments sis le long des chemins des Grands-Champs et des Longues-Rasses, de la nouvelle voie de desserte, de la nouvelle rue nord-sud, et de 27 m pour les bâtiments sis en front de la route de Base."
+      }
+     ]
+    },
+    "density": {
+     "value": {
+      "IUS_min_global": 0.82,
+      "ID_min_global": 1.2
+     },
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/29968REGLEMENT.raw.txt",
+       "page": 7,
+       "article": "art. 6 (auto-located)",
+       "quote": "IUS 0.82 (correspondant à un ID de 1.2)"
+      }
+     ]
+    }
+   },
+   "new_buildings": {
+    "value": "only_in_drawn_areas",
+    "note": "industrial buildings inside the aires de localisation A1a, A1b, A2; landscape / public strips and A2 green spaces non constructible",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/29968REGLEMENT.raw.txt",
+      "page": 6,
+      "article": "art. 4 (auto-located)",
+      "quote": "Les aires de localisation situées dans le PDZIA sont destinées aux constructions"
+     }
+    ],
+    "drawn_areas": "ge_rules/georef/build_areas_29968.geojson"
+   },
+   "sectors": {
+    "outside aires de localisation (roads, landscape and public strips)": {
+     "new_buildings": {
+      "value": "forbidden",
+      "note": "outside the aires de localisation",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/29968REGLEMENT.raw.txt",
+        "page": 6,
+        "article": "art. 4 (auto-located)",
+        "quote": "Les aires de localisation situées dans le PDZIA sont destinées aux constructions"
+       }
+      ]
+     }
+    }
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 29968\")",
+    "polygons": "ge_rules/georef/sectors_29968.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "height",
+    "density"
+   ],
+   "height_status": "determined"
+  },
+  "28667": {
+   "key": "28667",
+   "no_plan": "28667",
+   "indice": null,
+   "name": "ZIPLO extension / route de Base (Plan-les-Ouates) [OCR]",
+   "meta": {
+    "layer": "RDPPF_PDZI",
+    "NO_PLAN": "28667",
+    "INDICE": "-",
+    "communes_SITG": [
+     "Plan-les-Ouates"
+    ],
+    "lieu": "ZIPLO / ROUTE DE BASE",
+    "urls": [
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28667.pdf",
+     "https://ge.ch/sitg/RDPPF/RDPPF-AMENAGEMENT/PDZI/28667REGLEMENT.pdf"
+    ]
+   },
+   "text_files": [
+    "ge_rules/pdzi_dl/28667REGLEMENT.ocr.txt",
+    "ge_rules/pdzi_dl/28667.ocr.txt"
+   ],
+   "limits": {
+    "use": {
+     "value": "Essentially industrial or artisanal activities",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28667REGLEMENT.ocr.txt",
+       "page": 3,
+       "article": "art. 4 (auto-located)",
+       "quote": "sont destinés essentiellement à des constructions affectées à des activités industrielles ou arti"
+      }
+     ]
+    },
+    "height_rule": {
+     "value": "Max altitude incl. superstructures per sub-perimeter A-I (legend): A 429.00, B 426.00, C 427.50, D+I 426.00, E+H 425.50, F+G 424.00 m; values per sector",
+     "citations": [
+      {
+       "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+       "page": 1,
+       "article": null,
+       "quote": "L'attiude des constructions, y compris les superstructures"
+      }
+     ]
+    }
+   },
+   "sectors": {
+    "A": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 429.0,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "B": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 426.0,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "C": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 427.5,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "D": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 426.0,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "I": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 426.0,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "E": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 425.5,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "H": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 425.5,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "F": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 424.0,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    },
+    "G": {
+     "height": {
+      "value": {
+       "max_altitude_m_incl_superstructures": 424.0,
+       "source": "plan legend read visually at 400/800 dpi (georef/evidence/28667_legend_400dpi.png, _800dpi.png)"
+      },
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     },
+     "new_buildings": {
+      "value": "allowed_per_zone",
+      "note": "plan-wide value applies: industrial-zone norms; max altitude per sub-perimeter A-I",
+      "citations": [
+       {
+        "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+        "page": 1,
+        "article": null,
+        "quote": "L'attiude des constructions, y compris les superstructures"
+       }
+      ]
+     }
+    }
+   },
+   "moved_to_sectors": [
+    "height"
+   ],
+   "new_buildings": {
+    "value": "allowed_per_zone",
+    "note": "industrial-zone norms; max altitude per sub-perimeter A-I",
+    "citations": [
+     {
+      "source_file": "ge_rules/pdzi_dl/28667.ocr.txt",
+      "page": 1,
+      "article": null,
+      "quote": "L'attiude des constructions, y compris les superstructures"
+     }
+    ]
+   },
+   "sector_placement": {
+    "kind": "geojson",
+    "parcel_table": "ge_rules/parcel_sectors.csv (plan = \"PDZI 28667\")",
+    "polygons": "ge_rules/georef/sectors_28667.geojson"
+   },
+   "has_values": true,
+   "fields_with_values": [
+    "use",
+    "A:height",
+    "B:height",
+    "C:height",
+    "D:height",
+    "I:height",
+    "E:height",
+    "H:height",
+    "F:height",
+    "G:height"
+   ],
+   "height_status": "determined per sector"
+  }
+ }
+}
