@@ -61,7 +61,7 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 |---|---|
 | `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl?, radarUrl?, models? }` | Finds the address from a listing. `models` (e.g. `["claude-opus-5-5"]`) overrides the default models for that request. Runs two models side by side and returns `202` with a `requestId`. |
 | `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer`: address, exact `parcels` (`[{ commune, plot, egrid }]`, the result for building land with no address), coordinates, confidence. |
-| `POST /v1/property` `{ address }`, `{ latitude, longitude }` or `{ commune, plot }` | Returns the property data for one plot right away (CHF 3.80 on Popety). Coordinates and plot numbers (e.g. `{ "commune": "Horgen", "plot": "HN12522" }`) also work for plots with no building; `/v1/address` returns coordinates for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
+| `POST /v1/property` `{ address }`, `{ latitude, longitude }`, `{ commune, plot }` or `{ egrid }` | Returns the property data for one plot right away: free from our own data for a Geneva plot (in `geneva`, see below), CHF 3.80 on Popety elsewhere. Coordinates and plot numbers (e.g. `{ "commune": "Horgen", "plot": "HN12522" }`) also work for plots with no building; `/v1/address` returns coordinates for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
 
 To look at several plots as one site, send `{ "plots": [ ...2 to 10 of the inputs above ] }`,
 for example `{ "plots": [{ "commune": "Horgen", "plot": "HN12522" }, { "commune": "Horgen", "plot": "HN12523" }] }`.
@@ -75,6 +75,23 @@ the built-vs-allowed ratios, the parcel outline and a swisstopo map window
 (`map.aerialUrl`, `map.cadastreUrl`, with the outline already in image pixels in
 `map.parcelPixels`). It costs CHF 3.80 on Popety per call, and only
 `/v1/property` fetches it.
+
+**Geneva plots** are answered without Popety, from `geneva/data` (built from the
+canton's free official data and checked against the official land-register extract
+in seven independent audits). Each entry of `geneva` has, for one plot:
+`status.buildability` (`buildable`, `partly_buildable` with `buildable_m2`,
+`buildable_needs_plan`, `special_plan_unresolved`, `not_buildable`) with a plain
+`notice_en` / `notice_fr`; every zone with its share and legal rules (`zone_rules`,
+with law citations); every plan on the plot with the part of it the plot lies in
+(`plans_detail`); protections, forest / water / road / groundwater limits,
+polluted sites, hazards, the buildings on it; and the official extract links.
+Nothing is left out: every column of the plot table is in the answer. A plot in a
+special plan we could not place carries `special_plan_unresolved_flag` and says
+so in its notice. To refresh the data, see `geneva/README.md`.
+
+Popety values that are Popety's own estimates (source `spatial_analysis`, from
+what is built nearby) carry `maxSource` / `zoning.sources` and show an
+"estimate" badge on the page; they are not legal limits.
 
 Send your own `listingId` (and `listingUrl` if you have one) with every address search:
 the admin table shows all searches with the same `listingId` as one row, with the link.
