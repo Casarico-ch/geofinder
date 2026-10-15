@@ -111,3 +111,6 @@ temp/
 
 # Investigation working dirs / traces
 runs/
+geneva/work/
+geneva/data/parcels.csv
+__pycache__/
