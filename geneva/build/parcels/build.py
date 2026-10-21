@@ -29,7 +29,8 @@ GENEVA = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 OUT = os.environ.get("GENEVA_WORK") or os.path.join(GENEVA, "work")
 os.makedirs(OUT, exist_ok=True)
 RAW = os.path.join(OUT, "raw")
-CTX = ssl.create_default_context(cafile=os.environ.get("CA_BUNDLE", "/root/.ccr/ca-bundle.crt"))
+# A proxy CA bundle when one is set (CA_BUNDLE / SSL_CERT_FILE), else the system roots (GitHub runners).
+CTX = ssl.create_default_context(cafile=os.environ.get("CA_BUNDLE") or os.environ.get("SSL_CERT_FILE"))
 SITG = "https://vector.sitg.ge.ch/arcgis/rest/services/{}/FeatureServer/0/query"
 OEREB = "https://ge.ch/terecadastrews/RdppfSVC.svc/extract/json/?EGRID={}&GEOMETRY=true"
 PAGE = 4000

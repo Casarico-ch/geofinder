@@ -37,11 +37,17 @@ Needs Python 3 with `pandas`, `pyarrow`, `geopandas`, `shapely`, `pyogrio` (abou
 python3 -I geneva/build/parcels/build.py --refresh --no-wait   # re-download SITG layers, rebuild the table
 python3 -I geneva/build/scores.py                              # our plot scores (downloads cached in geneva/work/scores)
 python3 -I geneva/build/export.py                              # regression tests, then data/ for the server
-pnpm test                                                      # the server gives exactly the reference answers
+pnpm exec tsx scripts/check-geneva.ts                          # the server gives exactly the reference answers
 ```
 
-The plan rules (`rules/`) change only when the canton adopts or amends a plan;
-re-read the new plan and update `plans_de_site.json` / `pdzi.json` and
+This runs by itself on the 3rd of each month (`.github/workflows/geneva-refresh.yml`, or by hand
+from the Actions tab): it rebuilds, runs the checks, and opens a pull request "Geneva data refresh
+YYYY-MM" with `build/refresh_report.py`'s summary of what changed. Merging it ships the new data.
+A failed run opens an issue; the app keeps last month's data meanwhile.
+
+The plan rules (`rules/`) change only when the canton adopts or amends a plan. A new plan has no
+rules entry, so its plots come out `special_plan_unresolved` (never "buildable") and the refresh
+pull request lists it under "New plans to read": read the new plan, update `plans_de_site.json` / `pdzi.json` and
 `parcel_sectors.csv`, then rebuild as above.
 
 ## Known limits

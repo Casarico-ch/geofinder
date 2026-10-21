@@ -1,0 +1,81 @@
+# Monthly Geneva data refresh: re-download the canton's layers, rebuild every
+# plot's answer and our scores, run the audit regression tests and the server's
+# golden-answer check, then open a pull request saying what changed and which
+# new plans (if any) a person must read. Nothing ships until that PR is merged.
+# If any step fails, an issue says so. Run it by hand from the Actions tab too.
+name: geneva-refresh
+
+on:
+  schedule:
+    - cron: "17 4 3 * *" # the 3rd of each month, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: geneva-refresh
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pandas pyarrow geopandas shapely pyogrio numpy
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Keep the current data to compare against
+        run: |
+          cp geneva/data/parcels.parquet "$RUNNER_TEMP/prev.parquet"
+          cp geneva/build/parcels/layers.json "$RUNNER_TEMP/prev_layers.json"
+      - name: Rebuild the plot table from the canton's layers
+        run: |
+          python3 -I geneva/build/parcels/build.py --refresh --no-wait --prev "$RUNNER_TEMP/prev.parquet"
+          cp geneva/work/layers.json geneva/build/parcels/layers.json
+      - name: Our plot scores
+        run: python3 -I geneva/build/scores.py
+      - name: Export (stops if an audit regression test fails)
+        run: python3 -I geneva/build/export.py
+      - name: The server gives exactly the reference answers
+        run: |
+          pnpm check
+          pnpm exec tsx scripts/check-geneva.ts
+      - name: What changed
+        run: python3 -I geneva/build/refresh_report.py "$RUNNER_TEMP/prev.parquet" "$RUNNER_TEMP/prev_layers.json" > "$RUNNER_TEMP/report.md"
+
+      - name: Anything new? (the export date alone is not news)
+        id: diff
+        run: |
+          if git diff --quiet -- geneva ':!geneva/data/schema.json'; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+          echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - name: Open the refresh pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: geneva/refresh
+          delete-branch: true
+          title: "Geneva data refresh ${{ steps.diff.outputs.month }}"
+          commit-message: "Geneva data refresh ${{ steps.diff.outputs.month }}"
+          body-path: ${{ runner.temp }}/report.md
+          add-paths: |
+            geneva/data
+            geneva/build/parcels/layers.json
+
+      - name: Say so when the refresh failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --title "Geneva data refresh failed ($(date -u +%Y-%m))" \
+            --body "The monthly Geneva refresh stopped: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. The app keeps serving last month's data until it is fixed."
