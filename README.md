@@ -113,7 +113,8 @@ ranked by how well the building register fits the listing's own numbers; with
 commune, once that many of the list and every strong fit have a verdict (unset:
 every candidate, as before). The depth is locked before it becomes the default:
 `pnpm lock:run -- --base <admin url> --top 150` runs every listing the current
-search settled again with that depth and has to bring every one of them back.
+search ran again with that depth, and the total found must not go down (a house
+lost here is fine when more are found there).
 
 The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the

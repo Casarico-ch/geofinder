@@ -272,8 +272,9 @@ export function unchecked(s: SearchState, commune?: string): LedgerEntry[] {
 // candidates and 20 more gave up on the count. Of the 53 listings two runs
 // agreed on, one (Bernex, #238 of 420) needed a house past #150, none past
 // #300. Strong fits are checked whatever their rank. Unset: every candidate,
-// as before — the depth is locked by a re-run of those 53 first (Daniel,
-// 21.10; scripts/lock-run.ts), per run via `topCheck`, then set here.
+// as before — the depth is locked first by a re-run of the whole set whose
+// total found must not go down (Daniel, 21.10: "it's the total, not the exact
+// same listings"; scripts/lock-run.ts), per run via `topCheck`, then set here.
 const TOP_CHECK_ENV = Number(process.env.SHORTLIST_TOP_CHECK);
 export const TOP_CHECK = TOP_CHECK_ENV > 0 ? TOP_CHECK_ENV : Infinity;
 const depthOf = (s: Pick<SearchState, "topCheck">) => s.topCheck ?? TOP_CHECK;

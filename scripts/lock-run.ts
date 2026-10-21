@@ -1,17 +1,19 @@
 // Lock run (Daniel, 21.10): before a search change becomes the default, the
-// listings the current search settled are run again with the change, and every
-// one of them has to come back with the same house. Here: the depth of the
-// ranked list a run owes a verdict to (search.ts TOP_CHECK), passed per run as
-// `topCheck` so production keeps its default while the lock runs.
+// listings the current search ran are all run again with the change, and the
+// TOTAL found has to be at least what it was — "it's the total, not the exact
+// same listings": a house lost here is fine when more are found there. Here:
+// the depth of the ranked list a run owes a verdict to (search.ts TOP_CHECK),
+// passed per run as `topCheck` so production keeps its default while the lock
+// runs.
 //
 // Run against the deployed admin API (the listing photos are kept, "Run again"
 // reuses them):
-//   pnpm lock:run -- --base https://geofinder-production.up.railway.app --top 150 [--since 2026-10-15] [--limit 53] [--parallel 3] [--password …]
+//   pnpm lock:run -- --base https://geofinder-production.up.railway.app --top 150 [--since 2026-10-15] [--limit 100] [--parallel 3] [--password …]
 //   pnpm lock:run -- --base … --top 150 --report <ids.json>   # only compare a run started earlier
-//   pnpm lock:run -- --base … --top 150 --dry                  # list the settled set, start nothing
-// Settled = a listing request with two finished runs naming the same house
+//   pnpm lock:run -- --base … --top 150 --dry                  # list the set, start nothing
+// Found = a listing request with two finished runs naming the same house
 // (practice.ts foundPair, re-implemented here from consensus.ts so the script
-// needs no server state). Exit code 1 when any of them is lost.
+// needs no server state). Exit code 1 when the total found went down.
 import { writeFile } from "node:fs/promises";
 import { exactAddressOf, sameAddress, type Candidate } from "../server/consensus";
 import type { Answer } from "../server/jobs";
@@ -71,13 +73,19 @@ async function main() {
   if (report) {
     pairs = JSON.parse(await (await import("node:fs/promises")).readFile(report, "utf8")) as typeof pairs;
   } else {
+    // Every listing the current search ran (not the lock runs themselves, not
+    // parking listings, not ones still running), newest first.
     const settled = listings
-      .filter((r) => r.createdAt >= since && !r.input.topCheck && settledHouse(r))
+      .filter((r) => r.createdAt >= since && !r.input.topCheck && !r.skipped && r.status !== "running" && (r.results ?? []).length)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
-    console.log(`${settled.length} settled listings since ${since}; re-running each with topCheck=${top}, ${parallel} at a time`);
+    const foundBefore = settled.filter((r) => settledHouse(r)).length;
+    console.log(`${settled.length} listings since ${since}, ${foundBefore} found; re-running each with topCheck=${top}, ${parallel} at a time`);
     if (process.argv.includes("--dry")) {
-      for (const r of settled) console.log(`  ${(r.input.listingId ?? r.id).padEnd(16)} ${(r.input.municipality ?? "").padEnd(20)} ${settledHouse(r)!.address ?? settledHouse(r)!.parcel}`);
+      for (const r of settled) {
+        const h = settledHouse(r);
+        console.log(`  ${(h ? "found" : "-").padEnd(6)} ${(r.input.listingId ?? r.id).padEnd(16)} ${(r.input.municipality ?? "").padEnd(20)} ${h ? (h.address ?? h.parcel) : ""}`);
+      }
       return;
     }
     pairs = [];
@@ -109,26 +117,42 @@ async function main() {
 
   const byId = new Map(listings.map((r) => [r.id, r]));
   const fresh = await Promise.all(pairs.map((p) => api<Req>(`/api/requests/${p.newId}`).catch(() => null)));
-  let kept = 0, lost = 0, other = 0, running = 0;
+  let kept = 0, lost = 0, other = 0, gained = 0, stillNot = 0, running = 0, before = 0, after = 0, costBefore = 0, costAfter = 0;
   const rows: string[] = [];
+  const costOf = (r: Req) => (r.results ?? []).reduce((t, m) => t + ((m as unknown as { aiCostUsd?: number }).aiCostUsd ?? 0), 0);
   pairs.forEach((p, i) => {
-    const before = byId.get(p.oldId);
-    const after = fresh[i];
-    const was = before ? settledHouse(before) : null;
-    if (!before || !was || !after) return;
-    const now = settledHouse(after);
-    const cost = (after.results ?? []).reduce((t, m) => t + ((m as unknown as { aiCostUsd?: number }).aiCostUsd ?? 0), 0);
+    const old = byId.get(p.oldId);
+    const now = fresh[i];
+    if (!old || !now) return;
+    const was = settledHouse(old);
+    const is = settledHouse(now);
+    if (was) before++;
+    costBefore += costOf(old);
     let verdict: string;
-    if (after.status === "running") { verdict = "running"; running++; }
-    else if (now && sameAddress(was, now)) { verdict = "KEPT"; kept++; }
-    else if (now) { verdict = `OTHER HOUSE: ${now.address}`; other++; }
-    else { verdict = "LOST"; lost++; }
-    rows.push(`${verdict.padEnd(12)} ${(before.input.listingId ?? p.oldId).padEnd(16)} ${(before.input.municipality ?? "").padEnd(20)} ${was.address ?? was.parcel}  $${cost.toFixed(2)}  ${after.id}`);
+    if (now.status === "running") { verdict = "running"; running++; }
+    else {
+      if (is) after++;
+      costAfter += costOf(now);
+      if (was && is && sameAddress(was, is)) { verdict = "kept"; kept++; }
+      else if (was && is) { verdict = `OTHER HOUSE: ${is.address}`; other++; }
+      else if (was) { verdict = "LOST"; lost++; }
+      else if (is) { verdict = `GAINED: ${is.address ?? is.parcel}`; gained++; }
+      else { verdict = "still not"; stillNot++; }
+    }
+    rows.push(`${verdict.padEnd(12)} ${(old.input.listingId ?? p.oldId).padEnd(16)} ${(old.input.municipality ?? "").padEnd(20)} ${was ? (was.address ?? was.parcel) : "-"}  $${costOf(old).toFixed(2)} → $${costOf(now).toFixed(2)}  ${now.id}`);
   });
   console.log(rows.sort().join("\n"));
-  console.log(`\ntopCheck=${top}: kept ${kept}, lost ${lost}, other house ${other}, still running ${running} of ${rows.length}`);
+  const done = rows.length - running;
+  console.log(
+    `\ntopCheck=${top}: found ${before} → ${after} of ${done} (kept ${kept}, gained ${gained}, lost ${lost}, other house ${other}, still not found ${stillNot})` +
+      `, cost $${costBefore.toFixed(0)} → $${costAfter.toFixed(0)}${running ? `; ${running} still running` : ""}`,
+  );
   if (running) console.log("run again with --report to finish the comparison");
-  if (lost || other) process.exit(1);
+  if (!running && after < before) {
+    console.log(`LOCK FAILED: ${after} found is fewer than ${before} before.`);
+    process.exit(1);
+  }
+  if (!running) console.log(`LOCK PASSED: ${after} found is not fewer than ${before} before.`);
 }
 
 main().catch((err) => {
