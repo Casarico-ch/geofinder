@@ -114,3 +114,4 @@ runs/
 geneva/work/
 geneva/data/parcels.csv
 __pycache__/
+!geneva/build/
