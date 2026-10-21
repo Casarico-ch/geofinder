@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import type { Answer } from "../server/jobs";
 import { foundPair, nextSteps, type ListingRun } from "../server/practice";
 import { isParkingListing } from "../server/proof";
+import { mustCheck, topCheckText, type LedgerEntry, type SearchState } from "../server/search";
 
 let passed = 0;
 const failures: string[] = [];
@@ -83,6 +84,20 @@ await check("the third judge is the last word", () => {
   const judged = [first, missed, run("confirm", answer({ address: "Seestr. 12, Horgen" }))];
   assert.ok(foundPair(judged));
   assert.equal(nextSteps(judged).length, 0);
+});
+
+await check("the ranked-list depth: every candidate by default, the first N and every strong fit per run", () => {
+  const entry = (egid: string, order: number, strongFit = false): LedgerEntry =>
+    ({ egid, order, commune: "Vernier", address: null, lat: 46.2, lon: 6.1, floors: null, dwellings: null, footprintM2: null, viewed: false, verdict: "unchecked", strongFit }) as LedgerEntry;
+  const s = {
+    stated: "Vernier", primary: "Vernier", confidence: "high", evidence: [], ring: [], shortlisted: ["Vernier"],
+    candidates: { "1": entry("1", 0), "2": entry("2", 1), "3": entry("3", 2), "4": entry("4", 3, true), "5": entry("5", 4) },
+  } as unknown as SearchState;
+  assert.equal(mustCheck(s).length, 5); // unset: as before, everything
+  assert.match(topCheckText(s, "Vernier"), /^every Vernier candidate$/);
+  const locked = { ...s, topCheck: 2 } as SearchState;
+  assert.deepEqual(mustCheck(locked).map((c) => c.egid), ["1", "2", "4"]); // the first 2 and the strong fit
+  assert.match(topCheckText(locked), /first 2 of each commune's ranked list and every STRONG FIT/);
 });
 
 await check("a parking listing is recognised, land and a house with parking are not", () => {

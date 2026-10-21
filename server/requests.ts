@@ -53,6 +53,7 @@ export interface PlatformRequest {
     listingId?: string;
     listingUrl?: string;
     radarUrl?: string;
+    topCheck?: number; // a lock run: how deep each commune's ranked list is owed a verdict (search.ts)
   };
   // address requests
   profile?: PropertyProfile | null;

@@ -15,6 +15,7 @@
     "try:listing": "tsx scripts/try-listing.ts",
     "try:locate": "tsx scripts/try-locate.ts",
     "try:popety": "tsx --env-file-if-exists=.env scripts/try-popety.ts",
+    "lock:run": "tsx scripts/lock-run.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "tsx scripts/check-claude-pool.ts && tsx scripts/check-magic-feedback.ts && tsx scripts/check-proof.ts && tsx scripts/check-shortlist.ts && tsx scripts/check-gwr.ts && tsx scripts/check-popety-store.ts && tsx scripts/check-listing-search.ts && tsx scripts/check-geneva.ts"

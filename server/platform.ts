@@ -195,13 +195,13 @@ function publicView(r: PlatformRequest) {
  * by /v1/address and the admin's "Run again".
  */
 export async function startListingRequest(
-  input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string },
+  input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string; topCheck?: number },
   images: AgentImage[],
   models: ModelId[],
   source: PlatformRequest["source"] = "platform",
 ) {
-  const { listingText, municipality, listingId, listingUrl, radarUrl } = input;
-  const record = await createRequest("listing", { listingText, municipality, imageCount: images.length, listingId, listingUrl, radarUrl });
+  const { listingText, municipality, listingId, listingUrl, radarUrl, topCheck } = input;
+  const record = await createRequest("listing", { listingText, municipality, imageCount: images.length, listingId, listingUrl, radarUrl, ...(topCheck ? { topCheck } : {}) });
   record.source = source;
   record.results = [];
   // A parking space or garage has no building to find (Daniel, 21.10: "skip
@@ -220,8 +220,8 @@ export async function startListingRequest(
 
 /** One search of the request's listing (practice.ts startSearch); a follow-up is marked check: true. */
 async function addRun(req: PlatformRequest, images: AgentImage[], model: ModelId, step: Omit<Step, "model">) {
-  const { listingText, municipality, listingId, listingUrl, radarUrl } = req.input;
-  const { job, finished } = await startSearch({ listingText, municipality, listingId, listingUrl, radarUrl }, images, model, step);
+  const { listingText, municipality, listingId, listingUrl, radarUrl, topCheck } = req.input;
+  const { job, finished } = await startSearch({ listingText, municipality, listingId, listingUrl, radarUrl, topCheck }, images, model, step);
   (req.results ??= []).push({
     model,
     jobId: job.id,
@@ -552,9 +552,11 @@ export function registerPlatformRoutes(app: Express) {
   // request. A cross-check run (its text carries a verification task) is not
   // a source and does not add a model of its own.
   app.post("/api/requests/rerun", async (req: Request, res: Response) => {
-    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(20) }).safeParse(req.body);
+    // topCheck: a lock run (scripts/lock-run.ts) re-runs settled listings with a
+    // ranked-list depth to prove it loses none of them before it becomes the default.
+    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(20), topCheck: z.number().int().min(1).optional() }).safeParse(req.body);
     const jobs = parsed.success ? parsed.data.jobIds.map((id) => getJob(id)).filter((j): j is NonNullable<typeof j> => !!j) : [];
-    if (jobs.length === 0) {
+    if (!parsed.success || jobs.length === 0) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
       return;
     }
@@ -579,6 +581,7 @@ export function registerPlatformRoutes(app: Express) {
           listingId: src.input.listingId,
           listingUrl: src.input.listingUrl,
           radarUrl: src.input.radarUrl,
+          topCheck: parsed.data.topCheck,
         },
         images,
         models,

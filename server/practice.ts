@@ -318,6 +318,7 @@ export interface ListingInput {
   radarUrl?: string;
   lessons?: string[];
   noProof?: boolean;
+  topCheck?: number; // a lock run (scripts/lock-run.ts): how deep the ranked list is owed a verdict
 }
 
 /** Start one search of a listing. `finished` settles when the run ends. */
@@ -347,6 +348,7 @@ export async function startSearch(
       maxMinutes: limits.maxMinutes,
       noProof: listing.noProof ?? !!limits.noProof,
       ...(listing.lessons ? { lessons: listing.lessons } : {}),
+      ...(listing.topCheck ? { topCheck: listing.topCheck } : {}),
       ...(tie ? { tieBreak: true, tieBreakEgids: tie.egids } : {}),
     },
     model,
