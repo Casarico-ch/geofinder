@@ -60,7 +60,7 @@ GeoFinder runs as a private service for our platform. Every `/v1` call needs
 | Call | What it does |
 |---|---|
 | `POST /v1/address` `{ images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl?, radarUrl?, models? }` | Finds the address from a listing. `models` (e.g. `["claude-opus-5-5"]`) overrides the default models for that request. Runs two models side by side and returns `202` with a `requestId`. |
-| `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer`: address, exact `parcels` (`[{ commune, plot, egrid }]`, the result for building land with no address), coordinates, confidence. |
+| `GET /v1/requests/:id` | Progress of an address search: one entry per model in `results`, each with its `answer`: address, exact `parcels` (`[{ commune, plot, egrid }]`, the result for building land with no address), coordinates, confidence. A parking or garage listing is not searched: it comes back `done` at once with empty `results` and a `skipped` note (land listings are searched). |
 | `POST /v1/property` `{ address }`, `{ latitude, longitude }`, `{ commune, plot }` or `{ egrid }` | Returns the property data for one plot right away: free from our own data for a Geneva plot (in `geneva`, see below), CHF 3.80 on Popety elsewhere. Coordinates and plot numbers (e.g. `{ "commune": "Horgen", "plot": "HN12522" }`) also work for plots with no building; `/v1/address` returns coordinates for every match. `300` with `candidates` when the address matches several parcels, `404` when none. |
 
 To look at several plots as one site, send `{ "plots": [ ...2 to 10 of the inputs above ] }`,
@@ -101,6 +101,20 @@ the admin table shows all searches with the same `listingId` as one row, with th
 
 The models a listing runs on are set by `GEOFINDER_MODELS` (comma-separated,
 default `claude-sonnet-5-5,claude-opus-5-5`).
+
+An address counts when two runs name the same house. After the first searches,
+a confirming search runs on its own; if it names another house a tie-breaker
+compares the two, and if it finds nothing a third judge is handed the house the
+first search named, told what the confirming search covered, and must confirm it
+with a close look or reject it with a visible difference (`server/verify.ts`). A
+confirming search that crashes is run again once. Each commune's shortlist is
+ranked by how well the building register fits the listing's own numbers; with
+`SHORTLIST_TOP_CHECK` set, a run may answer "not found", or move to the next
+commune, once that many of the list and every strong fit have a verdict (unset:
+every candidate, as before). The depth is locked before it becomes the default:
+`pnpm lock:run -- --base <admin url> --top 150` runs every listing the current
+search ran again with that depth, and the total found must not go down (a house
+lost here is fine when more are found there).
 
 The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the

@@ -147,6 +147,7 @@ interface PlatformRequest {
   geneva?: GenevaAnswer[];
   plotErrors?: { plot: string; error: string }[];
   results?: ModelResult[];
+  skipped?: string; // answered without a search, and why (a parking listing)
   popetyCostChf: number;
   error?: string;
   source?: "platform" | "website";
@@ -652,6 +653,7 @@ function outcomeOf(r: PlatformRequest): Outcome {
         }
       : { label: "Not found", tone: "bg-muted text-muted-foreground" };
   }
+  if (r.skipped) return { label: "Not searched", tone: "bg-muted text-muted-foreground", detail: r.skipped };
   const results = r.results ?? [];
   const running = results.some((m) => m.status === "running");
   if (running)

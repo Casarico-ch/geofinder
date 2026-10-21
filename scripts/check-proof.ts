@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { proveAnswer, rejectionProblem, unprovenAsShortlist } from "../server/agent";
 import type { Answer, Job } from "../server/jobs";
-import { seedForCheck, verifyText } from "../server/platform";
+import { seedForCheck, verifySetup } from "../server/verify";
 import { factRows, listingFacts, polygonAreaM2, strongFit } from "../server/proof";
 import { type LedgerEntry, type SearchState, claimedEntry, openPossibles } from "../server/search";
 
@@ -202,7 +202,7 @@ await check("unviewed candidates, open possibles and a second match each block i
   const s = zermatt({ "1": { verdict: "unchecked", viewed: false }, "2": { verdict: "possible" }, "3": { verdict: "match", lat: 46.03 } });
   const pr = await proveAnswer(job(s), answer({}));
   const all = pr.blocking.join("\n");
-  assert.match(all, /1 shortlisted candidates have no verdict/);
+  assert.match(all, /1 of the first 150 of each commune.s ranked list and every STRONG FIT have no verdict/);
   assert.match(all, /1 candidates are still "possible"/);
   assert.match(all, /also marked match: 3/);
   assert.equal(openPossibles(s).length, 1);
@@ -250,10 +250,27 @@ await check("a cross-check re-opens the claim and the strongest alternatives, ke
   assert.equal(seed.candidates["960331"].verdict, "unchecked");
   assert.equal(seed.candidates["959951"].verdict, "rejected");
   assert.equal(s.candidates["960331"].verdict, "match"); // the original is untouched
-  const text = verifyText(LISTING, { address: "Riedweg 89, 3920 Zermatt", parcel: null, latitude: 46.024131, longitude: 7.756649 }, "claude-opus-5-5", claim, reopened);
-  assert.match(text, /--- VERIFICATION TASK ---/);
-  assert.match(text, /PROVE THAT ANSWER WRONG/);
-  assert.match(text, /960338 \| Gryfelblatte 58 \| STRONG FIT \| earlier: rejected — "small"/);
+  // The third judge (verify.ts): handed the house, told what the second search covered.
+  const finder = {
+    model: "claude-opus-5-5",
+    search: s,
+    answer: { found: true, confidence: "building", address: "Riedweg 89, 3920 Zermatt", parcel: null, latitude: 46.024131, longitude: 7.756649, reasoning: "Gable chalet." },
+  } as unknown as Job;
+  const missed = {
+    model: "claude-opus-5-5",
+    search: { ...s, shortlisted: ["Zermatt"] },
+    answer: { found: false, confidence: "block", address: null, parcel: null, latitude: null, longitude: null, reasoning: "Nothing on the shortlist fits the photos." },
+  } as unknown as Job;
+  const v = verifySetup(LISTING, finder, [missed]);
+  assert.ok(v);
+  assert.match(v.text, /--- VERIFICATION TASK ---/);
+  assert.match(v.text, /Riedweg 89, 3920 Zermatt .*— EGID 960331 on your checklist/);
+  assert.match(v.text, /Opus 5.5 searched on its own and did NOT find this house\. It covered: Zermatt \d+\/\d+ checked\. It said: "Nothing on the shortlist fits the photos\."/);
+  assert.match(v.text, /You are the third judge/);
+  assert.match(v.text, /960338 \| Gryfelblatte 58 \| STRONG FIT \| earlier: rejected — "small"/);
+  assert.equal(v.seed.candidates["960331"].verdict, "unchecked");
+  // No exact house named: no judge.
+  assert.equal(verifySetup(LISTING, missed, [finder]), null);
 });
 
 if (failures.length) {

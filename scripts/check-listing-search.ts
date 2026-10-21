@@ -4,6 +4,8 @@
 import assert from "node:assert/strict";
 import type { Answer } from "../server/jobs";
 import { foundPair, nextSteps, type ListingRun } from "../server/practice";
+import { isParkingListing } from "../server/proof";
+import { mustCheck, topCheckText, type LedgerEntry, type SearchState } from "../server/search";
 
 let passed = 0;
 const failures: string[] = [];
@@ -55,6 +57,55 @@ await check("a confirm naming another house brings the tie-breaker", () => {
 
 await check("a lesson test runs no confirm", () => {
   assert.equal(nextSteps([run("search", answer({}))], { confirm: false }).length, 0);
+});
+
+await check("a confirm that crashed runs again, once", () => {
+  const crashed = { ...run("confirm", null), settled: true, done: false };
+  const again = nextSteps([run("search", answer({})), crashed]);
+  assert.deepEqual(again.map((s) => s.role), ["confirm"]);
+  assert.equal(again[0].verifyOf, undefined);
+  assert.equal(nextSteps([run("search", answer({})), crashed, { ...crashed, jobId: "j-crash-2" }]).length, 0);
+});
+
+await check("a confirm that found nothing brings the third judge, handed the house", () => {
+  const first = run("search", answer({}));
+  const missed = run("confirm", answer({ found: false, confidence: "block", address: null }));
+  const steps = nextSteps([first, missed]);
+  assert.equal(steps[0]?.role, "confirm");
+  assert.equal(steps[0]?.verifyOf, first.jobId);
+  assert.deepEqual(steps[0]?.missedBy, [missed.jobId]);
+  assert.equal(steps[0]?.tieBreakOf, undefined);
+});
+
+await check("the third judge is the last word", () => {
+  const first = run("search", answer({}));
+  const missed = run("confirm", answer({ found: false, confidence: "block", address: null }));
+  assert.equal(nextSteps([first, missed, run("confirm", answer({ found: false, confidence: "block", address: null }))]).length, 0);
+  const judged = [first, missed, run("confirm", answer({ address: "Seestr. 12, Horgen" }))];
+  assert.ok(foundPair(judged));
+  assert.equal(nextSteps(judged).length, 0);
+});
+
+await check("the ranked-list depth: every candidate by default, the first N and every strong fit per run", () => {
+  const entry = (egid: string, order: number, strongFit = false): LedgerEntry =>
+    ({ egid, order, commune: "Vernier", address: null, lat: 46.2, lon: 6.1, floors: null, dwellings: null, footprintM2: null, viewed: false, verdict: "unchecked", strongFit }) as LedgerEntry;
+  const s = {
+    stated: "Vernier", primary: "Vernier", confidence: "high", evidence: [], ring: [], shortlisted: ["Vernier"],
+    candidates: { "1": entry("1", 0), "2": entry("2", 1), "3": entry("3", 2), "4": entry("4", 3, true), "5": entry("5", 4) },
+  } as unknown as SearchState;
+  assert.equal(mustCheck(s).length, 5); // unset: as before, everything
+  assert.match(topCheckText(s, "Vernier"), /^every Vernier candidate$/);
+  const locked = { ...s, topCheck: 2 } as SearchState;
+  assert.deepEqual(mustCheck(locked).map((c) => c.egid), ["1", "2", "4"]); // the first 2 and the strong fit
+  assert.match(topCheckText(locked), /first 2 of each commune's ranked list and every STRONG FIT/);
+});
+
+await check("a parking listing is recognised, land and a house with parking are not", () => {
+  assert.ok(isParkingListing("Title: Place de parc\nType: other\nCategory: parking\nSubtype: underground_parking\n"));
+  assert.ok(isParkingListing("Title: Box fermé\nType: parking\nCategory: garage\nSubtype: garage\n"));
+  assert.ok(!isParkingListing("Title: Terrain\nType: other\nCategory: land\nSubtype: building_plot\n"));
+  assert.ok(!isParkingListing("Title: Villa\nCategory: house\nSubtype: villa\nParking: garage, 2 places\n"));
+  assert.ok(!isParkingListing(undefined));
 });
 
 if (failures.length) {

@@ -236,6 +236,8 @@ export interface Job {
     // Practice: an exact answer is recorded without the register proof; a
     // second run naming the same house is the check instead (Daniel, 05.10).
     noProof?: boolean;
+    // How deep each commune's ranked list is owed a verdict before "not found" (search.ts mustCheck); unset: SHORTLIST_TOP_CHECK.
+    topCheck?: number;
     // The tie-breaker: compares the two houses named in its task (tiebreak.ts), no commune search.
     tieBreak?: boolean;
     tieBreakEgids?: string[]; // its A and B: a third house is taken only once both are rejected

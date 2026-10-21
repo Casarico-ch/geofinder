@@ -46,9 +46,11 @@ import {
   openPossibles,
   coverageText,
   leavePrimaryBlocked,
+  mustCheck,
   nextToView,
   pendingCommunes,
   searchPlanText,
+  topCheckText,
   unchecked,
 } from "./search";
 import {
@@ -411,7 +413,7 @@ Treat each commune as a FINITE, listable set of buildings, not a map to eyeball.
 1. Read the building's HARD structural attributes off the photos: the levels the register counts (a two-storey block + single-storey wing reads as ~3; a semi-basement "rez inférieur" + two storeys + attic is 4), the number of dwellings when the listing says it ("PPE de deux logements" = 2), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
 2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It ranks EVERY home in the commune (new builds and buildings with shops included) by what the listing states — the plot of its land area, a flat of its living area, year built, homes in the building — and removes none; your estimates only reorder. Candidates marked as fitting on every checked fact come first: look at those first. Never hand-write a filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. When you pass estimates: footprintM2 is THIS building's GROUND footprint (for a flat or a semi-detached house the register often holds only its own part of the block), NOT the listing's living area; and estimate floors generously. If the house is not in the first page, call again for the next one before leaving the commune.
 3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer. For a FLAT, the register lists every flat in a building with its storey, rooms and m², and inspect_candidate checks the listing's flat against them: in a row of look-alike blocks or entrances, inspect every one — the entrances without a flat of that size on that floor are out, and that is often what names the address. A plot NUMBER the listing names is the plot before it was divided when the house is new or planned ("on plot 1064, 4 new villas"): the houses built on it carry new plot numbers (Conthey: 1064 became 30756). Never reject a new house only because its plot number differs: check whether it stands on, or right next to, the plot the listing names.
-4. LOOK at every candidate: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). That checklist is how you (and the reminders) know a commune is exhausted — a commune is not "searched" until every candidate has a verdict. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
+4. LOOK at the candidates in ranked order: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). The list is ranked by how well the register fits the listing's own numbers, so the house is usually near the top. That checklist is how you (and the reminders) know a commune is exhausted — a commune is "searched" once the candidates the SEARCH PLAN owes a verdict (the top of its ranked list, as deep as the plan says, and every STRONG FIT) have one; go deeper only when a lead points there (a street name, a view, a neighbour), not by default. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
 5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses. When the photos show a view (through a window, from a terrace or balcony), call view_from on your best candidates: a lake below, mountains far off or a slope right in front tells houses a few hundred metres apart. When the photos include a FLOOR PLAN, read its outer dimensions, its shape (rectangle, L) and which side the garden or terrace faces, and compare them with each candidate's outline in inspect_candidate.
 
 PROOF — what the code accepts as an exact address
@@ -533,11 +535,11 @@ function convergeReminder(step: number, max: number, search?: SearchState, nearT
   if (step >= max - 15 || nearTimeLimit)
     return `[system-reminder] You are near the ${nearTimeLimit ? "time" : `${max}-step`} limit. Reach a conclusion now — an HONEST one. If the evidence has converged on one property, submit_answer with it. If it has not, submit your tightest defensible area with found=false and your ranked candidates. Do NOT fabricate a precise address just to finish, and do not open new searches.`;
   if (step >= 24 && (step - 24) % 12 === 0) {
-    const open = search ? unchecked(search).length : 0;
+    const open = search ? mustCheck(search).length : 0;
     const todo = search ? pendingCommunes(search, 3) : [];
     if (search && (open > 0 || todo.length > 0)) {
       return `[system-reminder] ${step} steps in. Coverage: ${coverageText(search)}.` +
-        (open > 0 ? ` ${open} shortlisted candidates still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.` : "") +
+        (open > 0 ? ` ${open} of ${topCheckText(search)} still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.` : "") +
         (todo.length > 0 ? ` Not yet shortlisted, in plan order: ${todo.join(", ")}.` : "") +
         ` If a candidate already matches EVERY hard signal, confirm it and submit_answer.`;
     }
@@ -622,6 +624,7 @@ export async function runInvestigation(
   // Where to look: commune confidence + neighbour ring, decided in code from the
   // listing before the model starts, and handed to it as the SEARCH PLAN.
   const search = await assessCommune(job.input.municipality, listingText);
+  if (job.input.topCheck) search.topCheck = job.input.topCheck;
   if (seed) {
     search.shortlisted = [...seed.shortlisted];
     search.candidates = structuredClone(seed.candidates);
@@ -655,12 +658,12 @@ async function stampPrompt(job: Job): Promise<void> {
 // Why a found=false is premature, or null when the plan's work is done.
 function prematureGiveUp(search: SearchState | undefined): string | null {
   if (!search || search.submitGated) return null;
-  const open = unchecked(search).length;
+  const open = mustCheck(search).length;
   const todo = pendingCommunes(search, 3);
   if (open === 0 && todo.length === 0) return null;
   return (
     `Not recorded — the search plan is not finished. Coverage: ${coverageText(search)}.` +
-    (open > 0 ? ` ${open} shortlisted candidates have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).` : "") +
+    (open > 0 ? ` ${open} of ${topCheckText(search)} have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).` : "") +
     (todo.length > 0 ? ` Planned communes not yet shortlisted: ${todo.join(", ")}.` : "") +
     ` Continue the plan; submit found=false only once it is done (or if you can name a concrete reason the rest cannot hold the property).`
   );
@@ -1628,7 +1631,11 @@ function sanityProblem(job: Job, a: Answer, egid: string | number | undefined): 
   const first = (a.address ?? "").split(",")[0];
   if (!/[A-Za-zÀ-ÿ]{3}/.test(first) || !/\d/.test(first))
     return "Not recorded — an answer must be a street address with a house number (\"Steinweg 21, Aesch\"). Give the building's address, or submit found=false with your ranked candidates.";
-  const land = listingFacts(job.input.listingText).landM2;
+  const facts = listingFacts(job.input.listingText);
+  // A flat's "land" is its garden share of a co-owned plot, never the plot
+  // (Saladin 9a, Chêne-Bougeries, 16.10: 308 m² of private garden on a 1,489 m²
+  // PPE plot — the right house, sent back twice and lost).
+  const land = facts.kind === "flat" || facts.sharedLand ? null : facts.landM2;
   const e = egid != null ? searchOf(job).candidates[String(Number(egid))] : undefined;
   const plot = e?.plotGroup?.length ? e.plotGroup.reduce((t, p) => t + p.areaM2, 0) : e?.plot?.areaM2;
   if (land && plot && (plot > 2 * land || plot < land / 2))
@@ -1698,8 +1705,8 @@ export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
   // on its own: its plot(s) match the listing's land within 2% and no register
   // fact contradicts it (proof.ts decisive).
   const checklist: string[] = [];
-  const open = unchecked(search).length;
-  if (open) checklist.push(`${open} shortlisted candidates have no verdict yet (${coverageText(search)}): view and mark them.`);
+  const open = mustCheck(search).length;
+  if (open) checklist.push(`${open} of ${topCheckText(search)} have no verdict yet (${coverageText(search)}): view and mark them.`);
   const poss = openPossibles(search).filter((c) => c !== claim);
   if (poss.length) {
     checklist.push(

@@ -19,11 +19,10 @@ import { missReasonNow } from "./miss";
 import { firstModels, foundPair, listingVerdict, nextSteps, startSearch, type Role, type Step, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { loadListingPhotos, type AgentImage } from "./agent";
-import { type Candidate } from "./consensus";
+import { isParkingListing } from "./proof";
 import { reviewRound } from "./review";
 import { startChallenge, viewChallenge } from "./challenge";
-import { MODELS, costUsd, elapsedMs, getJob, listJobs, type KnownModel, type ModelId } from "./jobs";
-import { type LedgerEntry, type SearchState, claimedEntry } from "./search";
+import { MODELS, costUsd, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import { profileByLandId } from "./popety-store";
 import { genevaAnswer, genevaEgridAt, genevaEgridAtAddress, genevaEgridsByPlot, genevaPlotOfEgrid, isGenevaEgrid } from "./geneva";
 import {
@@ -41,7 +40,6 @@ import {
   createRequestFromJobs,
   deleteRows,
   getRequest,
-  CHECK_MARK,
   isCheckText,
   listRequests,
   listRequestsWithLooseJobs,
@@ -184,6 +182,7 @@ function publicView(r: PlatformRequest) {
             ...(m.check ? { check: true } : {}),
             agrees: !!pair && pair.some((p) => p.m === m),
           })),
+          ...(r.skipped ? { skipped: r.skipped } : {}),
         }),
     popetyCostChf: r.popetyCostChf,
     error: r.error,
@@ -196,15 +195,23 @@ function publicView(r: PlatformRequest) {
  * by /v1/address and the admin's "Run again".
  */
 export async function startListingRequest(
-  input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string },
+  input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string; topCheck?: number },
   images: AgentImage[],
   models: ModelId[],
   source: PlatformRequest["source"] = "platform",
 ) {
-  const { listingText, municipality, listingId, listingUrl, radarUrl } = input;
-  const record = await createRequest("listing", { listingText, municipality, imageCount: images.length, listingId, listingUrl, radarUrl });
+  const { listingText, municipality, listingId, listingUrl, radarUrl, topCheck } = input;
+  const record = await createRequest("listing", { listingText, municipality, imageCount: images.length, listingId, listingUrl, radarUrl, ...(topCheck ? { topCheck } : {}) });
   record.source = source;
   record.results = [];
+  // A parking space or garage has no building to find (Daniel, 21.10: "skip
+  // the parking, not the land"): answered at once, no model runs.
+  if (isParkingListing(listingText)) {
+    record.status = "done";
+    record.skipped = "Parking listing: a garage or parking space has no building to find, so it was not searched.";
+    await saveRequest(record);
+    return record;
+  }
   for (const model of models) await addRun(record, images, model, { role: "search" });
   await saveRequest(record);
   watchListingRequest(record);
@@ -212,9 +219,9 @@ export async function startListingRequest(
 }
 
 /** One search of the request's listing (practice.ts startSearch); a follow-up is marked check: true. */
-async function addRun(req: PlatformRequest, images: AgentImage[], model: ModelId, step: Pick<Step, "role" | "tieBreakOf">) {
-  const { listingText, municipality, listingId, listingUrl, radarUrl } = req.input;
-  const { job, finished } = await startSearch({ listingText, municipality, listingId, listingUrl, radarUrl }, images, model, step);
+async function addRun(req: PlatformRequest, images: AgentImage[], model: ModelId, step: Omit<Step, "model">) {
+  const { listingText, municipality, listingId, listingUrl, radarUrl, topCheck } = req.input;
+  const { job, finished } = await startSearch({ listingText, municipality, listingId, listingUrl, radarUrl, topCheck }, images, model, step);
   (req.results ??= []).push({
     model,
     jobId: job.id,
@@ -244,74 +251,6 @@ async function afterSettled(req: PlatformRequest): Promise<boolean> {
   for (const step of steps) await addRun(req, images, step.model, step);
   req.status = "running";
   return true;
-}
-
-const modelLabel = (m: KnownModel) =>
-  m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
-
-// How many alternatives a cross-check re-opens besides the claimed house.
-const REOPEN = 8;
-
-/**
- * The checklist a cross-check starts from: the search's own, with its verdicts
- * kept, except the claimed house and the strongest alternatives it set aside
- * (strong fits first, then "possible" ones, nearest to the claim first), which
- * are open again. The proof rules (agent.ts proveAnswer) then mean the checker
- * can only confirm the claim after a close look at it AND a visible reason
- * against each re-opened alternative.
- */
-export function seedForCheck(
-  search: Pick<SearchState, "shortlisted" | "candidates"> | undefined,
-  candidate: Candidate,
-): { seed: Pick<SearchState, "shortlisted" | "candidates">; claim: LedgerEntry | null; reopened: LedgerEntry[] } {
-  const seed = { shortlisted: [...(search?.shortlisted ?? [])], candidates: structuredClone(search?.candidates ?? {}) };
-  const claim = claimedEntry(seed as SearchState, { lat: candidate.latitude, lon: candidate.longitude, address: candidate.address });
-  const near = (c: LedgerEntry) =>
-    claim ? Math.hypot((c.lon - claim.lon) * 78_000, (c.lat - claim.lat) * 111_320) : c.order;
-  const reopened = Object.values(seed.candidates)
-    .filter((c) => c !== claim && (c.strongFit || c.verdict === "possible" || c.verdict === "match"))
-    .sort((a, b) => Number(!!b.strongFit) - Number(!!a.strongFit) || near(a) - near(b))
-    .slice(0, REOPEN);
-  const before = reopened.map((c) => ({ ...c }));
-  for (const c of [claim, ...reopened]) {
-    if (!c) continue;
-    Object.assign(c, { verdict: "unchecked", viewed: false, closeLook: false, reason: undefined });
-  }
-  return { seed, claim, reopened: before };
-}
-
-/**
- * The listing text with a prove-this-address-wrong task appended. The checker
- * builds on the other model's search instead of starting over, but its job is
- * to break the answer: "can you confirm it?" got a yes in 4 checks out of 4,
- * including Riedweg 89, Zermatt (2 dwellings and a 427 m² plot for a single
- * chalet on 331 m²).
- */
-export function verifyText(
-  listing: string,
-  candidate: Candidate,
-  from: KnownModel,
-  claim: LedgerEntry | null = null,
-  reopened: LedgerEntry[] = [],
-): string {
-  const pin =
-    candidate.latitude != null && candidate.longitude != null ? ` (around ${candidate.latitude}, ${candidate.longitude})` : "";
-  const alt = reopened.map(
-    (c) => `- ${c.egid} | ${c.address ?? "?"}${c.strongFit ? " | STRONG FIT" : ""} | earlier: ${c.verdict}${c.reason ? ` — "${c.reason}"` : ""}`,
-  );
-  return [
-    listing,
-    "",
-    CHECK_MARK,
-    `Another investigator (${modelLabel(from)}) concluded that this property is at: ${candidate.address}${candidate.parcel ? `, plot ${candidate.parcel}` : ""}${pin}${claim ? ` — EGID ${claim.egid} on your checklist` : ""}.`,
-    "Your job is to PROVE THAT ANSWER WRONG. Do not search from scratch: you start from that investigator's checklist. Its verdicts are kept, except the claimed house" +
-      (alt.length ? " and these alternatives it set aside, which are open again:" : ", which is open again."),
-    ...alt,
-    `1. inspect_candidate the claimed house. Every ✗ in its fact sheet (homes, living area, plot area) is a reason it is wrong; then compare its roof, its aerial and its neighbours with the photos. One clear mismatch rejects it — never explain one away ("the register may be wrong").`,
-    "2. inspect_candidate every re-opened alternative and settle it: rejected with the difference you see, or match. If one fits better than the claim, that one is the answer.",
-    "3. Any candidate the checklist still leaves unchecked must be viewed and marked too.",
-    "The claim is confirmed only if it survives step 1 and every alternative is rejected with a visible difference — the code checks this before it records a street/building answer. Otherwise report found=false at block confidence with your ranked candidates and the mismatch you found.",
-  ].join("\n");
 }
 
 export function registerPlatformRoutes(app: Express) {
@@ -613,9 +552,11 @@ export function registerPlatformRoutes(app: Express) {
   // request. A cross-check run (its text carries a verification task) is not
   // a source and does not add a model of its own.
   app.post("/api/requests/rerun", async (req: Request, res: Response) => {
-    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(20) }).safeParse(req.body);
+    // topCheck: a lock run (scripts/lock-run.ts) re-runs settled listings with a
+    // ranked-list depth to prove it loses none of them before it becomes the default.
+    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(20), topCheck: z.number().int().min(1).optional() }).safeParse(req.body);
     const jobs = parsed.success ? parsed.data.jobIds.map((id) => getJob(id)).filter((j): j is NonNullable<typeof j> => !!j) : [];
-    if (jobs.length === 0) {
+    if (!parsed.success || jobs.length === 0) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
       return;
     }
@@ -640,6 +581,7 @@ export function registerPlatformRoutes(app: Express) {
           listingId: src.input.listingId,
           listingUrl: src.input.listingUrl,
           radarUrl: src.input.radarUrl,
+          topCheck: parsed.data.topCheck,
         },
         images,
         models,
