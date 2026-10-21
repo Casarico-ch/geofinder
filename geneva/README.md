@@ -41,13 +41,15 @@ pnpm exec tsx scripts/check-geneva.ts                          # the server give
 ```
 
 This runs by itself on the 3rd of each month (`.github/workflows/geneva-refresh.yml`, or by hand
-from the Actions tab): it rebuilds, runs the checks, and opens a pull request "Geneva data refresh
-YYYY-MM" with `build/refresh_report.py`'s summary of what changed. Merging it ships the new data.
+from the Actions tab): it rebuilds, runs the checks, pushes branch `geneva/refresh` and opens an
+issue "Geneva data refresh YYYY-MM ready" with `build/refresh_report.py`'s summary of what changed
+and a one-click link to its pull request (the organisation does not let Actions open pull requests
+itself). Merging that pull request ships the new data.
 A failed run opens an issue; the app keeps last month's data meanwhile.
 
 The plan rules (`rules/`) change only when the canton adopts or amends a plan. A new plan has no
 rules entry, so its plots come out `special_plan_unresolved` (never "buildable") and the refresh
-pull request lists it under "New plans to read": read the new plan, update `plans_de_site.json` / `pdzi.json` and
+issue lists it under "New plans to read": read the new plan, update `plans_de_site.json` / `pdzi.json` and
 `parcel_sectors.csv`, then rebuild as above.
 
 ## Known limits
