@@ -67,6 +67,8 @@ export interface PlatformRequest {
   results?: ModelResult[];
   // houses a person suggested, each weighed in full depth against the ones found (challenge.ts)
   challenges?: Challenge[];
+  // answered without a search, and why (a parking listing: platform.ts startListingRequest)
+  skipped?: string;
   popetyCostChf: number;
   error?: string;
   source?: "platform" | "website";

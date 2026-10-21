@@ -35,6 +35,7 @@ import { buildingByEgid } from "./gwr";
 import { listingFacts } from "./proof";
 import { twinsOf } from "./twins";
 import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
+import { verifySetup } from "./verify";
 import { geminiConfigured, isGemini } from "./gemini";
 
 export interface PracticeCase {
@@ -101,6 +102,8 @@ export interface PracticeResult {
   recheck?: boolean; // this run is that second search
   confirm?: boolean; // a confirming or tie-breaking search (wantsConfirm)
   tieBreakOf?: string[]; // the tie-breaker: the runs (job ids) whose houses it compares, one per house (tiebreak.ts)
+  verifyOf?: string; // the third judge (verify.ts): the run whose house it was handed
+  missedBy?: string[]; // and the confirming search(es) that found nothing
   twinPick?: string; // named one of two attached twins; the other one
 
 }
@@ -219,8 +222,9 @@ export function wantsConfirm(runs: Settled[]): boolean {
   const confirms = runs.filter((r) => r.confirm);
   if (confirms.length >= MAX_CONFIRMS) return false;
   if (!runs.some((r) => r.done && exactAddressOf(r.answer)) || agreeingPair(runs)) return false;
-  // A tie-breaker only when the confirming search named another house: a "not sure" leaves nothing to break.
-  return !confirms.length || confirms.some((r) => r.done && !!exactAddressOf(r.answer));
+  // After the first confirm, one more: the tie-breaker when it named another
+  // house, the third judge when it found nothing (Daniel, 21.10; nextSteps).
+  return confirms.length < MAX_CONFIRMS;
 }
 
 // =============================================================================
@@ -264,6 +268,8 @@ export interface Step {
   role: Role;
   model: ModelId;
   tieBreakOf?: string[]; // the tie-breaker: the runs (job ids) whose houses it compares
+  verifyOf?: string; // the third judge (verify.ts): the run (job id) whose house it is handed
+  missedBy?: string[]; // and the confirming search(es) that found nothing
 }
 
 /**
@@ -279,10 +285,28 @@ export function nextSteps(runs: ListingRun[], opts: { confirm?: boolean } = {}):
   if (RECHECK && !followed && runs.some((r) => r.role === "search" && r.done && recheckWhy(r.answer)))
     return RECHECK_MODELS.map((model) => ({ role: "recheck", model }));
   if (opts.confirm === false || !runs.length || runs.some((r) => !r.settled)) return [];
-  const states = runs.map((r) => ({ ...r, confirm: r.role === "confirm" }));
+  const all = runs.map((r) => ({ ...r, confirm: r.role === "confirm" }));
+  // A confirming search that crashed (an API error, not a verdict) is run
+  // again as if it had not started — once (16.10: two confirms died on a bad
+  // image with a found house waiting, and the listing ended unconfirmed).
+  const crashed = all.filter((r) => r.confirm && !r.done);
+  if (crashed.length >= 2) return [];
+  const states = all.filter((r) => !(r.confirm && !r.done));
   if (!wantsConfirm(states)) return [];
   const ids = (tieBreakRuns(states) ?? []).map((r) => r.jobId).filter((id): id is string => !!id);
-  return CONFIRM_MODELS.map((model) => ({ role: "confirm", model, ...(ids.length >= 2 ? { tieBreakOf: ids } : {}) }));
+  if (ids.length >= 2) return CONFIRM_MODELS.map((model) => ({ role: "confirm", model, tieBreakOf: ids }));
+  // The confirming search found nothing: the third judge is handed the house
+  // the first search named, and told what the second one covered (verify.ts).
+  const missed = states.filter((r) => r.confirm && r.done && !exactAddressOf(r.answer));
+  const named = [...states].reverse().find((r) => !r.confirm && r.done && exactAddressOf(r.answer));
+  if (missed.length && named?.jobId)
+    return CONFIRM_MODELS.map((model) => ({
+      role: "confirm",
+      model,
+      verifyOf: named.jobId!,
+      missedBy: missed.map((r) => r.jobId).filter((id): id is string => !!id),
+    }));
+  return CONFIRM_MODELS.map((model) => ({ role: "confirm", model }));
 }
 
 /** What a listing is searched with. lessons/noProof: a practice round fixes them when it starts. */
@@ -301,12 +325,15 @@ export async function startSearch(
   listing: ListingInput,
   images: AgentImage[],
   model: ModelId,
-  step: Pick<Step, "role" | "tieBreakOf"> = { role: "search" },
+  step: Omit<Step, "model"> = { role: "search" },
 ): Promise<{ job: Job; finished: Promise<void> }> {
   // The tie-breaker compares the houses the named runs found.
   const named = (step.tieBreakOf ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j);
   const tie = named.length >= 2 ? await tieBreakSetup(listing.listingText, named) : null;
-  const listingText = tie ? tie.text : listing.listingText;
+  // The third judge is handed the house one run found and what the confirming search covered.
+  const finder = step.verifyOf ? getJob(step.verifyOf) : undefined;
+  const verify = !tie && finder ? verifySetup(listing.listingText, finder, (step.missedBy ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j)) : null;
+  const listingText = tie ? tie.text : verify ? verify.text : listing.listingText;
   const limits = stepLimits(tie ? "tieBreak" : step.role === "confirm" ? "confirm" : "search");
   const job = await createJob(
     {
@@ -326,7 +353,7 @@ export async function startSearch(
   );
   const finished = (async () => {
     await saveListingPhotos(job.runDir, images);
-    await runInvestigation(job, images, listingText, tie?.seed);
+    await runInvestigation(job, images, listingText, tie?.seed ?? verify?.seed);
   })();
   return { job, finished };
 }
@@ -635,7 +662,7 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
           { municipality: c.municipality ?? undefined, listingText: c.listingText, listingId: `practice-${round.id}-${c.propertyId}`, lessons: round.lessons ?? [], noProof: !!round.noProof },
           images,
           r.model,
-          { role: roleOf(r), tieBreakOf: r.tieBreakOf },
+          { role: roleOf(r), tieBreakOf: r.tieBreakOf, verifyOf: r.verifyOf, missedBy: r.missedBy },
         );
         r.jobId = job.id;
         await save(round);
@@ -679,7 +706,7 @@ function stepsFor(round: PracticeRound, propertyId: number): PracticeResult[] {
   const first = runs[0];
   return steps.map((s) => {
     if (!round.models.includes(s.model)) round.models.push(s.model);
-    const again: PracticeResult = { propertyId, jobId: null, model: s.model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, ...(s.role === "recheck" ? { recheck: true } : {}), ...(s.role === "confirm" ? { confirm: true } : {}), ...(s.tieBreakOf ? { tieBreakOf: s.tieBreakOf } : {}) };
+    const again: PracticeResult = { propertyId, jobId: null, model: s.model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, ...(s.role === "recheck" ? { recheck: true } : {}), ...(s.role === "confirm" ? { confirm: true } : {}), ...(s.tieBreakOf ? { tieBreakOf: s.tieBreakOf } : {}), ...(s.verifyOf ? { verifyOf: s.verifyOf, missedBy: s.missedBy ?? [] } : {}) };
     round.results.push(again);
     return again;
   });

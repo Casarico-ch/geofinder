@@ -184,7 +184,7 @@ export function searchPlanText(s: SearchState): string {
     return [
       `SEARCH PLAN — commune confidence: HIGH (${where}).`,
       `Why: ${s.evidence.join(" ")}`,
-      `Exhaust ${where} FIRST: shortlist it, view every candidate (view_candidates) and record a verdict for each (mark_candidates). shortlist_buildings refuses other communes until every ${where} candidate has a verdict. If the shortlist misses it, re-shortlist ${where} with wider estimates before leaving.`,
+      `Exhaust ${where} FIRST: shortlist it, view its candidates in ranked order (view_candidates) and record a verdict for each (mark_candidates). The list is ranked by how well the register fits the listing's own numbers; ${where} counts as searched once ${topCheckText(where)} have a verdict — shortlist_buildings refuses other communes before that. Go deeper only when a lead points there. If the shortlist misses it, re-shortlist ${where} with wider estimates before leaving.`,
       `Only then, if nothing matched, go outward nearest first: ${ring}.`,
     ].join("\n");
   }
@@ -262,6 +262,38 @@ export function unchecked(s: SearchState, commune?: string): LedgerEntry[] {
     .sort((a, b) => a.order - b.order);
 }
 
+// How deep a commune's ranked list must be checked before "not found" counts,
+// or before the run moves to the next commune (Daniel, 21.10: "rank by
+// register fit, stop early"). The shortlist is ranked by the register's fit
+// with the listing's own numbers (shortlist.ts rankByListing); of the last 100
+// real searches, every house found sat in the first 150 of its commune, while
+// 13 runs died at their budget sweeping 180-430 candidates and 20 more gave up
+// on the count. Strong fits are checked whatever their rank.
+export const TOP_CHECK = Number(process.env.SHORTLIST_TOP_CHECK ?? 150);
+/**
+ * The unchecked candidates the plan still owes a verdict: the first TOP_CHECK
+ * of each commune's ranked list, and every STRONG FIT. A found=false, or a move
+ * to the next commune, waits for these only; the rest of the list is viewed
+ * only when a lead points there.
+ */
+export function mustCheck(s: SearchState, commune?: string): LedgerEntry[] {
+  const out: LedgerEntry[] = [];
+  for (const c of s.shortlisted) {
+    if (commune && !samePlace(c, commune)) continue;
+    const line = Object.values(s.candidates)
+      .filter((x) => x.commune === c)
+      .sort((a, b) => a.order - b.order);
+    line.forEach((x, i) => {
+      if (x.verdict === "unchecked" && (i < TOP_CHECK || x.strongFit)) out.push(x);
+    });
+  }
+  return out.sort((a, b) => a.order - b.order);
+}
+
+/** "the first 150 of Vernier's ranked list and its strong fits": what a verdict is owed to. */
+export const topCheckText = (commune?: string) =>
+  `the first ${TOP_CHECK} of ${commune ? `${commune}'s` : "each commune's"} ranked list and every STRONG FIT`;
+
 // Next candidates to show: unviewed first, in shortlist order.
 export function nextToView(s: SearchState, n: number, commune?: string): LedgerEntry[] {
   return unchecked(s, commune).filter((c) => !c.viewed).slice(0, n);
@@ -304,9 +336,9 @@ export function leavePrimaryBlocked(s: SearchState, requested: string): string |
   if (!s.shortlisted.includes(s.primary)) {
     return `Commune confidence is HIGH for ${s.primary}: shortlist ${s.primary} first and check its candidates before looking elsewhere.`;
   }
-  const left = unchecked(s, s.primary);
+  const left = mustCheck(s, s.primary);
   if (left.length) {
-    return `Commune confidence is HIGH for ${s.primary} and ${left.length} of its candidates have no verdict yet. View them (view_candidates) and record a verdict (mark_candidates) before shortlisting ${requested}. If ${s.primary}'s shortlist itself looks wrong, re-shortlist ${s.primary} with wider estimates instead.`;
+    return `Commune confidence is HIGH for ${s.primary} and ${left.length} of ${topCheckText(s.primary)} have no verdict yet. View them (view_candidates) and record a verdict (mark_candidates) before shortlisting ${requested}. If ${s.primary}'s shortlist itself looks wrong, re-shortlist ${s.primary} with wider estimates instead.`;
   }
   return null;
 }

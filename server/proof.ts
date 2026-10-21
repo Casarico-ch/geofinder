@@ -53,6 +53,20 @@ const num = (s: string | undefined): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
+/**
+ * A garage, parking space or box: there is no building to find, so it is not
+ * searched (Daniel, 21.10: "skip the parking, not the land"). Of the last 100
+ * real searches, the 2 parking listings found nothing for ~$4.30 and 25 minutes.
+ */
+export function isParkingListing(text: string | undefined): boolean {
+  const t = text ?? "";
+  const line = (re: RegExp) => t.match(re)?.[1]?.toLowerCase().replace(/_/g, " ") ?? "";
+  const category = `${line(/^Category:\s*(.+)$/im)} ${line(/^Classified category:\s*(.+)$/im)}`;
+  const sub = `${line(/^Type:\s*(.+)$/im)} ${line(/^Subtype:\s*(.+)$/im)}`;
+  if (/house|apartment|appartement|villa|land|building|commercial|mfh/.test(category)) return false;
+  return /parking|garage|box|parkplatz|einstellplatz|posteggio/.test(`${category} ${sub}`);
+}
+
 /** The numbers a listing states about itself (Radar's structured lines first). */
 export function listingFacts(text: string | undefined): ListingFacts {
   const t = text ?? "";

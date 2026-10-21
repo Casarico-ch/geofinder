@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import type { Answer } from "../server/jobs";
 import { foundPair, nextSteps, type ListingRun } from "../server/practice";
+import { isParkingListing } from "../server/proof";
 
 let passed = 0;
 const failures: string[] = [];
@@ -55,6 +56,41 @@ await check("a confirm naming another house brings the tie-breaker", () => {
 
 await check("a lesson test runs no confirm", () => {
   assert.equal(nextSteps([run("search", answer({}))], { confirm: false }).length, 0);
+});
+
+await check("a confirm that crashed runs again, once", () => {
+  const crashed = { ...run("confirm", null), settled: true, done: false };
+  const again = nextSteps([run("search", answer({})), crashed]);
+  assert.deepEqual(again.map((s) => s.role), ["confirm"]);
+  assert.equal(again[0].verifyOf, undefined);
+  assert.equal(nextSteps([run("search", answer({})), crashed, { ...crashed, jobId: "j-crash-2" }]).length, 0);
+});
+
+await check("a confirm that found nothing brings the third judge, handed the house", () => {
+  const first = run("search", answer({}));
+  const missed = run("confirm", answer({ found: false, confidence: "block", address: null }));
+  const steps = nextSteps([first, missed]);
+  assert.equal(steps[0]?.role, "confirm");
+  assert.equal(steps[0]?.verifyOf, first.jobId);
+  assert.deepEqual(steps[0]?.missedBy, [missed.jobId]);
+  assert.equal(steps[0]?.tieBreakOf, undefined);
+});
+
+await check("the third judge is the last word", () => {
+  const first = run("search", answer({}));
+  const missed = run("confirm", answer({ found: false, confidence: "block", address: null }));
+  assert.equal(nextSteps([first, missed, run("confirm", answer({ found: false, confidence: "block", address: null }))]).length, 0);
+  const judged = [first, missed, run("confirm", answer({ address: "Seestr. 12, Horgen" }))];
+  assert.ok(foundPair(judged));
+  assert.equal(nextSteps(judged).length, 0);
+});
+
+await check("a parking listing is recognised, land and a house with parking are not", () => {
+  assert.ok(isParkingListing("Title: Place de parc\nType: other\nCategory: parking\nSubtype: underground_parking\n"));
+  assert.ok(isParkingListing("Title: Box fermé\nType: parking\nCategory: garage\nSubtype: garage\n"));
+  assert.ok(!isParkingListing("Title: Terrain\nType: other\nCategory: land\nSubtype: building_plot\n"));
+  assert.ok(!isParkingListing("Title: Villa\nCategory: house\nSubtype: villa\nParking: garage, 2 places\n"));
+  assert.ok(!isParkingListing(undefined));
 });
 
 if (failures.length) {

@@ -159,7 +159,20 @@ export async function readSandboxFile(runDir: string, p: string): Promise<ReadRe
   const abs = resolveInRun(runDir, p);
   const buf = await readFile(abs);
   const relPath = path.relative(path.resolve(runDir), abs) || path.basename(abs);
-  const media = IMG_EXT[path.extname(abs).toLowerCase()] ?? sniff(buf);
+  // The bytes decide, not the name: a WMS error page saved as a.jpg is text.
+  // Sent as an image it killed the whole run with a 400 from the API (16.10:
+  // five runs, two of them confirming searches that held a found house).
+  const media = sniff(buf);
+  const named = IMG_EXT[path.extname(abs).toLowerCase()];
+  if (!media && named) {
+    const head = buf.toString("utf8", 0, 400).replace(/\s+/g, " ").trim();
+    return {
+      kind: "text",
+      text: `[${relPath} is not a ${named} image: ${buf.length} bytes of ${/^\s*</.test(head) ? "XML/HTML" : "text"} — the download failed. Its content: ${head || "(empty)"}]`,
+      bytes: buf.length,
+      relPath,
+    };
+  }
   if (media) {
     if (buf.length > MAX_IMAGE_BYTES) {
       return {
