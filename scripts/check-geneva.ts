@@ -52,5 +52,8 @@ for (const [kind, c] of Object.entries<any>(qa.calibration_95pct_ranges)) {
   assert.ok(c.heldout_worst >= 0.95, `built-area range for ${kind} holds only ${c.heldout_worst} on its worst held-out half`);
 }
 assert.ok(qa.coverage.score_shape >= 0.99, "every plot has a shape score");
+// Rebuild potential must still rank what owners did next (permits after the 3D survey) on held-out plots.
+assert.ok(qa.rebuild.backtest.heldout_auc_worst >= 0.7, `rebuild score AUC only ${qa.rebuild.backtest.heldout_auc_worst} on its worst held-out fold`);
+assert.ok(qa.rebuild.backtest.top_decile_lift >= 2, `rebuild score top 10% only ${qa.rebuild.backtest.top_decile_lift}x the average`);
 
 console.log(`geneva: ${n} answers identical to compose.py, ${schema.parcels} plots in ${communes.size} communes ✓`);

@@ -8,14 +8,18 @@
 #                     heating renewed), protection noted
 #   built share /     built floor area vs the floor area the law allows by right,
 #   development room  given as a range that holds 95% of the time; "sure" only when
-#                     the whole range falls in one band
+#                     the whole range falls in one band (never for villas, see below)
+#   rebuild potential Zone 5: the volume of the largest new house the law allows
+#                     against today's houses, measured in the canton's 3D model, with
+#                     plot size, house age and width; checked on what owners did next
+#                     (demolition / new-build permits filed after the 3D survey)
 #
 # Built floor area is our estimate (register footprint x floors), checked against the
 # canton's official heated floor area (OCEN IDC register, SRE): no bias, and the
 # 95% range per building type is measured here on held-out halves and stored in
 # data/scores_qa.json. Run after build/parcels/build.py, before export.py:
 #   python3 -I geneva/build/scores.py
-import io, json, math, os, sqlite3, ssl, sys, urllib.parse, urllib.request, zipfile
+import io, json, math, os, re, sqlite3, ssl, sys, time, urllib.parse, urllib.request, zipfile
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -30,6 +34,7 @@ CTX = ssl.create_default_context(cafile=os.environ.get("SSL_CERT_FILE")) if os.e
 GWR_ZIP = "https://public.madd.bfs.admin.ch/ge.zip"
 ACCESS_CSV = "https://data.geo.admin.ch/ch.bfs.erreichbarkeit/erreichbarkeit/erreichbarkeit_2056.csv"
 IDC = "https://vector.sitg.ge.ch/arcgis/rest/services/OCEN_ETAT_IDC_PUBLIC/FeatureServer/0/query"
+SITG = "https://vector.sitg.ge.ch/arcgis/rest/services/{}/FeatureServer/0/query"
 
 
 def fetch(url, path, timeout=900):
@@ -69,6 +74,173 @@ def idc():
     d = d[d.SRE_M2 > 0].dropna(subset=["EGID"])
     d["EGID"] = d.EGID.astype("int64")
     return d
+
+
+def arcgis(layer, fields, path, geometry=False):
+    """Every row of a SITG layer (paged, retried), cached as JSON; with geometry, a point's x/y in LV95."""
+    if not os.path.exists(path):
+        rows, off = [], 0
+        while True:
+            q = urllib.parse.urlencode({"where": "1=1", "outFields": fields, "returnGeometry": str(geometry).lower(), "outSR": "2056",
+                                        "resultOffset": off, "resultRecordCount": 1000, "orderByFields": "OBJECTID", "f": "json"})
+            for t in range(8):
+                try:
+                    d = json.load(urllib.request.urlopen(SITG.format(layer) + "?" + q, timeout=180, context=CTX))
+                    break
+                except Exception:
+                    if t == 7:
+                        raise
+                    time.sleep(2 ** t)
+            f = d.get("features", [])
+            for x in f:
+                a = x["attributes"]
+                if geometry:
+                    a["x"], a["y"] = (x.get("geometry") or {}).get("x"), (x.get("geometry") or {}).get("y")
+                rows.append(a)
+            off += len(f)
+            if not f or not d.get("exceededTransferLimit"):
+                break
+        json.dump(rows, open(path + ".part", "w"))
+        os.replace(path + ".part", path)
+    return pd.DataFrame(json.load(open(path)))
+
+
+def volumes():
+    """Each building's volume in the canton's 3D model (footprint x height from the lowest ground to the
+    roof top) and the date it was surveyed."""
+    b = arcgis("CAD_BATI3D_BASE", "EGID,ALTITUDE_REF,SURFACE_SOL,DATE_LEVE", os.path.join(CACHE, "bati3d_base.json"))
+    t = arcgis("CAD_BATI3D_BASIC_TOIT", "EGID,ALTITUDE_MAX", os.path.join(CACHE, "bati3d_toit.json"))
+    v = b.dropna(subset=["EGID"]).groupby("EGID").agg(z0=("ALTITUDE_REF", "min"), sol=("SURFACE_SOL", "sum"), date=("DATE_LEVE", "max"))
+    v = v.join(t.dropna(subset=["EGID"]).groupby("EGID").agg(z1=("ALTITUDE_MAX", "max")))
+    v["vol"] = v.sol * (v.z1 - v.z0).clip(lower=0)
+    v.index = v.index.astype("int64")
+    return v.dropna(subset=["vol"])
+
+
+# A density the permit itself states: "(0,48 THPE)", "THPE (30%)", "agrandissement (25 %)".
+RATE = re.compile(r"(\d{1,2}(?:[.,]\d{1,2})?)\s*%|\b0[.,](\d{1,3})\b")
+GRANTED = ("TERMINE", "ACCEPTE", "CHANTIER", "ARCHIVE", "CLOTURE ADMIN")
+FINISHED = ("TERMINE", "ARCHIVE", "CLOTURE ADMIN")
+
+
+def rate_of(text):
+    if not re.search(r"HPE|THPE|IUS|rapport|%|densit", text, re.I):
+        return None
+    for m in RATE.finditer(text):
+        v = float(m.group(1).replace(",", ".")) / 100 if m.group(1) else float("0." + m.group(2))
+        if 0.1 <= v <= 0.7:
+            return v
+    return None
+
+
+def permits(geo):
+    """Building permits since 1995 (SITG SIT_AUTOR_DOSSIER), each on the plot its point falls in."""
+    d = arcgis("SIT_AUTOR_DOSSIER", "ID_DOSSIER,TYPE_DOSSIER,STATUT,DATE_DEPOT,DESCRIPTION", os.path.join(CACHE, "permits.json"), geometry=True)
+    d = d.dropna(subset=["x", "y"])
+    d["DESCRIPTION"] = d.DESCRIPTION.fillna("").astype(str)
+    d["date"] = pd.to_datetime(d.DATE_DEPOT, unit="ms", errors="coerce")
+    d["rate"] = d.DESCRIPTION.map(rate_of)
+    pts = gpd.GeoDataFrame(d, geometry=gpd.points_from_xy(d.x, d.y), crs=2056)
+    plots = gpd.GeoDataFrame(geo.reset_index(), geometry="geometry", crs=2056)
+    return pd.DataFrame(gpd.sjoin(pts, plots, predicate="within", how="inner").drop(columns=["index_right", "geometry"]))
+
+
+def logistic(A, y, lam=1e-3):
+    w = np.zeros(A.shape[1])
+    for _ in range(50):
+        p = 1 / (1 + np.exp(-A @ w))
+        w -= np.linalg.solve((A * (p * (1 - p))[:, None]).T @ A + lam * np.eye(A.shape[1]), A.T @ (p - y) + lam * w)
+    return w
+
+
+def auc(score, y):
+    r = pd.Series(score).rank().values
+    n1 = y.sum()
+    return float((r[y].sum() - n1 * (n1 + 1) / 2) / (n1 * (len(y) - n1)))
+
+
+def rebuild(sc, df, geo, vol, pm):
+    """Rebuild potential for Zone 5 plots (see the header); returns per-plot columns and its QA."""
+    z = sc.merge(df[["egrid", "area_cadastre_m2", "bldg_egids", "densif_accrue"]], on="egrid")
+    z = z[z.allowed_gfa_source.fillna("").str.startswith("Zone 5")].copy()
+    ids = z.bldg_egids.fillna("").map(lambda e: [int(x) for x in str(e).split(",") if x.strip().isdigit()])
+    z["existing_volume_m3"] = ids.map(lambda l: float(vol.vol.reindex(l).sum()) if l else 0.0)
+    z["measured"] = ids.map(lambda l: all(e in vol.index for e in l))
+    surveyed = pd.to_datetime(vol.date.max(), unit="ms")
+    # m3 of a new house per m2 of floor area the law counts, from new villas whose permit states the rate
+    # and which the 3D model already shows (surveyed 2 years or more after the permit).
+    d3 = ids.map(lambda l: pd.to_datetime(vol.date.reindex(l).max(), unit="ms") if l else pd.NaT)
+    z["surveyed"] = d3
+    nb = pm[pm.rate.notna() & pm.STATUT.isin(FINISHED) & pm.TYPE_DOSSIER.eq("DD") & pm.DESCRIPTION.str.contains("construction", case=False)
+            & ~pm.DESCRIPTION.str.contains("agrandiss|transform|surél|véranda|extension", case=False)]
+    nb = nb.merge(z[["egrid", "existing_volume_m3", "surveyed", "area_cadastre_m2", "bldg_year_newest", "measured"]], on="egrid")
+    nb = nb[(nb.existing_volume_m3 > 0) & nb.measured & (nb.surveyed > nb.date + pd.Timedelta(days=730))
+            & (pd.to_numeric(nb.bldg_year_newest, errors="coerce") >= nb.date.dt.year)]
+    nb = nb.sort_values("date").groupby("egrid").tail(1)
+    lk = np.log(nb.existing_volume_m3 / (nb.rate * nb.area_cadastre_m2)).values
+    k = float(np.exp(np.median(lk)))
+    allowed = z.allowed_gfa_m2.astype(float)
+    z["rebuild_volume_m3"] = k * allowed
+    z["rebuild_volume_lo_m3"], z["rebuild_volume_hi_m3"] = np.exp(np.quantile(lk, 0.025)) * allowed, np.exp(np.quantile(lk, 0.975)) * allowed
+    built = z[(z.existing_volume_m3 > 0) & z.measured & (z.area_cadastre_m2.astype(float) > 0)].copy()
+    built["rebuild_ratio"] = built.rebuild_volume_m3 / built.existing_volume_m3
+    # What owners did after the 3D survey: a demolition, or a permit for new houses.
+    since = surveyed + pd.Timedelta(days=1)
+    red = pm[(pm.date >= since) & (pm.TYPE_DOSSIER.isin(["M", "MPA"]) | (pm.TYPE_DOSSIER.isin(["DD", "APA"]) & pm.DESCRIPTION.str.contains(
+        r"construction d.{0,3}(?:une|deux|trois|quatre|cinq|six|\d+)?\s*(?:villa|maison|habitat|logement)", case=False, regex=True)))]
+    yr = pd.to_numeric(built.bldg_year_newest, errors="coerce")
+    X = np.c_[np.ones(len(built)), np.log(built.rebuild_ratio), np.log(built.area_cadastre_m2.astype(float)),
+              (surveyed.year - yr.fillna(yr.median())).clip(0, 120) / 50, np.log(built.plot_width_m.astype(float).fillna(built.plot_width_m.astype(float).median()).clip(lower=1))]
+    keep = np.isfinite(X).all(axis=1)
+    built, X = built[keep], X[keep]
+    y = built.egrid.isin(set(red.egrid)).values
+    rng = np.random.default_rng(20261021)
+    fold = rng.integers(0, 5, len(y))
+    aucs, lifts = [], []
+    for f in range(5):
+        w = logistic(X[fold != f], y[fold != f])
+        p = X[fold == f] @ w
+        aucs.append(auc(p, y[fold == f]))
+        lifts.append(float(y[fold == f][p >= np.quantile(p, 0.9)].mean() / y[fold == f].mean()))
+    w = logistic(X, y)
+    p = X @ w
+    built["score_rebuild"] = (pd.Series(p, index=built.index).rank(pct=True) * 100).round().clip(0, 100)
+    dec = pd.qcut(p, 10, labels=False)
+    rate = pd.Series(y).groupby(dec).mean()
+    built["rebuild_peer_rate_pct"] = np.round(rate.reindex(dec).values * 100, 1)
+    # Plots around (300 m) where the canton granted, or refused, 40% and more since 2015.
+    dense = pm[(pm.date >= "2015-01-01") & (pm.rate >= 0.4)]
+    cent = geo.geometry.reindex(z.egrid).representative_point()
+    ring = gpd.GeoDataFrame({"egrid": z.egrid.values}, geometry=cent.buffer(300).values, crs=2056)
+    def near(rows):
+        hit = gpd.sjoin(gpd.GeoDataFrame(geometry=gpd.points_from_xy(rows.x, rows.y), crs=2056), ring, predicate="within", how="inner")
+        return hit.groupby("egrid").size()
+    z["dense_permits_nearby"] = z.egrid.map(near(dense[dense.STATUT.isin(GRANTED)])).fillna(0).astype(int)
+    z["dense_refusals_nearby"] = z.egrid.map(near(dense[dense.STATUT.eq("REFUSE")])).fillna(0).astype(int)
+    z = z.merge(built[["egrid", "rebuild_ratio", "score_rebuild", "rebuild_peer_rate_pct"]], on="egrid", how="left")
+    cols = ["egrid", "existing_volume_m3", "rebuild_volume_m3", "rebuild_volume_lo_m3", "rebuild_volume_hi_m3", "rebuild_ratio",
+            "score_rebuild", "rebuild_peer_rate_pct", "dense_permits_nearby", "dense_refusals_nearby"]
+    out = z[cols].copy()
+    out.loc[~z.measured.values, ["existing_volume_m3", "rebuild_ratio"]] = np.nan
+    for c in ("existing_volume_m3", "rebuild_volume_m3", "rebuild_volume_lo_m3", "rebuild_volume_hi_m3"):
+        out[c] = out[c].round().astype("Int64")
+    out["rebuild_ratio"] = out.rebuild_ratio.round(2)
+    out["score_rebuild"] = out.score_rebuild.astype("Int64")
+    qa = {"volume_per_legal_m2": {"median": round(k, 2), "lo": round(float(np.exp(np.quantile(lk, 0.025))), 2),
+                                  "hi": round(float(np.exp(np.quantile(lk, 0.975))), 2), "new_builds": int(len(lk))},
+          "backtest": {"plots": int(len(y)), "redeveloped": int(y.sum()), "since": since.date().isoformat(),
+                       "heldout_auc_mean": round(float(np.mean(aucs)), 3), "heldout_auc_worst": round(float(np.min(aucs)), 3),
+                       "top_decile_lift": round(float(np.mean(lifts)), 2), "rate_by_decile_pct": [round(float(x) * 100, 1) for x in rate.values]},
+          "weights": dict(zip(["const", "log_rebuild_ratio", "log_plot_area", "house_age_50y", "log_plot_width"], [round(float(x), 3) for x in w]))}
+    return out, qa
+
+
+def permit_rates(pm):
+    """The latest granted permit on a plot that states its density: rate, reference and text."""
+    r = pm[pm.rate.notna() & pm.STATUT.isin(GRANTED)].sort_values("date").groupby("egrid").tail(1)
+    return pd.DataFrame({"egrid": r.egrid, "permit_rate_pct": (r.rate * 100).round(1),
+                         "permit_rate_ref": r.ID_DOSSIER.astype(str) + ", filed " + r.date.dt.year.astype("Int64").astype(str) + ", " + r.STATUT.str.lower(),
+                         "permit_rate_text": r.DESCRIPTION.str.slice(0, 300)})
 
 
 def access():
@@ -227,7 +399,9 @@ def main():
                    built_gfa_range_kind=kind if built > 0 else "none")
         if allowed:
             u, ulo, uhi = built / allowed, lo / allowed, hi / allowed
-            sure = (built == 0 and hi == 0) or band(ulo) == band(uhi)
+            # Villas: checked against the densities their own permits state (the law's measure, above-ground
+            # floor area, LCI art. 59 al. 2), "sure" bands held only ~79% of the time (21.10): never sure.
+            sure = (built == 0 and hi == 0) or (band(ulo) == band(uhi) and kind != "villa")
             out.update(allowed_gfa_m2=round(allowed), allowed_gfa_source=source,
                        score_under_exploited=round(float(np.clip(1 - u, 0, 1)) * 100),
                        under_exploited_label=band(u), under_exploited_sure=bool(sure),
@@ -239,12 +413,18 @@ def main():
                                            "or 55–60% on sites over 5,000 m²; many recent houses were built this way.")
         rows.append(out)
     sc = pd.DataFrame(rows)
+    geo2056 = geo.to_crs(2056) if geo.crs and geo.crs.to_epsg() != 2056 else geo
+    pm = permits(geo2056[["geometry"]])
+    rb, rqa = rebuild(sc, df, geo2056, volumes(), pm)
+    sc = sc.merge(rb, on="egrid", how="left").merge(permit_rates(pm), on="egrid", how="left")
+    for c in ("dense_permits_nearby", "dense_refusals_nearby"):
+        sc[c] = sc[c].astype("Int64")
     for c in ("score_location", "score_existing", "bldg_year_newest", "bldg_heating_year", "allowed_gfa_m2", "score_under_exploited",
               "development_room_m2", "development_room_lo_m2", "development_room_hi_m2", "score_development"):
         sc[c] = sc[c].round().astype("Int64")
     sc.to_parquet(os.path.join(GENEVA, "data", "scores.parquet"), index=False)
-    qa = {"plots": len(sc), "calibration_95pct_ranges": cal,
-          "coverage": {c: round(float(sc[c].notna().mean()), 3) for c in ("score_shape", "score_location", "score_existing", "score_under_exploited")},
+    qa = {"plots": len(sc), "calibration_95pct_ranges": cal, "rebuild": rqa,
+          "coverage": {c: round(float(sc[c].notna().mean()), 3) for c in ("score_shape", "score_location", "score_existing", "score_under_exploited", "score_rebuild", "permit_rate_pct")},
           "under_exploited_sure_share": round(float(sc.under_exploited_sure.dropna().astype(bool).mean()), 3)}
     json.dump(qa, open(os.path.join(GENEVA, "data", "scores_qa.json"), "w"), indent=1)
     print(json.dumps(qa, indent=1))

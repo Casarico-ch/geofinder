@@ -30,7 +30,9 @@ GROUPS = {
                "score_existing", "bldg_year_newest", "bldg_heating_year", "built_gfa_m2", "built_gfa_lo_m2", "built_gfa_hi_m2",
                "built_gfa_range_kind", "allowed_gfa_m2", "allowed_gfa_source", "score_under_exploited", "under_exploited_label",
                "under_exploited_sure", "score_development", "development_room_m2", "development_room_lo_m2",
-               "development_room_hi_m2", "development_note"],
+               "development_room_hi_m2", "development_note", "existing_volume_m3", "rebuild_volume_m3", "rebuild_volume_lo_m3",
+               "rebuild_volume_hi_m3", "rebuild_ratio", "score_rebuild", "rebuild_peer_rate_pct", "dense_permits_nearby",
+               "dense_refusals_nearby", "permit_rate_pct", "permit_rate_ref", "permit_rate_text"],
     "data_quality": ["zone_sum_m2", "zone_sum_pct", "zone_sum_mismatch_gt2pct", "oereb_synth_zone_prim", "oereb_synth_zone_superp",
                      "oereb_synth_plq", "oereb_synth_ds_opb", "oereb_synth_zone_main", "synth_agrees"],
 }
