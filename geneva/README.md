@@ -15,12 +15,27 @@ sources, so `/v1/property` never needs Popety in Geneva (`server/geneva.ts`).
 | `build/compose.py` | The reference answer for one plot (`python3 -I geneva/build/compose.py <EGRID>`) |
 | `build/export.py` | Writes `data/` for the server; refuses to export if a regression test fails |
 
+## Scores
+
+`build/scores.py` writes `data/scores.parquet` and `data/scores_qa.json`: our own plot scores,
+from official data only (Popety publishes no formula for its scores).
+
+| Score | How |
+|---|---|
+| Location 0–100 | Road distance from the plot's hectare to shop, stop, primary school, doctor, pharmacy, forest/lake (Federal Statistical Office, accessibility of services, latest survey 2021); weights 25/25/20/10/10/10 |
+| Plot shape 0–100 | Usable width (widest circle that fits, full marks at 25 m) 60%, compactness 40% |
+| Existing buildings 0–100 | How recent the newest building is (1950 → 0, 2020 → 100) 70%, heating renewed (1990 → 0, 2020 → 100) 30% (building register) |
+| Built vs allowed, room left | Built floor area (footprint × floors, register) against the floor area allowed by right (Zone 5: 30% of the buildable land, LCI art. 59; or the PLQ's figure). Built area is a range that holds 95% of the time per building type, measured against the canton's heated-floor-area register (OCEN IDC) on held-out halves; the band (less than half built / half to fully built / built out) is "sure" only when the whole range falls in it, else "likely". Not computed where the zone sets no floor-area ratio. |
+
+`scripts/check-geneva.ts` fails if a range holds less than 95% on its worst held-out half.
+
 ## Refresh
 
 Needs Python 3 with `pandas`, `pyarrow`, `geopandas`, `shapely`, `pyogrio` (about 3 minutes, downloads cached in `geneva/work/`, not committed):
 
 ```bash
 python3 -I geneva/build/parcels/build.py --refresh --no-wait   # re-download SITG layers, rebuild the table
+python3 -I geneva/build/scores.py                              # our plot scores (downloads cached in geneva/work/scores)
 python3 -I geneva/build/export.py                              # regression tests, then data/ for the server
 pnpm test                                                      # the server gives exactly the reference answers
 ```

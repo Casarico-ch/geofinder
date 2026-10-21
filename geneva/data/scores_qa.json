@@ -1,0 +1,33 @@
+{
+ "plots": 73120,
+ "calibration_95pct_ranges": {
+  "flats": {
+   "lo": 0.5379509622915968,
+   "hi": 1.662570953276434,
+   "n": 13375,
+   "heldout_mean": 0.969,
+   "heldout_worst": 0.962
+  },
+  "other": {
+   "lo": 0.15815528329397904,
+   "hi": 5.192912418861227,
+   "n": 3921,
+   "heldout_mean": 0.97,
+   "heldout_worst": 0.96
+  },
+  "villa": {
+   "lo": 0.4187491943335939,
+   "hi": 3.1914893617021276,
+   "n": 3189,
+   "heldout_mean": 0.968,
+   "heldout_worst": 0.955
+  }
+ },
+ "coverage": {
+  "score_shape": 1.0,
+  "score_location": 0.889,
+  "score_existing": 0.601,
+  "score_under_exploited": 0.355
+ },
+ "under_exploited_sure_share": 0.319
+}

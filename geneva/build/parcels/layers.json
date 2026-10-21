@@ -1,0 +1,292 @@
+{
+ "parcels": {
+  "layer": "CAD_PARCELLE_MENSU",
+  "where": "1=1",
+  "fields": "OBJECTID,EGRID,COMMUNE,NO_COMM,NO_PARCELLE,SURFACE,TYPE_PROPRI,PROPRI_PUBLIQUE,VALIDITE",
+  "count": 73120,
+  "fetched": "2026-10-14T18:46:35",
+  "usable_geometries": 73120
+ },
+ "zprim": {
+  "layer": "RDPPF_ZONES_PRIM",
+  "where": "1=1",
+  "fields": "OBJECTID,ABRV_ZONE,NOM_ZONE,NO_PLAN,DSOPB,STATUT_JUR,CAFFCOMP,AFFCOMP,RESTRIC",
+  "count": 2479,
+  "fetched": "2026-10-14T19:31:46",
+  "usable_geometries": 2479
+ },
+ "zdev": {
+  "layer": "RDPPF_ZONES_DEV",
+  "where": "1=1",
+  "fields": "OBJECTID,ABRV_ZONE,NOM_ZONE,ZONE_PREEX,NO_PLAN,STATUT_JUR,CAFFCOMP,AFFCOMP,RESTRIC",
+  "count": 756,
+  "fetched": "2026-10-14T19:31:38",
+  "usable_geometries": 756
+ },
+ "pdzi": {
+  "layer": "RDPPF_PDZI",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,INDICE,STATUT_JUR,DATE_ADOP_CE,LIEU,LIEN_PLAN,LIEN_REGLEMENT,LIEN_ACE",
+  "count": 25,
+  "fetched": "2026-10-14T19:31:36",
+  "usable_geometries": 25
+ },
+ "limite_foret": {
+  "layer": "RDPPF_LIMITE_FORET",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,STATUT_JUR,ZONE_A_BATIR",
+  "count": 166,
+  "fetched": "2026-10-14T19:31:38",
+  "usable_geometries": 166
+ },
+ "plq": {
+  "layer": "RDPPF_PLQ",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,INDICE,STATUT_JUR,DATE_ADOP_CE,LIEU,LIEN_PLAN,LIEN_REGLEMENT,LIEN_ACE",
+  "count": 598,
+  "fetched": "2026-10-14T18:45:45",
+  "usable_geometries": 598
+ },
+ "dab": {
+  "layer": "RPU_DAB_ADOPT",
+  "where": "1=1",
+  "fields": "OBJECTID,COMMUNE,NO_PARCELLE,SURFACE,DAB,NO_PLAN,INDICE,STATUT_RPU,ID_UNIQUE_CAD,REMARQUE_V",
+  "count": 75,
+  "fetched": "2026-10-14T18:45:48",
+  "usable_geometries": 75
+ },
+ "aires": {
+  "layer": "RPU_AIRE_IMPLANTATION_ADOPT",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,ID_AIRE,SBP_LOGEMENT,SBP_EQUIPEMENT,SBP_ACTIVITES,SBP_COMMERCES,SBP_ADMINISTRATIF,SBP_ARTISANAT,SBP_INDETERMINE,NIVEAU_HS,HAUTEUR",
+  "count": 657,
+  "fetched": "2026-10-14T18:45:49",
+  "usable_geometries": 657
+ },
+ "pus": {
+  "layer": "RDPPF_PUS",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,LIEU,LIEN_REGLEMENT",
+  "count": 4,
+  "fetched": "2026-10-14T18:45:51",
+  "usable_geometries": 4
+ },
+ "ps": {
+  "layer": "RDPPF_PS",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,TITRE_DU_PLAN,TYPE_DE_PLAN,LIEU,LIEN_PLAN,LIEN_REGLEMENT",
+  "count": 73,
+  "fetched": "2026-10-14T23:12:01",
+  "usable_geometries": 73
+ },
+ "zp": {
+  "layer": "RDPPF_ZP",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,TITRE_DU_PLAN,LIEU",
+  "count": 3,
+  "fetched": "2026-10-14T18:45:54",
+  "usable_geometries": 3
+ },
+ "pnp": {
+  "layer": "RDPPF_PNP",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,INDICE,NOM_ZONE,TITRE_DU_PLAN,LIEN_PLAN",
+  "count": 41,
+  "fetched": "2026-10-15T03:57:12",
+  "usable_geometries": 41
+ },
+ "rs": {
+  "layer": "RDPPF_RS",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,TITRE_DU_PLAN,LIEU,LIEN_REGLEMENT",
+  "count": 20,
+  "fetched": "2026-10-14T23:11:59",
+  "usable_geometries": 20
+ },
+ "classement": {
+  "layer": "DPS_CLASSEMENT",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_CLASSEMENT,NOM",
+  "count": 1030,
+  "fetched": "2026-10-14T18:46:06",
+  "usable_geometries": 1030
+ },
+ "inventaire": {
+  "layer": "DPS_INVENTAIRE",
+  "where": "1=1",
+  "fields": "OBJECTID,CODE_MSI,NOM",
+  "count": 1743,
+  "fetched": "2026-10-14T18:46:06",
+  "usable_geometries": 1743
+ },
+ "progdens": {
+  "layer": "SIT_PROG_DENS",
+  "where": "1=1",
+  "fields": "OBJECTID,NOM,COMMUNE,TYPE",
+  "count": 52,
+  "fetched": "2026-10-14T18:46:05",
+  "usable_geometries": 52
+ },
+ "forest": {
+  "layer": "FFP_CADASTRE_FORET",
+  "where": "1=1",
+  "fields": "OBJECTID",
+  "count": 836,
+  "fetched": "2026-10-14T18:46:13",
+  "usable_geometries": 835
+ },
+ "forest_dist": {
+  "layer": "RDPPF_DISTANCES_FORET_S",
+  "where": "1=1",
+  "fields": "OBJECTID,STATUT_JURIDIQUE",
+  "count": 856,
+  "fetched": "2026-10-14T18:46:17",
+  "usable_geometries": 856
+ },
+ "water": {
+  "layer": "CAD_NATURE_SOL",
+  "where": "TYPE='eau' AND GENRE<>'cours d''eau enterré'",
+  "fields": "OBJECTID,GENRE",
+  "count": 1043,
+  "fetched": "2026-10-14T18:46:16",
+  "usable_geometries": 1043
+ },
+ "si": {
+  "layer": "RDPPF_SI",
+  "where": "1=1",
+  "fields": "OBJECTID,NOM_PLAN,DISTANCE_INCONSTR",
+  "count": 373,
+  "fetched": "2026-10-14T18:46:26",
+  "usable_geometries": 373
+ },
+ "si_rpu": {
+  "layer": "RPU_SURF_INCONSTRUCT_S_ADOPT",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,STYPE,SOUS_TYPE",
+  "count": 10,
+  "fetched": "2026-10-14T18:46:19",
+  "usable_geometries": 10
+ },
+ "align_lroutes": {
+  "layer": "OTC_ALIGN_CONST_LROUTES_S",
+  "where": "1=1",
+  "fields": "OBJECTID,CLASSIFICATION,STATUT_JUR",
+  "count": 86,
+  "fetched": "2026-10-14T18:46:26",
+  "usable_geometries": 86
+ },
+ "align_rpu": {
+  "layer": "RPU_ALIGNEMENT_ADOPT",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN",
+  "count": 24,
+  "fetched": "2026-10-14T18:46:20",
+  "usable_geometries": 24
+ },
+ "dsopb": {
+  "layer": "RDPPF_DSOPB",
+  "where": "1=1",
+  "fields": "OBJECTID,DSOPB,DECLASSEMENT",
+  "count": 3088,
+  "fetched": "2026-10-14T18:46:38",
+  "usable_geometries": 3088
+ },
+ "crues": {
+  "layer": "LCE_DANGERS_CRUES",
+  "where": "1=1",
+  "fields": "OBJECTID,DEGRE,TYPE",
+  "count": 2401,
+  "fetched": "2026-10-14T18:47:25",
+  "usable_geometries": 2401
+ },
+ "glp": {
+  "layer": "GOL_DANGERS_GLP",
+  "where": "1=1",
+  "fields": "OBJECTID,DEGDANGER",
+  "count": 401,
+  "fetched": "2026-10-14T18:46:35",
+  "usable_geometries": 401
+ },
+ "cpb": {
+  "layer": "GOL_DANGERS_CPB",
+  "where": "1=1",
+  "fields": "OBJECTID,DEGDANGER",
+  "count": 67,
+  "fetched": "2026-10-14T18:46:38",
+  "usable_geometries": 67
+ },
+ "bldg": {
+  "layer": "CAD_BATIMENT_HORSOL",
+  "where": "1=1",
+  "fields": "OBJECTID,EGID,HAUTEUR,NIVEAUX_HORSOL,SURFACE,EGRID_CENTROIDE,DESTINATION,ANNEE_CONSTRUCTION",
+  "count": 83077,
+  "fetched": "2026-10-14T18:47:02",
+  "usable_geometries": 83077
+ },
+ "polluted": {
+  "layer": "RDPPF_CADASTRE_SITES_POLLUES",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_OFFICIEL,NOM,TYPE_SITE,INVESTIGATION,STATUT_JUR",
+  "count": 942,
+  "fetched": "2026-10-14T23:06:37",
+  "usable_geometries": 942
+ },
+ "gravel": {
+  "layer": "RDPPF_EXTRACTION_GRAVIERES",
+  "where": "1=1",
+  "fields": "OBJECTID,NO_PLAN,COMMUNE,STATUT_JUR,LIEN_PLAN",
+  "count": 40,
+  "fetched": "2026-10-14T23:06:35",
+  "usable_geometries": 40
+ },
+ "gwz": {
+  "layer": "RDPPF_ZONES_PROTECTION_EAUX",
+  "where": "1=1",
+  "fields": "OBJECTID,TYPE_ZONE,NOM_ZONE,NOM_PUITS,STATUT_JUR,LIEN_PLAN",
+  "count": 36,
+  "fetched": "2026-10-15T03:35:53",
+  "usable_geometries": 36
+ },
+ "freserve": {
+  "layer": "RDPPF_RESERVES_FORESTIERES",
+  "where": "1=1",
+  "fields": "OBJECTID,LIEU,TYPE_RES_FORET,TYPE_PROTECTION,STATUT_JUR",
+  "count": 69,
+  "fetched": "2026-10-14T23:06:38",
+  "usable_geometries": 69
+ },
+ "surel": {
+  "layer": "SIT_SURELEVATION_BATIMENT",
+  "where": "1=1",
+  "fields": "OBJECTID,EGID",
+  "count": 1034,
+  "fetched": "2026-10-14T18:46:41",
+  "usable_geometries": 1034
+ },
+ "synth": {
+  "layer": "RDPPF_SYNTH_DYN_EXTRACT",
+  "where": "1=1",
+  "fields": "OBJECTID,EGRID,GENRE,ID73_ZONES_AFFECT_PRIM,ID73_ZONES_AFFECT_SUPERP,ID73_PLQ,ID73_PS,ID73_ZP,ID73_PUS,ID145_DSOPB",
+  "count": 74336,
+  "fetched": "2026-10-14T18:46:53",
+  "usable_geometries": 74336
+ },
+ "milsites": {
+  "layer": "geo.admin.ch ch.vbs.kataster-belasteter-standorte-militaer (api3 identify)",
+  "count": 12
+ },
+ "nsbl": {
+  "layer": "geo.admin.ch ch.astra.baulinien-nationalstrassen (api3 identify, bbox 2480000,1106000,2516000,1138000)",
+  "count": 111,
+  "polygons_dropped": 39,
+  "lines_used": 72,
+  "filter": "line geometry, status inForce, planning_approval_name set"
+ },
+ "szp": {
+  "layer": "geo.admin.ch ch.bazl.sicherheitszonenplan (https://data.geo.admin.ch/ch.bazl.sicherheitszonenplan/sicherheitszonenplan/sicherheitszonenplan_2056.gpkg)",
+  "count": 1,
+  "names": [
+   "Genève"
+  ]
+ }
+}

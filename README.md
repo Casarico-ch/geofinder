@@ -85,6 +85,8 @@ in seven independent audits). Each entry of `geneva` has, for one plot:
 with law citations); every plan on the plot with the part of it the plot lies in
 (`plans_detail`); protections, forest / water / road / groundwater limits,
 polluted sites, hazards, the buildings on it; and the official extract links.
+Our own plot scores are in `scores` (location, plot shape, existing buildings,
+built vs allowed by right with a range and "sure"/"likely"; see `geneva/README.md`).
 Nothing is left out: every column of the plot table is in the answer. A plot in a
 special plan we could not place carries `special_plan_unresolved_flag` and says
 so in its notice. To refresh the data, see `geneva/README.md`.
