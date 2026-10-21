@@ -15,6 +15,7 @@ export interface GenevaAnswer {
   constraints: Values;
   buildings_today: Values;
   status: Values;
+  scores?: Values;
   data_quality: Values;
   other?: Values;
   zone_rules: Record<string, any>;
@@ -150,6 +151,69 @@ const FLAGS: [string, string][] = [
 
 const isSet = (v: string | undefined) => v != null && v !== "" && v !== "0" && v !== "0.0" && v !== "False";
 
+// Our own scores (geneva/build/scores.py), each with how it is computed.
+function ScoreBar({ label, value, how }: { label: string; value?: string; how: string }) {
+  if (value == null || value === "") return null;
+  const v = Number(value);
+  const tone = v >= 70 ? "bg-emerald-500" : v >= 40 ? "bg-amber-500" : "bg-red-500";
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+        <span>{label}</span>
+        <b className="text-lg tabular-nums text-foreground">{v}</b>
+      </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.max(0, Math.min(100, v))}%` }} />
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-tight">{how}</p>
+    </div>
+  );
+}
+
+function Scores({ s }: { s: Values }) {
+  const sure = s.under_exploited_sure === "True";
+  return (
+    <Section title="Scores (ours, from official data)">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <ScoreBar label="Location" value={s.score_location} how={`Road distance to everyday services: ${s.location_distances ?? "—"}`} />
+        <ScoreBar label="Plot shape" value={s.score_shape} how={`Usable width ${num(s.plot_width_m, " m")}, compactness ${s.plot_compactness ?? "—"}`} />
+        <ScoreBar
+          label="Existing buildings"
+          value={s.score_existing}
+          how={`Newest building ${s.bldg_year_newest ?? "—"}${s.bldg_heating_year ? `, heating renewed ${s.bldg_heating_year}` : ""}; higher = more recent`}
+        />
+      </div>
+      {s.allowed_gfa_m2 ? (
+        <dl className="mt-3">
+          <Row
+            k="Built vs allowed by right"
+            v={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className={sure ? "" : "border-transparent bg-amber-500/10 text-amber-700"}>
+                  {s.under_exploited_label} · {sure ? "sure" : "likely"}
+                </Badge>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  built {num(s.built_gfa_lo_m2)}–{num(s.built_gfa_hi_m2, " m²")} (best estimate {num(s.built_gfa_m2, " m²")}) of {num(s.allowed_gfa_m2, " m²")} allowed
+                </span>
+              </span>
+            }
+          />
+          <Row k="Room left by right" v={`${num(s.development_room_lo_m2)}–${num(s.development_room_hi_m2, " m²")} (best estimate ${num(s.development_room_m2, " m²")})`} />
+          <Row k="Allowance from" v={s.allowed_gfa_source} />
+          {s.development_note && <Row k="By exception" v={s.development_note} />}
+        </dl>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Built vs allowed: not computed, this zone sets no floor-area ratio (its size limits come from shape rules or a plan).
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Ranges hold 95% of the time, checked against the canton's heated-floor-area register; "sure" when the whole range falls in one band.
+      </p>
+    </Section>
+  );
+}
+
 export function GenevaView({ a }: { a: GenevaAnswer }) {
   const [lang, setLang] = useState<"en" | "fr">("en");
   const s = a.status;
@@ -202,6 +266,8 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
           {lang === "en" ? "Version française" : "English version"}
         </button>
       </div>
+
+      {a.scores && Object.keys(a.scores).length > 0 && <Scores s={a.scores} />}
 
       {zones.length > 0 && (
         <Section title="Zones and their legal limits">

@@ -119,6 +119,31 @@
    "plan_low_confidence",
    "plan_maintained_bldg_pct"
   ],
+  "scores": [
+   "score_location",
+   "location_distances",
+   "location_source",
+   "score_shape",
+   "plot_compactness",
+   "plot_width_m",
+   "score_existing",
+   "bldg_year_newest",
+   "bldg_heating_year",
+   "built_gfa_m2",
+   "built_gfa_lo_m2",
+   "built_gfa_hi_m2",
+   "built_gfa_range_kind",
+   "allowed_gfa_m2",
+   "allowed_gfa_source",
+   "score_under_exploited",
+   "under_exploited_label",
+   "under_exploited_sure",
+   "score_development",
+   "development_room_m2",
+   "development_room_lo_m2",
+   "development_room_hi_m2",
+   "development_note"
+  ],
   "data_quality": [
    "zone_sum_m2",
    "zone_sum_pct",
@@ -133,5 +158,5 @@
  },
  "parcels": 73120,
  "communes": 48,
- "exported": "2026-10-15"
+ "exported": "2026-10-21"
 }
