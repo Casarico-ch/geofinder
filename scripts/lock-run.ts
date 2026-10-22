@@ -97,7 +97,9 @@ async function main() {
         const search = searches[0] ?? r.results![0];
         // The same first searches as the original request (Radar names its
         // models per request), so before and after differ in the depth only.
-        const models = searches.map((m) => m.model);
+        // Distinct: a listing Radar sent several times shows every submission's
+        // runs on one row (radar-6678897: 33 runs), one search per model here.
+        const models = Array.from(new Set(searches.map((m) => m.model)));
         try {
           const { requestId } = await api<{ requestId: string }>("/api/requests/rerun", {
             method: "POST",
