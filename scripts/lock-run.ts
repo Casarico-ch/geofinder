@@ -93,9 +93,16 @@ async function main() {
     const worker = async () => {
       while (next < settled.length) {
         const r = settled[next++];
-        const search = (r.results ?? []).find((m) => !m.check && !m.confirm) ?? r.results![0];
+        const searches = (r.results ?? []).filter((m) => !m.check && !m.confirm);
+        const search = searches[0] ?? r.results![0];
+        // The same first searches as the original request (Radar names its
+        // models per request), so before and after differ in the depth only.
+        const models = searches.map((m) => m.model);
         try {
-          const { requestId } = await api<{ requestId: string }>("/api/requests/rerun", { method: "POST", body: JSON.stringify({ jobIds: [search.jobId], topCheck: top }) });
+          const { requestId } = await api<{ requestId: string }>("/api/requests/rerun", {
+            method: "POST",
+            body: JSON.stringify({ jobIds: [search.jobId], topCheck: top, ...(models.length ? { models } : {}) }),
+          });
           pairs.push({ oldId: r.id, newId: requestId });
           console.log(`  started ${r.input.listingId ?? r.id} (${r.input.municipality ?? "?"}) → ${requestId}`);
           // Wait for this one before starting the next on this worker.

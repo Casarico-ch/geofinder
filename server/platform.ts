@@ -554,7 +554,11 @@ export function registerPlatformRoutes(app: Express) {
   app.post("/api/requests/rerun", async (req: Request, res: Response) => {
     // topCheck: a lock run (scripts/lock-run.ts) re-runs settled listings with a
     // ranked-list depth to prove it loses none of them before it becomes the default.
-    const parsed = z.object({ jobIds: z.array(z.string()).min(1).max(20), topCheck: z.number().int().min(1).optional() }).safeParse(req.body);
+    // models: the lock run passes the listing's original first-search models, so
+    // before and after differ in the depth only (Radar names its models per request).
+    const parsed = z
+      .object({ jobIds: z.array(z.string()).min(1).max(20), topCheck: z.number().int().min(1).optional(), models: z.array(z.enum(MODELS)).min(1).max(6).optional() })
+      .safeParse(req.body);
     const jobs = parsed.success ? parsed.data.jobIds.map((id) => getJob(id)).filter((j): j is NonNullable<typeof j> => !!j) : [];
     if (!parsed.success || jobs.length === 0) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
@@ -571,8 +575,8 @@ export function registerPlatformRoutes(app: Express) {
     const prefix = src.input.municipality?.trim() ? `Municipality / commune: ${src.input.municipality.trim()}\n\n` : "";
     const text = src.input.listingText ?? "";
     const listingText = prefix && text.startsWith(prefix) ? text.slice(prefix.length) : text;
-    // The models a new request for this listing would get (listingModels), as practice runs it.
-    const models = listingModels(listingText);
+    // The models a new request for this listing would get (listingModels), as practice runs it — or the ones asked for.
+    const models = parsed.data.models ?? listingModels(listingText);
     try {
       const record = await startListingRequest(
         {
