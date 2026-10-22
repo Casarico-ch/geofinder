@@ -18,7 +18,7 @@ import { writeFile } from "node:fs/promises";
 import { exactAddressOf, sameAddress, type Candidate } from "../server/consensus";
 import type { Answer } from "../server/jobs";
 
-type Result = { model: string; jobId: string; status: string; answer: Answer | null; confirm?: boolean; check?: boolean };
+type Result = { model: string; jobId: string; status: string; answer: Answer | null; confirm?: boolean; check?: boolean; startedAt?: string };
 type Req = {
   id: string;
   kind: string;
@@ -52,10 +52,15 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** The house two finished runs of a request agree on, or null. */
-function settledHouse(r: Req): Candidate | null {
+/**
+ * The house two finished runs of a request agree on, or null. `before`: only
+ * runs started before that time count — the admin list shows every run of a
+ * listing on one row, so after a lock run the original row carries the
+ * re-run's runs too, and "before" has to leave them out.
+ */
+function settledHouse(r: Req, before?: string): Candidate | null {
   const exact = (r.results ?? [])
-    .filter((m) => m.status === "done")
+    .filter((m) => m.status === "done" && (!before || !m.startedAt || m.startedAt < before))
     .map((m) => exactAddressOf(m.answer, { parcel: true }))
     .filter((c): c is Candidate => !!c);
   for (let i = 0; i < exact.length; i++)
@@ -70,8 +75,11 @@ async function main() {
   const listings = requests.filter((r) => r.kind === "listing");
   const report = arg("report");
   let pairs: { oldId: string; newId: string }[];
+  let startedAt = new Date().toISOString();
   if (report) {
-    pairs = JSON.parse(await (await import("node:fs/promises")).readFile(report, "utf8")) as typeof pairs;
+    const saved = JSON.parse(await (await import("node:fs/promises")).readFile(report, "utf8")) as { startedAt: string; pairs: typeof pairs } | typeof pairs;
+    if (Array.isArray(saved)) pairs = saved;
+    else ({ startedAt, pairs } = saved);
   } else {
     // Every listing the current search ran (not the lock runs themselves, not
     // parking listings, not ones still running), newest first.
@@ -120,7 +128,7 @@ async function main() {
     };
     await Promise.all(Array.from({ length: parallel }, worker));
     const file = `lock-run-${top}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
-    await writeFile(file, JSON.stringify(pairs, null, 2));
+    await writeFile(file, JSON.stringify({ startedAt, pairs }, null, 2));
     console.log(`pairs saved to ${file} (re-read with --report)`);
   }
 
@@ -133,10 +141,10 @@ async function main() {
     const old = byId.get(p.oldId);
     const now = fresh[i];
     if (!old || !now) return;
-    const was = settledHouse(old);
+    const was = settledHouse(old, startedAt);
     const is = settledHouse(now);
     if (was) before++;
-    costBefore += costOf(old);
+    costBefore += costOf({ ...old, results: (old.results ?? []).filter((m) => !m.startedAt || m.startedAt < startedAt) });
     let verdict: string;
     if (now.status === "running") { verdict = "running"; running++; }
     else {
