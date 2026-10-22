@@ -1,7 +1,8 @@
 # Monthly Geneva data refresh: re-download the canton's layers, rebuild every
 # plot's answer and our scores, run the audit regression tests and the server's
-# golden-answer check, then open a pull request saying what changed and which
-# new plans (if any) a person must read. Nothing ships until that PR is merged.
+# golden-answer check, then push branch geneva/refresh and open an issue saying
+# what changed, which new plans (if any) a person must read, and a one-click
+# link to the pull request. Nothing ships until that pull request is merged.
 # If any step fails, an issue says so. Run it by hand from the Actions tab too.
 name: geneva-refresh
 
@@ -12,7 +13,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
   issues: write
 
 concurrency:
@@ -59,18 +59,23 @@ jobs:
         run: |
           if git diff --quiet -- geneva ':!geneva/data/schema.json'; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
           echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
-      - name: Open the refresh pull request
+      # The organisation does not let Actions open pull requests (a setting locked above it,
+      # 21.10), so the job pushes the branch and opens an issue with a one-click link to the PR.
+      - name: Push the refresh branch and open an issue linking its pull request
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
-        with:
-          branch: geneva/refresh
-          delete-branch: true
-          title: "Geneva data refresh ${{ steps.diff.outputs.month }}"
-          commit-message: "Geneva data refresh ${{ steps.diff.outputs.month }}"
-          body-path: ${{ runner.temp }}/report.md
-          add-paths: |
-            geneva/data
-            geneva/build/parcels/layers.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONTH: ${{ steps.diff.outputs.month }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B geneva/refresh
+          git add geneva/data geneva/build/parcels/layers.json
+          git commit -q -m "Geneva data refresh $MONTH"
+          git push -f origin geneva/refresh
+          link="${{ github.server_url }}/${{ github.repository }}/compare/${{ github.ref_name }}...geneva/refresh?expand=1&title=Geneva%20data%20refresh%20$MONTH"
+          { echo "**[Open the pull request]($link)** (one click: \"Create pull request\"), then merge it to ship this month's data."; echo; cat "$RUNNER_TEMP/report.md"; } > "$RUNNER_TEMP/issue.md"
+          gh issue create --title "Geneva data refresh $MONTH ready" --body-file "$RUNNER_TEMP/issue.md"
 
       - name: Say so when the refresh failed
         if: failure()

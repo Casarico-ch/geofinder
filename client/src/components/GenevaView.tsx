@@ -182,7 +182,33 @@ function Scores({ s }: { s: Values }) {
           value={s.score_existing}
           how={`Newest building ${s.bldg_year_newest ?? "—"}${s.bldg_heating_year ? `, heating renewed ${s.bldg_heating_year}` : ""}; higher = more recent`}
         />
+        <ScoreBar
+          label="Rebuild potential"
+          value={s.score_rebuild}
+          how={`A new house could be ${s.rebuild_ratio ?? "—"}× today's volume. Among plots scoring like this, ${s.rebuild_peer_rate_pct ?? "—"}% got a demolition or new-build permit within 3 years`}
+        />
       </div>
+      {isSet(s.rebuild_volume_m3) && (
+        <dl className="mt-3">
+          <Row
+            k="Volume: today vs largest new house"
+            v={
+              s.existing_volume_m3 === "0"
+                ? `Empty plot: a new house of about ${num(s.rebuild_volume_m3, " m³")} (${num(s.rebuild_volume_lo_m3)}–${num(s.rebuild_volume_hi_m3, " m³")})`
+                : `${num(s.existing_volume_m3, " m³")} today (canton's 3D model) · about ${num(s.rebuild_volume_m3, " m³")} for a new house allowed by right (${num(s.rebuild_volume_lo_m3)}–${num(s.rebuild_volume_hi_m3, " m³")}, 95% of recent new villas)`
+            }
+          />
+          <Row
+            k="Within 300 m since 2015"
+            v={`${s.dense_permits_nearby ?? "0"} permits granted at 40% or more · ${s.dense_refusals_nearby ?? "0"} refused`}
+          />
+        </dl>
+      )}
+      {isSet(s.permit_rate_pct) && (
+        <dl className="mt-1">
+          <Row k="Density stated by this plot's permit" v={`${s.permit_rate_pct}% · ${s.permit_rate_ref} · ${s.permit_rate_text}`} />
+        </dl>
+      )}
       {s.allowed_gfa_m2 ? (
         <dl className="mt-3">
           <Row
@@ -209,6 +235,7 @@ function Scores({ s }: { s: Values }) {
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
         Ranges hold 95% of the time, checked against the canton's heated-floor-area register; "sure" when the whole range falls in one band.
+        Villas are never "sure": against the densities their own permits state, our villa estimates held only about 4 times in 5.
       </p>
     </Section>
   );
