@@ -108,13 +108,14 @@ compares the two, and if it finds nothing a third judge is handed the house the
 first search named, told what the confirming search covered, and must confirm it
 with a close look or reject it with a visible difference (`server/verify.ts`). A
 confirming search that crashes is run again once. Each commune's shortlist is
-ranked by how well the building register fits the listing's own numbers; with
-`SHORTLIST_TOP_CHECK` set, a run may answer "not found", or move to the next
-commune, once that many of the list and every strong fit have a verdict (unset:
-every candidate, as before). The depth is locked before it becomes the default:
-`pnpm lock:run -- --base <admin url> --top 150` runs every listing the current
-search ran again with that depth, and the total found must not go down (a house
-lost here is fine when more are found there).
+ranked by how well the building register fits the listing's own numbers; a run
+may answer "not found", or move to the next commune, once the first 150 of that
+list and every strong fit have a verdict (`SHORTLIST_TOP_CHECK` overrides the
+150; `0` means every candidate). A change of depth is locked before it becomes
+the default: `pnpm lock:run -- --base <admin url> --top <depth>` runs every
+listing the current search ran again with that depth, and the total found must
+not go down (a house lost here is fine when more are found there). The 150 was
+locked on 22.10.2026: 100 listings, found 53 → 75, lost 0.
 
 The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the

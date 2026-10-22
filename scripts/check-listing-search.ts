@@ -86,15 +86,18 @@ await check("the third judge is the last word", () => {
   assert.equal(nextSteps(judged).length, 0);
 });
 
-await check("the ranked-list depth: every candidate by default, the first N and every strong fit per run", () => {
+await check("the ranked-list depth: 150 by default, the first N and every strong fit per run", () => {
   const entry = (egid: string, order: number, strongFit = false): LedgerEntry =>
     ({ egid, order, commune: "Vernier", address: null, lat: 46.2, lon: 6.1, floors: null, dwellings: null, footprintM2: null, viewed: false, verdict: "unchecked", strongFit }) as LedgerEntry;
   const s = {
     stated: "Vernier", primary: "Vernier", confidence: "high", evidence: [], ring: [], shortlisted: ["Vernier"],
     candidates: { "1": entry("1", 0), "2": entry("2", 1), "3": entry("3", 2), "4": entry("4", 3, true), "5": entry("5", 4) },
   } as unknown as SearchState;
-  assert.equal(mustCheck(s).length, 5); // unset: as before, everything
-  assert.match(topCheckText(s, "Vernier"), /^every Vernier candidate$/);
+  assert.equal(mustCheck(s).length, 5); // the default 150 covers all five
+  assert.match(topCheckText(s, "Vernier"), /first 150 of Vernier's ranked list and every STRONG FIT/);
+  const all = { ...s, topCheck: Infinity } as SearchState; // SHORTLIST_TOP_CHECK=0: every candidate, as before 22.10
+  assert.equal(mustCheck(all).length, 5);
+  assert.match(topCheckText(all, "Vernier"), /^every Vernier candidate$/);
   const locked = { ...s, topCheck: 2 } as SearchState;
   assert.deepEqual(mustCheck(locked).map((c) => c.egid), ["1", "2", "4"]); // the first 2 and the strong fit
   assert.match(topCheckText(locked), /first 2 of each commune's ranked list and every STRONG FIT/);
