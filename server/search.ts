@@ -271,12 +271,14 @@ export function unchecked(s: SearchState, commune?: string): LedgerEntry[] {
 // of their commune (median #11); 13 runs died at their budget sweeping 180-430
 // candidates and 20 more gave up on the count. Of the 53 listings two runs
 // agreed on, one (Bernex, #238 of 420) needed a house past #150, none past
-// #300. Strong fits are checked whatever their rank. Unset: every candidate,
-// as before — the depth is locked first by a re-run of the whole set whose
-// total found must not go down (Daniel, 21.10: "it's the total, not the exact
-// same listings"; scripts/lock-run.ts), per run via `topCheck`, then set here.
-const TOP_CHECK_ENV = Number(process.env.SHORTLIST_TOP_CHECK);
-export const TOP_CHECK = TOP_CHECK_ENV > 0 ? TOP_CHECK_ENV : Infinity;
+// #300. Strong fits are checked whatever their rank. Locked on 22.10 by a
+// re-run of those 100 listings at 150 (scripts/lock-run.ts; Daniel, 21.10:
+// "it's the total, not the exact same listings"): found 53 → 75, lost 0,
+// gained 22, 6 settled on a neighbouring house, cost $217 → $298 (the third
+// judge runs where a listing used to end unconfirmed). 150 is the default
+// since; SHORTLIST_TOP_CHECK overrides it, 0 means every candidate.
+const TOP_CHECK_ENV = process.env.SHORTLIST_TOP_CHECK;
+export const TOP_CHECK = TOP_CHECK_ENV == null || TOP_CHECK_ENV === "" ? 150 : Number(TOP_CHECK_ENV) > 0 ? Number(TOP_CHECK_ENV) : Infinity;
 const depthOf = (s: Pick<SearchState, "topCheck">) => s.topCheck ?? TOP_CHECK;
 /**
  * The unchecked candidates the plan still owes a verdict: the first `topCheck`
