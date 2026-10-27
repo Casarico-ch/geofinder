@@ -20,9 +20,6 @@ import { plotByEgrid } from "./proof";
 const DIR = process.env.GENEVA_DIR ?? path.resolve(process.cwd(), "geneva");
 const SEARCH = "https://api3.geo.admin.ch/rest/services/api/SearchServer";
 
-// What the composer leaves out: a column with one of these values says nothing.
-const EMPTY = new Set(["", "nan", "None", "n/a"]);
-
 type Values = Record<string, string>;
 interface PlanRow {
   plan: string;

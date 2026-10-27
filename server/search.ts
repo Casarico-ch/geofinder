@@ -20,8 +20,8 @@ import {
   resolveCommune,
 } from "./gwr";
 
-export type CommuneConfidence = "high" | "low" | "unknown";
-export type Verdict = "unchecked" | "rejected" | "possible" | "match";
+type CommuneConfidence = "high" | "low" | "unknown";
+type Verdict = "unchecked" | "rejected" | "possible" | "match";
 
 export interface LedgerEntry {
   egid: string;
@@ -67,7 +67,7 @@ export interface SearchState {
   calls?: ShortlistCall[];
 }
 
-export interface ShortlistCall {
+interface ShortlistCall {
   commune: string;
   floors?: number;
   footprintM2?: number;
@@ -84,7 +84,7 @@ export interface ShortlistCall {
 
 // "Municipality / commune: X" (prepended by the API), else the listing's own
 // "Town:" / "Location" lines.
-export function statedCommune(municipality: string | undefined, listingText: string | undefined): string | null {
+function statedCommune(municipality: string | undefined, listingText: string | undefined): string | null {
   if (municipality?.trim()) return municipality.trim();
   const t = listingText ?? "";
   const m =
@@ -119,7 +119,7 @@ function samePlace(a: string, b: string): boolean {
   return core(x).some((w) => core(y).includes(w));
 }
 
-export function communeConfidence(stated: string | null, listingText: string | undefined): {
+function communeConfidence(stated: string | null, listingText: string | undefined): {
   confidence: CommuneConfidence;
   evidence: string[];
 } {
@@ -278,7 +278,7 @@ export function unchecked(s: SearchState, commune?: string): LedgerEntry[] {
 // judge runs where a listing used to end unconfirmed). 150 is the default
 // since; SHORTLIST_TOP_CHECK overrides it, 0 means every candidate.
 const TOP_CHECK_ENV = process.env.SHORTLIST_TOP_CHECK;
-export const TOP_CHECK = TOP_CHECK_ENV == null || TOP_CHECK_ENV === "" ? 150 : Number(TOP_CHECK_ENV) > 0 ? Number(TOP_CHECK_ENV) : Infinity;
+const TOP_CHECK = TOP_CHECK_ENV == null || TOP_CHECK_ENV === "" ? 150 : Number(TOP_CHECK_ENV) > 0 ? Number(TOP_CHECK_ENV) : Infinity;
 const depthOf = (s: Pick<SearchState, "topCheck">) => s.topCheck ?? TOP_CHECK;
 /**
  * The unchecked candidates the plan still owes a verdict: the first `topCheck`
@@ -328,7 +328,7 @@ export function coverageText(s: SearchState): string {
 // The communes in the order the plan visits them. HIGH: the stated commune,
 // then the ring. LOW: the listing says the property is NEAR the stated commune,
 // so the ring comes first and the stated commune itself last.
-export function planOrder(s: SearchState): string[] {
+function planOrder(s: SearchState): string[] {
   const stated = s.primary ?? s.stated;
   const ring = s.ring.map((r) => r.commune);
   const order = s.confidence === "low" ? [...ring, stated] : [stated, ...ring];

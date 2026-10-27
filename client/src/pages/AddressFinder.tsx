@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle,
@@ -441,8 +442,8 @@ function RecheckNote({ jobId, settled }: { jobId: string; settled: boolean }) {
       }
     };
     void tick();
-    const timer = setInterval(async () => {
-      if (await tick()) clearInterval(timer);
+    const timer = setInterval(() => {
+      void tick().then((done) => done && clearInterval(timer));
     }, 5000);
     return () => {
       alive = false;
@@ -677,8 +678,8 @@ export default function AddressFinder() {
       return false;
     };
     void tick();
-    const timer = setInterval(async () => {
-      if (await tick()) clearInterval(timer);
+    const timer = setInterval(() => {
+      void tick().then((done) => done && clearInterval(timer));
     }, 2000);
     return () => {
       alive = false;
@@ -902,9 +903,6 @@ export default function AddressFinder() {
   const wideMap = answer ? !["street", "building", "parcel", "block"].includes(answer.confidence) : true;
   const running = job?.status === "running";
 
-  const inputClass =
-    "w-full rounded-md border border-input bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b border-border sticky top-0 bg-background/90 backdrop-blur z-10">
@@ -1061,11 +1059,11 @@ export default function AddressFinder() {
                 </Field>
 
                 <Field label="Municipality">
-                  <input
+                  <Input
                     value={municipality}
                     onChange={(e) => setMunicipality(e.target.value)}
                     placeholder="e.g. Plan-les-Ouates, Corsier, Lutry…"
-                    className={`${inputClass} h-10`}
+                    className="h-10 bg-card"
                   />
                 </Field>
 

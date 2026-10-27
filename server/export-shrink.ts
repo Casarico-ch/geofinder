@@ -10,7 +10,7 @@
 import jpeg from "jpeg-js";
 import { decodePNG } from "./sheet";
 
-export const MAX_EDGE = 1568;
+const MAX_EDGE = 1568;
 const QUALITY = 75;
 
 export interface Picture {

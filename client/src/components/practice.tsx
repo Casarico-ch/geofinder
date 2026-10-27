@@ -73,7 +73,7 @@ export interface Round {
 
 
 // A lesson, as server/lessons-store.ts keeps it.
-export interface Kpis {
+interface Kpis {
   runs: number;
   right: number;
   wrong: number;
@@ -96,14 +96,14 @@ export interface Lesson {
   verdict?: string;
 }
 
-export const STATUS: Record<Lesson["status"], { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
+const STATUS: Record<Lesson["status"], { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   proposed: { label: "Waiting to be tested", variant: "outline" },
   testing: { label: "Being tested", variant: "secondary" },
   kept: { label: "Kept", variant: "default" },
   dropped: { label: "Dropped", variant: "outline" },
 };
 
-export interface RecheckStats {
+interface RecheckStats {
   done: number;
   fixed: number;
   caught: number;
@@ -136,7 +136,7 @@ export interface Result {
 export const isBusy = (r: { running: number; learning?: { state: string } | null }) =>
   r.running > 0 || ["waiting", "reviewing", "testing"].includes(r.learning?.state ?? "");
 
-export const MODEL_LABEL: Record<string, string> = {
+const MODEL_LABEL: Record<string, string> = {
   "claude-sonnet-5-5": "Sonnet 5.5",
   "sonnet-5-5-low": "Sonnet 5.5 · low",
   "sonnet-5-5-low-2": "Sonnet 5.5 · low (2nd)",
@@ -153,7 +153,7 @@ export const MODEL_LABEL: Record<string, string> = {
 };
 
 // The same soft tones as the Requests page.
-export const OUTCOME: Record<Result["outcome"], { label: string; className: string }> = {
+const OUTCOME: Record<Result["outcome"], { label: string; className: string }> = {
   right: { label: "Found", className: "bg-emerald-500/10 text-emerald-700" },
   wrong: { label: "Wrong", className: "bg-destructive/10 text-destructive" },
   unsure: { label: "Not sure", className: "bg-muted text-muted-foreground" },
@@ -162,24 +162,13 @@ export const OUTCOME: Record<Result["outcome"], { label: string; className: stri
   running: { label: "Running", className: "bg-muted text-muted-foreground" },
 };
 
-export const LOST: Record<string, string> = {
+const LOST: Record<string, string> = {
   commune: "searched the wrong commune",
   not_shortlisted: "never shortlisted it",
   rejected: "rejected the right house",
   left_possible: "left it as possible",
   not_proven: "matched but did not prove it",
   never_looked: "never looked at it",
-};
-
-// Why the right house was never on the checklist (server/miss.ts).
-export const WHY: Record<string, string> = {
-  wrong_commune: "It searched the wrong commune",
-  not_residential: "The register does not list it as a home",
-  floors: "Filtered out by its floors guess",
-  dwellings: "Filtered out by its homes guess",
-  footprint: "Filtered out by its footprint guess",
-  cut_off: "Passed the filters, but never shown",
-  not_found: "Not in any commune near the listing",
 };
 
 // What a listing is, from the text its searches were given (address hidden).
@@ -394,7 +383,6 @@ export function ListingsPanel({
     return Math.min(...measured.map((r) => r.rank ?? Infinity));
   };
   const has = (pid: number, o: Result["outcome"]) => runsOf(pid).some((r) => r.outcome === o);
-  const done = (pid: number) => runsOf(pid).every((r) => r.outcome !== "running");
   const count = {
     all: ids.length,
     found: ids.filter((p) => has(p, "right")).length,
@@ -536,13 +524,11 @@ function TestRuns({ id, models }: { id: string; models: string[] }) {
     let live = true;
     const get = async () => {
       const res = await fetch(`/api/practice/rounds/${id}`).catch(() => null);
-      if (res?.ok && live) {
-        const body = await res.json();
-        setData({ results: body.results, listings: body.listings ?? {} });
-      }
+      const body = res?.ok ? await res.json().catch(() => null) : null;
+      if (body && live) setData({ results: body.results, listings: body.listings ?? {} });
     };
-    get();
-    const t = setInterval(get, 10_000);
+    void get();
+    const t = setInterval(() => void get(), 10_000);
     return () => {
       live = false;
       clearInterval(t);
@@ -702,9 +688,6 @@ export function LessonsPanel({
     </div>
   );
 }
-
-export const kpiLine = (k?: Kpis) =>
-  k ? `${k.right} right · ${k.wrong} wrong · ${k.avgMinutes ?? "—"} min · $${k.avgCostUsd?.toFixed(2) ?? "—"}` : "—";
 
 export const when = (iso: string) =>
   new Date(iso).toLocaleString(undefined, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });

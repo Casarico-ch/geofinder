@@ -251,7 +251,7 @@ export default function Usage() {
       }
     };
     void load();
-    const timer = setInterval(load, 30_000);
+    const timer = setInterval(() => void load(), 30_000);
     return () => {
       alive = false;
       clearInterval(timer);

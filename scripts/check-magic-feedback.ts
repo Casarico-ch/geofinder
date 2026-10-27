@@ -472,7 +472,7 @@ await check(
 );
 
 // ---- masking --------------------------------------------------------------------
-function fakeEl(tag: string, extra: Record<string, any> = {}) {
+function fakeEl(tag: string, extra: Record<string, any> = {}): Record<string, any> {
   const attrs: Record<string, string> = { ...(extra.attrs ?? {}) };
   return {
     tagName: tag.toUpperCase(),

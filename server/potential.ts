@@ -15,7 +15,6 @@ import { onLogin, THINKING } from "./claude-pool";
 import {
   COMPUTER_TOOLS,
   MODEL,
-  clip,
   dispatchTool,
   extractReasoning,
 } from "./agent";
@@ -23,7 +22,7 @@ import { addStep, addUsage, apiModel, setPotential, setPotentialStatus, type Ans
 
 const MAX_STEPS = Number(process.env.POTENTIAL_MAX_STEPS ?? 40);
 
-export type PotentialConfidence = "exact" | "estimated" | "indicative";
+type PotentialConfidence = "exact" | "estimated" | "indicative";
 
 // The single deliverable: how much more can be built, and on what authority.
 export interface BuildPotential {

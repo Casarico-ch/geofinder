@@ -12,7 +12,7 @@
 import { getJob } from "./jobs";
 import { listingVerdict, truthCandidate, type PracticeResult, type PracticeRound } from "./practice";
 
-export type Cause =
+type Cause =
   | "agreed_wrong" // two runs named the same wrong house: the worst case
   | "wrong_commune" // no run shortlisted the right commune
   | "ranked_low" // the right house was ranked below what the runs looked at
@@ -22,7 +22,7 @@ export type Cause =
   | "no_agreement" // a run found it, no second run named the same house
   | "limits"; // the runs ran out of time or money, or crashed
 
-export interface ReviewItem {
+interface ReviewItem {
   propertyId: number;
   cause: Cause;
   code: boolean; // the fix is in code (ranking, flow, data), not in the prompt
@@ -64,7 +64,7 @@ function named(runs: PracticeResult[]): string {
 }
 
 /** The cause of one listing's miss, or null when it was confirmed right or is still running. */
-export function reviewListing(round: PracticeRound, propertyId: number): ReviewItem | null {
+function reviewListing(round: PracticeRound, propertyId: number): ReviewItem | null {
   const verdict = listingVerdict(round, propertyId);
   if (verdict === "confirmed_right" || verdict === "running") return null;
   const runs = round.results.filter((r) => r.propertyId === propertyId);

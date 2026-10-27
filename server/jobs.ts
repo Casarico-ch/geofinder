@@ -28,13 +28,13 @@ export type Confidence =
   | "country"
   | "unknown";
 
-export interface AnswerCandidate {
+interface AnswerCandidate {
   parcel: string | null;
   address: string | null;
   note: string;
 }
 
-export interface ParcelRef {
+interface ParcelRef {
   commune: string;
   plot: string; // cadastral plot number as the land register writes it, e.g. "HN12522"
   egrid?: string | null;
@@ -74,7 +74,7 @@ export interface AnswerProof {
 // own thinking for that turn; tool steps carry the command and a result digest;
 // `image` points at an aerial/crop the model actually looked at (served under
 // /runs) so the trace shows what it saw.
-export type StepKind = "reasoning" | "bash" | "write" | "read" | "answer" | "note" | "error";
+type StepKind = "reasoning" | "bash" | "write" | "read" | "answer" | "note" | "error";
 
 export interface Step {
   n: number;
@@ -260,7 +260,7 @@ export interface Job {
 // start → now while it is still running (frozen at updatedAt while paused).
 // Answers saved before parcels[] existed: read the plots back out of the
 // free-text parcel ("Horgen HN12522 + HN12523", "Plan-les-Ouates 10917").
-export function withParcels(answer: Answer | null): Answer | null {
+function withParcels(answer: Answer | null): Answer | null {
   if (!answer || (Array.isArray(answer.parcels) && answer.parcels.length)) return answer;
   const m = answer.parcel?.trim().match(/^(.+?)\s+([A-Z]{0,4}\d[\w./-]*(?:\s*[+,&]\s*[A-Z]{0,4}\d[\w./-]*)*)$/);
   const parcels = m

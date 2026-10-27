@@ -188,7 +188,7 @@ function pointInRings(lon: number, lat: number, rings: number[][][]): boolean {
 }
 
 // Metres from a point to a commune outline (0 inside it).
-export function distanceToCommune(lat: number, lon: number, c: Commune): number {
+function distanceToCommune(lat: number, lon: number, c: Commune): number {
   if (pointInRings(lon, lat, c.rings)) return 0;
   const m = metres(lat);
   const [px, py] = m(lon, lat);

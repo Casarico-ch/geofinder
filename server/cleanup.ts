@@ -54,7 +54,7 @@ function stripImages(v: unknown): unknown {
   return v;
 }
 
-export async function cleanRun(job: Job): Promise<number> {
+async function cleanRun(job: Job): Promise<number> {
   const dir = job.runDir;
   if (!dir || (await exists(path.join(dir, MARK)))) return 0;
   const practice = (job.input.listingId ?? "").startsWith("practice-");
@@ -79,7 +79,10 @@ async function sweep(): Promise<void> {
     if (Date.parse(job.finishedAt ?? job.updatedAt) > cutoff) continue;
     try {
       const n = await cleanRun(job);
-      if (n) (runs++, (freed += n));
+      if (n) {
+        runs++;
+        freed += n;
+      }
     } catch (err) {
       console.error(`[cleanup] run ${job.id}:`, err);
     }

@@ -87,7 +87,7 @@ const MAX_STALLS = 2;
 // Wall-clock budget for one investigation. Checking every candidate takes longer
 // than giving up early, so the cap is what keeps a hopeless search bounded.
 const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
-export const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
+const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
 // Speed. Fast mode runs the same model at up to 2.5x the output speed for 2x the
 // price; only some models offer it. AGENT_FAST=0 turns it off.
 const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]); // 4.8: resumed old runs
@@ -453,7 +453,7 @@ Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors +
 // produced them — otherwise a prompt edit + redeploy leaves the history in the
 // dark about what was actually in force. Short hex of sha256 is enough to tell
 // two prompt versions apart at a glance.
-export const PROMPT_VERSION = createHash("sha256")
+const PROMPT_VERSION = createHash("sha256")
   .update(`${SYSTEM}\n---TASK---\n${TASK}`)
   .digest("hex")
   .slice(0, 12);
@@ -489,7 +489,7 @@ const SHEET_NOTE = "North-up aerials (SWISSIMAGE)";
 const IMAGES_MAX_BYTES = 14_000_000; // base64 characters
 const IMAGES_KEEP_BYTES = 5_000_000;
 
-export function pruneOldImages(
+function pruneOldImages(
   messages: Anthropic.Messages.MessageParam[],
   inline: (base64: string) => boolean = () => true,
 ): boolean {
@@ -520,7 +520,7 @@ export function pruneOldImages(
   return true;
 }
 
-export function clip(s: string, n: number): string {
+function clip(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
 }
 

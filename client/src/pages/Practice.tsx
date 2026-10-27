@@ -37,8 +37,8 @@ export default function Practice() {
   };
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 10_000);
+    void load();
+    const t = setInterval(() => void load(), 10_000);
     return () => clearInterval(t);
   }, []);
 

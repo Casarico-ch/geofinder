@@ -38,7 +38,7 @@ import { tieBreakRuns, tieBreakSetup } from "./tiebreak";
 import { verifySetup } from "./verify";
 import { geminiConfigured, isGemini } from "./gemini";
 
-export interface PracticeCase {
+interface PracticeCase {
   propertyId: number;
   split: "practice" | "test";
   municipality: string | null;
@@ -50,8 +50,8 @@ export interface PracticeCase {
   links?: { radar: string; source: string | null };
 }
 
-export type Outcome = "right" | "wrong" | "unsure" | "over_budget" | "error" | "running";
-export type LostAt = "commune" | "not_shortlisted" | "rejected" | "left_possible" | "not_proven" | "never_looked" | null;
+type Outcome = "right" | "wrong" | "unsure" | "over_budget" | "error" | "running";
+type LostAt = "commune" | "not_shortlisted" | "rejected" | "left_possible" | "not_proven" | "never_looked" | null;
 
 // The truth as fingerprints only (see the header).
 export interface TruthKeys {
@@ -71,7 +71,7 @@ function addressKey(address: string | null | undefined): string | null {
   return n && st ? fingerprint("addr", `${st} ${n}`) : null;
 }
 
-export function truthKeys(t: PracticeCase["truth"]): TruthKeys {
+function truthKeys(t: PracticeCase["truth"]): TruthKeys {
   return { egid: fingerprint("egid", String(t.egid)), address: addressKey(t.address) };
 }
 
@@ -161,7 +161,7 @@ const CONFIRM_CHF = Number(process.env.CONFIRM_BUDGET_CHF ?? 1.5);
 const CONFIRM_MINUTES = Number(process.env.CONFIRM_MAX_MINUTES ?? 10);
 const TIEBREAK_CHF = Number(process.env.TIEBREAK_BUDGET_CHF ?? 1.2);
 const TIEBREAK_MINUTES = Number(process.env.TIEBREAK_MAX_MINUTES ?? 8);
-export function stepLimits(step: "search" | "confirm" | "tieBreak"): { budgetUsd: number; maxMinutes: number; noProof?: true } {
+function stepLimits(step: "search" | "confirm" | "tieBreak"): { budgetUsd: number; maxMinutes: number; noProof?: true } {
   const base = runLimits();
   if (step === "confirm") return { ...base, budgetUsd: CONFIRM_CHF * USD_PER_CHF, maxMinutes: CONFIRM_MINUTES };
   if (step === "tieBreak") return { ...base, budgetUsd: TIEBREAK_CHF * USD_PER_CHF, maxMinutes: TIEBREAK_MINUTES };
@@ -176,16 +176,16 @@ export function stepLimits(step: "search" | "confirm" | "tieBreak"): { budgetUsd
 // shown beside the answer contradict the listing, or the plot is more than 1%
 // off. Measured on 05.10 over rmuvmodoa2bc9 and its re-run: that catches all
 // 12 wrong answers and 26 of 86 right ones.
-export const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high")
+const RECHECK_MODELS: ModelId[] = (process.env.PRACTICE_RECHECK_MODELS ?? "opus-5-5-high")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
-export const RECHECK = process.env.PRACTICE_RECHECK !== "off";
+const RECHECK = process.env.PRACTICE_RECHECK !== "off";
 const DOUBT =
   /not (fully )?(proven|confirmed|certain|settled|checked|exact)|uncertain|moderate|tentative|alternative|did not (check|settle|verify|compare|confirm)|not confirm|could not|could be|inferred|unsure|probably|likely|runner-up|not match|does not (fit|match)|mismatch/i;
 const PLOT_OFF = 0.01;
 /** Why a finished answer is searched again, or null. */
-export function recheckWhy(a: Answer | null): string | null {
+function recheckWhy(a: Answer | null): string | null {
   if (!a) return null;
   if (!exactAddressOf(a)) return "not sure";
   if (DOUBT.test(a.reasoning ?? "")) return "doubt in its explanation";
@@ -199,8 +199,8 @@ export function recheckWhy(a: Answer | null): string | null {
 // Opus breaks the tie, and a "not sure" from it leaves nothing confirmed. Real
 // requests (platform.ts confirmUnlessAgreed) and practice rounds use this one
 // rule. GEOFINDER_CONFIRM_MODELS (Opus 5.5 high); GEOFINDER_CONFIRM=off stops it.
-export const CONFIRM = process.env.GEOFINDER_CONFIRM !== "off";
-export const CONFIRM_MODELS: ModelId[] = (process.env.GEOFINDER_CONFIRM_MODELS ?? "opus-5-5-high")
+const CONFIRM = process.env.GEOFINDER_CONFIRM !== "off";
+const CONFIRM_MODELS: ModelId[] = (process.env.GEOFINDER_CONFIRM_MODELS ?? "opus-5-5-high")
   .split(",")
   .map((m) => m.trim())
   .filter((m): m is ModelId => (MODELS as readonly string[]).includes(m));
@@ -209,7 +209,7 @@ const MAX_CONFIRMS = 2;
 type Settled = { done: boolean; answer: Answer | null; confirm?: boolean };
 
 /** The two finished runs that name the same house, or null. `parcel`: count parcel confidence too, as Radar does. */
-export function agreeingPair<T extends Settled>(runs: T[], opts: { parcel?: boolean } = {}): [T, T] | null {
+function agreeingPair<T extends Settled>(runs: T[], opts: { parcel?: boolean } = {}): [T, T] | null {
   const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer, opts)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
   for (let i = 0; i < exact.length; i++)
     for (let j = i + 1; j < exact.length; j++) if (sameAddress(exact[i][1], exact[j][1])) return [exact[i][0], exact[j][0]];
@@ -217,7 +217,7 @@ export function agreeingPair<T extends Settled>(runs: T[], opts: { parcel?: bool
 }
 
 /** Once a listing's runs have all settled: should one more confirming search run? */
-export function wantsConfirm(runs: Settled[]): boolean {
+function wantsConfirm(runs: Settled[]): boolean {
   if (!CONFIRM || !CONFIRM_MODELS.length) return false;
   const confirms = runs.filter((r) => r.confirm);
   if (confirms.length >= MAX_CONFIRMS) return false;
@@ -375,7 +375,7 @@ function radar(): { url: string; secret: string } {
 }
 
 /** Every case radar holds for this split, in property-id order. */
-export async function fetchCases(split: "practice" | "test", max: number): Promise<PracticeCase[]> {
+async function fetchCases(split: "practice" | "test", max: number): Promise<PracticeCase[]> {
   const { url, secret } = radar();
   const out: PracticeCase[] = [];
   let afterId = 0;
@@ -401,7 +401,7 @@ export async function fetchCases(split: "practice" | "test", max: number): Promi
  * one-home house it replaces, three listings (two of them detached houses)
  * keyed to one three-home farmhouse.
  */
-export async function keyTrouble(c: PracticeCase, all: PracticeCase[]): Promise<string | null> {
+async function keyTrouble(c: PracticeCase, all: PracticeCase[]): Promise<string | null> {
   // One photo is the agent's portrait or a logo (Benken 5340677, 09.10): with no
   // picture of the house and no area, both runs can only say "not sure".
   if (c.imageUrls.length <= 1) return "one photo only: nothing of the house to compare";
@@ -433,7 +433,7 @@ export async function keyTrouble(c: PracticeCase, all: PracticeCase[]): Promise<
  * every commune in the pool has one. Radar's id order would hand over one
  * agency's batch instead.
  */
-export function sampleCases(all: PracticeCase[], n: number): PracticeCase[] {
+function sampleCases(all: PracticeCase[], n: number): PracticeCase[] {
   const shuffled = [...all];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -476,7 +476,7 @@ async function loadPhotos(urls: string[]): Promise<AgentImage[]> {
 }
 
 /** What the run named, scored against the truth. */
-export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: string | null; lostAt: LostAt } {
+function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: string | null; lostAt: LostAt } {
   if (job.status === "running" || job.status === "paused") return { outcome: "running", answer: null, lostAt: null };
   if (job.status !== "done") return { outcome: "error", answer: null, lostAt: null };
   if (job.overBudget) return { outcome: "over_budget", answer: null, lostAt: lostAt(job, truth) };
@@ -496,7 +496,7 @@ export function score(job: Job, truth: TruthKeys): { outcome: Outcome; answer: s
 }
 
 /** Where the right house sat on the run's ranked shortlist (the commune list that held it). */
-export function truthRank(job: Job, truth: TruthKeys): { rank: number | null; rankOf: number | null } {
+function truthRank(job: Job, truth: TruthKeys): { rank: number | null; rankOf: number | null } {
   for (const c of job.search?.calls ?? []) {
     if (!c.order?.length) continue;
     const i = c.order.findIndex((egid) => fingerprint("egid", String(egid)) === truth.egid);

@@ -99,8 +99,19 @@ async function startServer() {
   app.use(express.static(staticPath));
 
   // Handle client-side routing - serve index.html for all routes
-  app.get("*", (_req, res) => {
+  app.get("/{*splat}", (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));
+  });
+
+  // A route that throws or rejects (Express 5 forwards both here) answers
+  // instead of leaving the request open. Client errors keep their status and
+  // message (bad JSON, too large); anything else is a plain 500.
+  app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) return next(err);
+    const e = err as { status?: number; statusCode?: number; message?: string };
+    const status = e?.status ?? e?.statusCode ?? 500;
+    if (status >= 500) console.error("[route]", err);
+    res.status(status).json({ error: status < 500 && e?.message ? e.message : "Internal error" });
   });
 
   const port = process.env.PORT || 3000;

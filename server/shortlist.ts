@@ -39,7 +39,7 @@ interface RawBuilding {
   lon: number;
   lat: number;
 }
-export interface Candidate {
+interface Candidate {
   egid: number;
   lat: number;
   lon: number;
@@ -352,7 +352,6 @@ async function rankByListing(
   if (houseLiving) used.push(`living area ${houseLiving} m²`);
   if (houseRooms) used.push(`${houseRooms} rooms`);
 
-  const thisYear = new Date().getFullYear();
   const cheap = (b: GwrBuilding): number => {
     let s = 0;
     if (b.category === 1060) s += 1;

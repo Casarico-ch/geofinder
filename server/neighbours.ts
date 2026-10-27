@@ -15,7 +15,7 @@
 import { findDxfHref, getTileBuildings, wgs84ToLv95, type Building } from "./roofs";
 import { DIRECTIONS, angleDiff, type ClueConfidence, type Direction } from "./locate";
 
-export type Side = Direction | "left" | "right" | "behind" | "front";
+type Side = Direction | "left" | "right" | "behind" | "front";
 
 /** One building (or its absence) the photos show next to the house. */
 export interface NeighbourClue {
@@ -62,7 +62,7 @@ function hull(points: number[][]): number[][] {
   return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
 
-export function shapeOf(b: Building): Shape | null {
+function shapeOf(b: Building): Shape | null {
   const all = b.faces.flat();
   if (all.length < 3) return null;
   const zs = all.map((v) => v[2]);

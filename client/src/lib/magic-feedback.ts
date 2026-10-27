@@ -151,7 +151,7 @@ export function shortcutAction(
 // ---- what counts as private on the page ---------------------------------------
 
 /** Elements whose content is the user's own input — blanked in the screenshot, never used as a label. */
-export const MASK_SELECTOR =
+const MASK_SELECTOR =
   'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-mf-mask]';
 
 /** Input types whose value is the control's own caption, not something the user typed. */
@@ -165,7 +165,7 @@ interface ElementLike {
   textContent?: string | null;
 }
 
-export function isEditable(el: ElementLike | null | undefined): boolean {
+function isEditable(el: ElementLike | null | undefined): boolean {
   if (!el) return false;
   const t = (el.tagName || "").toLowerCase();
   return (

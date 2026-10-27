@@ -182,7 +182,7 @@ export function registerApiRoutes(app: Express) {
   // Receive the photos for a two-phase investigation and start the run. This is
   // the heavy upload, but it happens after the client has already navigated to
   // the job, so it never blocks the user.
-  app.post("/api/geo/investigate/:id/photos", async (req: Request, res: Response) => {
+  app.post("/api/geo/investigate/:id/photos", async (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -227,7 +227,7 @@ export function registerApiRoutes(app: Express) {
   });
 
   // Stop a running investigation (terminal — the agent loop checks the flag).
-  app.post("/api/geo/investigate/:id/cancel", (req: Request, res: Response) => {
+  app.post("/api/geo/investigate/:id/cancel", (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -239,7 +239,7 @@ export function registerApiRoutes(app: Express) {
 
   // Pause a running investigation at the next turn boundary. It keeps its saved
   // conversation and can be resumed later — no tokens are spent while paused.
-  app.post("/api/geo/investigate/:id/pause", (req: Request, res: Response) => {
+  app.post("/api/geo/investigate/:id/pause", (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -254,7 +254,7 @@ export function registerApiRoutes(app: Express) {
   // prior run's findings or state — just the instructions, so it's a clean redo.
   // An optional { model } runs the same instructions on a different model, which
   // is how runs are compared across models.
-  app.post("/api/geo/investigate/:id/relaunch", async (req: Request, res: Response) => {
+  app.post("/api/geo/investigate/:id/relaunch", async (req: Request<Record<string, string>>, res: Response) => {
     const src = getJob(req.params.id);
     if (!src) {
       res.status(404).json({ error: "No such investigation" });
@@ -299,7 +299,7 @@ export function registerApiRoutes(app: Express) {
   });
 
   // Resume a paused investigation from its saved conversation (background run).
-  app.post("/api/geo/investigate/:id/resume", (req: Request, res: Response) => {
+  app.post("/api/geo/investigate/:id/resume", (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -318,7 +318,7 @@ export function registerApiRoutes(app: Express) {
   // Optional, manual: analyse how much MORE can be built on the found parcel.
   // Runs the focused construction-potential agent in the background; the trace
   // and result are polled via GET below (job.potential / job.potentialStatus).
-  app.post("/api/geo/investigate/:id/potential", (req: Request, res: Response) => {
+  app.post("/api/geo/investigate/:id/potential", (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -342,7 +342,7 @@ export function registerApiRoutes(app: Express) {
   // Poll one investigation — META ONLY (answer, status, tokens, potential, the
   // step COUNT). The trace itself is fetched in pages via /steps below, so a
   // long investigation opens instantly instead of shipping its whole trace.
-  app.get("/api/geo/investigate/:id", async (req: Request, res: Response) => {
+  app.get("/api/geo/investigate/:id", async (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -359,7 +359,7 @@ export function registerApiRoutes(app: Express) {
 
   // The exact prompt text a run was governed by (saved at run start). This is
   // what makes a past run's cost + reasoning attributable to a precise prompt.
-  app.get("/api/geo/investigate/:id/prompt", async (req: Request, res: Response) => {
+  app.get("/api/geo/investigate/:id/prompt", async (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -378,7 +378,7 @@ export function registerApiRoutes(app: Express) {
 
   // The whole thread as one self-contained HTML file (photos, text, prompt,
   // every step and the full model conversation), downloaded as a file.
-  app.get("/api/geo/investigate/:id/export", async (req: Request, res: Response) => {
+  app.get("/api/geo/investigate/:id/export", async (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });
@@ -404,7 +404,7 @@ export function registerApiRoutes(app: Express) {
 
   // A page of the trace. The client loads the first page on open and appends
   // more as the user scrolls down, so nothing loads the whole trace at once.
-  app.get("/api/geo/investigate/:id/steps", (req: Request, res: Response) => {
+  app.get("/api/geo/investigate/:id/steps", (req: Request<Record<string, string>>, res: Response) => {
     const job = getJob(req.params.id);
     if (!job) {
       res.status(404).json({ error: "No such investigation" });

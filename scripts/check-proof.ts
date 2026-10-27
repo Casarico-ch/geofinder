@@ -94,7 +94,10 @@ function answer(over: Partial<Answer>): Answer {
 
 // ---- the listing's own facts --------------------------------------------------
 await check("reads land, living area and a single dwelling from the listing", () => {
-  assert.deepEqual(listingFacts(LISTING), { landM2: 331, livingM2: 236, dwellings: 1, sharedLand: false, rooms: 7, floor: null });
+  assert.deepEqual(listingFacts(LISTING), {
+    landM2: 331, landAltM2: [], livingM2: 236, dwellings: 1, sharedLand: false, rooms: 7, floor: null,
+    kind: "house", year: null, units: null, postcode: null, newBuild: false,
+  });
 });
 await check("a flat or multi-family listing does not pin dwellings; a PPE share is not a plot", () => {
   assert.equal(listingFacts("Type: apartment\nLiving area m²: 90").dwellings, null);
@@ -112,20 +115,20 @@ await check("Gryfelblatte 58 fits every fact", () => {
   assert.deepEqual(rows.map((r) => r.verdict), ["match", "match", "match"]);
   assert.ok(strongFit(rows));
 });
-await check("Riedweg 89: two homes and a 427 m² plot do not fit; the plot is a hard mismatch", () => {
+await check("Riedweg 89: two homes are unclear, a 427 m² plot does not fit and is a hard mismatch", () => {
   const rows = factRows(listingFacts(LISTING), RIEDWEG);
   const by = Object.fromEntries(rows.map((r) => [r.fact, r]));
-  assert.equal(by["Homes in the building"].verdict, "mismatch");
+  assert.equal(by["Homes in the building"].verdict, "unknown");
   assert.equal(by["Plot area"].verdict, "mismatch");
   assert.equal(by["Plot area"].hard, true);
   assert.ok(!strongFit(rows));
 });
-await check("several plots summed can match the land area", () => {
+await check("several plots summed to the land area are a lead, not a match", () => {
   const rows = factRows(listingFacts("Type: house\nLand area m²: 1481"), {
     floors: 3, dwellings: 1, footprintM2: 130,
     plots: [{ number: "1", egrid: null, areaM2: 900 }, { number: "2", egrid: null, areaM2: 580 }],
   });
-  assert.equal(rows.find((r) => r.fact === "Plot area")?.verdict, "match");
+  assert.equal(rows.find((r) => r.fact === "Plot area")?.verdict, "unknown");
 });
 // ---- the flat, against the register's flats (Ruopigenring 81–91, Luzern) ---------
 // A 96 m² 3.5-room flat "im 5. Obergeschoss". Opus ranked 85/87 first but could
@@ -152,10 +155,10 @@ await check("reads the flat's rooms and storey from the listing", () => {
 await check("Ruopigenring 85 holds a 96 m² 3-room flat on the 5th floor", () => {
   assert.equal(flatRowOf(R85)?.verdict, "match");
 });
-await check("Ruopigenring 89 (99 m² there) is only close, 83 (no 3-room flat) does not fit", () => {
+await check("Ruopigenring 89 (99 m² there) is only close, 83 (no flat within 10%) is a hard mismatch", () => {
   assert.equal(flatRowOf(R89)?.verdict, "unknown");
   assert.equal(flatRowOf(R83)?.verdict, "mismatch");
-  assert.ok(!flatRowOf(R83)?.hard);
+  assert.equal(flatRowOf(R83)?.hard, true);
 });
 await check("no flat check without the register's flats, or for a house", () => {
   assert.equal(flatRowOf(undefined as never), undefined);
@@ -199,7 +202,8 @@ await check("Gryfelblatte 58, inspected, matched, everything else ruled out: pro
   assert.equal(pr.proof?.total, 3);
 });
 await check("unviewed candidates, open possibles and a second match each block it", async () => {
-  const s = zermatt({ "1": { verdict: "unchecked", viewed: false }, "2": { verdict: "possible" }, "3": { verdict: "match", lat: 46.03 } });
+  // A plot 4% off the listing matches but is not decisive, so the checklist must be settled.
+  const s = zermatt({ "960338": { plot: { ...GRYFELBLATTE.plots[0], areaM2: 345 } }, "1": { verdict: "unchecked", viewed: false }, "2": { verdict: "possible" }, "3": { verdict: "match", lat: 46.03 } });
   const pr = await proveAnswer(job(s), answer({}));
   const all = pr.blocking.join("\n");
   assert.match(all, /1 of the first 150 of each commune.s ranked list and every STRONG FIT have no verdict/);
@@ -221,7 +225,7 @@ await check("Riedweg 89 is blocked by its plot even when inspected and matched",
   const pr = await proveAnswer(job(s), answer({ address: "Riedweg 89, 3920 Zermatt", latitude: 46.024131, longitude: 7.756649 }));
   assert.equal(pr.blocking.length, 1);
   assert.match(pr.blocking[0], /Plot area does not fit/);
-  assert.match(pr.soft.join(" "), /Homes in the building does not fit/);
+  assert.deepEqual(pr.soft, []); // two homes for a single house are unclear, not a mismatch
 });
 await check("an unproven address is kept as the top of a shortlist, not reported", () => {
   const a = unprovenAsShortlist(answer({}), ["Plot area does not fit."]);
