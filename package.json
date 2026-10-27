@@ -20,6 +20,7 @@
     "lint": "oxlint --type-aware --deny-warnings server client/src scripts",
     "knip": "knip",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "tsx scripts/check-claude-pool.ts && tsx scripts/check-magic-feedback.ts && tsx scripts/check-proof.ts && tsx scripts/check-shortlist.ts && tsx scripts/check-gwr.ts && tsx scripts/check-popety-store.ts && tsx scripts/check-listing-search.ts && tsx scripts/check-geneva.ts"
   },
   "dependencies": {

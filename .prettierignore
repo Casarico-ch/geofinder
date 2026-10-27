@@ -1,5 +1,11 @@
 dist
 node_modules
-.git
 *.min.js
 *.min.css
+pnpm-lock.yaml
+# Data, research inputs and run records, kept as written or as generated
+geneva
+docs/lock-runs
+# Prose keeps its hand formatting (Prettier pads tables to the longest cell), and
+# CLAUDE.md holds a block the Rico cockpit writes
+*.md
