@@ -38,13 +38,12 @@ let dbPromise: Promise<IDBDatabase | null> | null = null;
 
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise<IDBDatabase | null>(resolve => {
+  dbPromise = new Promise<IDBDatabase | null>((resolve) => {
     try {
       if (typeof indexedDB === "undefined") return resolve(null);
       const req = indexedDB.open(DB_NAME, 1);
       req.onupgradeneeded = () => {
-        if (!req.result.objectStoreNames.contains(STORE))
-          req.result.createObjectStore(STORE);
+        if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);
@@ -58,13 +57,13 @@ function openDb(): Promise<IDBDatabase | null> {
 
 function run<T>(
   mode: IDBTransactionMode,
-  op: (store: IDBObjectStore, key: string) => IDBRequest<T>
+  op: (store: IDBObjectStore, key: string) => IDBRequest<T>,
 ): Promise<T | null> {
   const key = tabId();
   if (!key) return Promise.resolve(null);
   return openDb().then(
-    db =>
-      new Promise<T | null>(resolve => {
+    (db) =>
+      new Promise<T | null>((resolve) => {
         if (!db) return resolve(null);
         try {
           const tx = db.transaction(STORE, mode);
@@ -75,7 +74,7 @@ function run<T>(
         } catch {
           resolve(null);
         }
-      })
+      }),
   );
 }
 

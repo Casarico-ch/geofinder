@@ -22,13 +22,19 @@ export interface Picture {
 function downscale(rgba: Buffer, w: number, h: number, max: number): { rgba: Buffer; w: number; h: number } {
   const scale = max / Math.max(w, h);
   if (scale >= 1) return { rgba, w, h };
-  const W = Math.max(1, Math.round(w * scale)), H = Math.max(1, Math.round(h * scale));
+  const W = Math.max(1, Math.round(w * scale)),
+    H = Math.max(1, Math.round(h * scale));
   const out = Buffer.alloc(W * H * 4);
   for (let Y = 0; Y < H; Y++) {
-    const y0 = Math.floor((Y * h) / H), y1 = Math.max(y0 + 1, Math.floor(((Y + 1) * h) / H));
+    const y0 = Math.floor((Y * h) / H),
+      y1 = Math.max(y0 + 1, Math.floor(((Y + 1) * h) / H));
     for (let X = 0; X < W; X++) {
-      const x0 = Math.floor((X * w) / W), x1 = Math.max(x0 + 1, Math.floor(((X + 1) * w) / W));
-      let r = 0, g = 0, b = 0, n = 0;
+      const x0 = Math.floor((X * w) / W),
+        x1 = Math.max(x0 + 1, Math.floor(((X + 1) * w) / W));
+      let r = 0,
+        g = 0,
+        b = 0,
+        n = 0;
       for (let y = y0; y < y1; y++) {
         for (let x = x0, p = (y * w + x0) * 4; x < x1; x++, p += 4) {
           r += rgba[p];

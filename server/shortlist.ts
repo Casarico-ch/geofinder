@@ -76,13 +76,18 @@ async function fetchJson(url: string, ms = 60_000): Promise<any> {
 
 function centroid(rings: number[][][]): [number, number] {
   const pts = rings[0] ?? [];
-  let x = 0, y = 0;
-  for (const p of pts) { x += p[0]; y += p[1]; }
+  let x = 0,
+    y = 0;
+  for (const p of pts) {
+    x += p[0];
+    y += p[1];
+  }
   return [x / (pts.length || 1), y / (pts.length || 1)];
 }
 
 function pointSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay;
+  const dx = bx - ax,
+    dy = by - ay;
   const l2 = dx * dx + dy * dy;
   let t = l2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / l2;
   t = Math.max(0, Math.min(1, t));
@@ -92,14 +97,17 @@ function pointSeg(px: number, py: number, ax: number, ay: number, bx: number, by
 // Minimum edge distance in metres between two footprints (~0 ⇒ shared wall).
 function minEdgeMetres(a: number[][], b: number[][]): number {
   if (!a.length || !b.length) return Infinity;
-  const kx = 111320 * Math.cos((a[0][1] * Math.PI) / 180), ky = 111320;
+  const kx = 111320 * Math.cos((a[0][1] * Math.PI) / 180),
+    ky = 111320;
   const A = a.map((p) => [p[0] * kx, p[1] * ky]);
   const B = b.map((p) => [p[0] * kx, p[1] * ky]);
   let min = Infinity;
   for (let i = 0; i < A.length; i++) {
-    const a1 = A[i], a2 = A[(i + 1) % A.length];
+    const a1 = A[i],
+      a2 = A[(i + 1) % A.length];
     for (let j = 0; j < B.length; j++) {
-      const b1 = B[j], b2 = B[(j + 1) % B.length];
+      const b1 = B[j],
+        b2 = B[(j + 1) % B.length];
       const d = Math.min(
         pointSeg(a1[0], a1[1], b1[0], b1[1], b2[0], b2[1]),
         pointSeg(a2[0], a2[1], b1[0], b1[1], b2[0], b2[1]),
@@ -116,8 +124,7 @@ function minEdgeMetres(a: number[][], b: number[][]): number {
 async function fetchGenevaBuildings(commune: string): Promise<RawBuilding[]> {
   const base = "https://vector.sitg.ge.ch/arcgis/rest/services/CAD_BATIMENT_HORSOL/MapServer/0/query";
   const where = encodeURIComponent(`UPPER(COMMUNE)='${commune.toUpperCase().replace(/'/g, "''")}'`);
-  const url =
-    `${base}?where=${where}&outFields=EGID,NIVEAUX_HORSOL,SURFACE,DESTINATION&returnGeometry=true&outSR=4326&f=json&resultRecordCount=3000`;
+  const url = `${base}?where=${where}&outFields=EGID,NIVEAUX_HORSOL,SURFACE,DESTINATION&returnGeometry=true&outSR=4326&f=json&resultRecordCount=3000`;
   const j = await fetchJson(url);
   const out: RawBuilding[] = [];
   for (const f of j.features ?? []) {
@@ -315,7 +322,8 @@ const DEEP = Number(process.env.SHORTLIST_DEEP ?? 150);
 // every house with a matching year came first and the plot was never looked up.
 const PLOT_DEEP = Number(process.env.SHORTLIST_PLOT_DEEP ?? 6000);
 const PLOT_WORKERS = 48;
-const PLOT_FIT = 0.05, FLAT_FIT_M2 = 3;
+const PLOT_FIT = 0.05,
+  FLAT_FIT_M2 = 3;
 // Neighbour checks are local arithmetic once a 3D tile (~4×3 km) is cached.
 // 1500, was 400 (Daniel, 09.10): without a land area the right house can sit far
 // below the top 400 (Laténa #723 of 3794), where the photos' neighbours never reached it.
@@ -388,7 +396,8 @@ async function rankByListing(
   };
   const score = new Map(homes.map((b) => [b, cheap(b)]));
   const byScore = (x: GwrBuilding, y: GwrBuilding) =>
-    score.get(x)! - score.get(y)! || footprintKey(x.footprintM2, opts.footprintM2) - footprintKey(y.footprintM2, opts.footprintM2);
+    score.get(x)! - score.get(y)! ||
+    footprintKey(x.footprintM2, opts.footprintM2) - footprintKey(y.footprintM2, opts.footprintM2);
   const ranked = [...homes].sort(byScore);
 
   const why = new Map<GwrBuilding, string>();
@@ -421,7 +430,10 @@ async function rankByListing(
             // 167 = 297 for 299, Sierre 757 for 757 — both wrong houses).
             if (group.length > 1) {
               score.set(b, score.get(b)! - 2);
-              why.set(b, `plots ${group.map((x) => x.number).join(" + ")}: ${total} m² (two plots: possible, not proof)`);
+              why.set(
+                b,
+                `plots ${group.map((x) => x.number).join(" + ")}: ${total} m² (two plots: possible, not proof)`,
+              );
             } else {
               score.set(b, score.get(b)! - 4);
               strong.add(b);
@@ -491,7 +503,10 @@ async function shortlistGeneva(opts: ShortlistOptions): Promise<ShortlistResult>
     for (const o of residential) {
       if (o.egid === b.egid) continue;
       if (Math.hypot((o.lon - b.lon) * 78000, (o.lat - b.lat) * 111320) > 40) continue; // cheap prefilter
-      if (minEdgeMetres(b.rings[0], o.rings[0]) < 1.5) { attached = true; break; }
+      if (minEdgeMetres(b.rings[0], o.rings[0]) < 1.5) {
+        attached = true;
+        break;
+      }
     }
     return { b, attached };
   });
@@ -581,7 +596,11 @@ async function orderByLocation<T>(
         (resolved ? ` Landmarks: ${resolved}.` : ""),
     };
   } catch (err) {
-    return { ranked: survivors, scores, note: `. Location clues could not be applied (${err instanceof Error ? err.message : String(err)}); footprint order kept` };
+    return {
+      ranked: survivors,
+      scores,
+      note: `. Location clues could not be applied (${err instanceof Error ? err.message : String(err)}); footprint order kept`,
+    };
   }
 }
 
@@ -596,14 +615,21 @@ async function orderByLocation<T>(
 export function interleave<T>(primary: T[], fallback: T[], take: [number, number]): T[] {
   const out: T[] = [];
   const seen = new Set<T>();
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   const next = (list: T[], at: number): number => {
     while (at < list.length && seen.has(list[at])) at++;
     return at;
   };
   while (out.length < primary.length) {
-    for (let k = 0; k < take[0] && (i = next(primary, i)) < primary.length; k++) { seen.add(primary[i]); out.push(primary[i]); }
-    for (let k = 0; k < take[1] && (j = next(fallback, j)) < fallback.length; k++) { seen.add(fallback[j]); out.push(fallback[j]); }
+    for (let k = 0; k < take[0] && (i = next(primary, i)) < primary.length; k++) {
+      seen.add(primary[i]);
+      out.push(primary[i]);
+    }
+    for (let k = 0; k < take[1] && (j = next(fallback, j)) < fallback.length; k++) {
+      seen.add(fallback[j]);
+      out.push(fallback[j]);
+    }
     if (next(primary, i) >= primary.length && next(fallback, j) >= fallback.length) break;
   }
   return out;

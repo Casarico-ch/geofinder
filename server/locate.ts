@@ -15,6 +15,7 @@
 import type { GwrBuilding } from "./gwr";
 
 import { coerceNeighbours, type NeighbourClue } from "./neighbours";
+import { asText } from "./text";
 
 const SEARCH = "https://api3.geo.admin.ch/rest/services/api/SearchServer";
 const PROFILE = "https://api3.geo.admin.ch/rest/services/profile.json";
@@ -106,7 +107,8 @@ export function scoreHouse(
   terrain: Terrain | null | undefined,
   landmarks: ResolvedLandmark[],
 ): LocationScore | null {
-  let sum = 0, weight = 0;
+  let sum = 0,
+    weight = 0;
   const why: string[] = [];
   if (clues.slope) {
     const fit = slopeFit(terrain, clues.slope.faces);
@@ -120,11 +122,14 @@ export function scoreHouse(
   }
   for (const lm of landmarks) {
     if (!lm.points.length) continue;
-    let best = 0, bestAt: { lat: number; lon: number } | null = null;
+    let best = 0,
+      bestAt: { lat: number; lon: number } | null = null;
     for (const p of lm.points) {
       const d = metres(house, p);
       if (lm.clue.kind === "church" && !lm.clue.name && d > 3_000) continue; // an unnamed church is a local one
-      const fit = (lm.clue.direction ? directionFit(bearing(house, p), lm.clue.direction) : 1) * distanceFit(d, lm.clue.distanceM);
+      const fit =
+        (lm.clue.direction ? directionFit(bearing(house, p), lm.clue.direction) : 1) *
+        distanceFit(d, lm.clue.distanceM);
       if (fit > best || !bestAt) [best, bestAt] = [fit, p];
     }
     const w = WEIGHT[lm.clue.confidence];
@@ -162,7 +167,14 @@ async function getJson(url: string, ms = 20_000): Promise<any> {
   }
 }
 
-interface Hit { lat: number; lon: number; label: string; cls: string; named: boolean; exact: boolean }
+interface Hit {
+  lat: number;
+  lon: number;
+  label: string;
+  cls: string;
+  named: boolean;
+  exact: boolean;
+}
 
 // swissNAMES3D classes a landmark kind may resolve to ("Matterhorn" also names
 // three gondolas and a golf course).
@@ -177,7 +189,12 @@ function classRank(kind: LandmarkClue["kind"], cls: string): number {
 }
 
 function fold(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 // Churches come from the building register (class 1272) of the commune; named
@@ -201,7 +218,8 @@ export async function resolveLandmarks(
       }
       // A lake spans kilometres: the direction to its centre says little, and a
       // wrong direction would mislead, so lakes are not scored.
-      if (clue.kind === "lake") return { clue, points: [], note: "lakes are too large to place by one point; not scored" };
+      if (clue.kind === "lake")
+        return { clue, points: [], note: "lakes are too large to place by one point; not scored" };
       if (!clue.name) return { clue, points: [], note: "no name, cannot be placed" };
       try {
         const j = await getJson(
@@ -234,13 +252,21 @@ export async function resolveLandmarks(
           );
         // A named church the search does not know: fall back to the register's churches.
         if (!hits.length && clue.kind === "church" && churches.length) {
-          return { clue, points: churches, note: `"${clue.name}" not found; using the ${churches.length} church(es) in the register` };
+          return {
+            clue,
+            points: churches,
+            note: `"${clue.name}" not found; using the ${churches.length} church(es) in the register`,
+          };
         }
         return hits.length
           ? { clue, points: [hits[0]], note: `"${clue.name}" → ${hits[0].label}` }
           : { clue, points: [], note: `"${clue.name}" not found within 40 km` };
       } catch (err) {
-        return { clue, points: [], note: `"${clue.name}" lookup failed: ${err instanceof Error ? err.message : String(err)}` };
+        return {
+          clue,
+          points: [],
+          note: `"${clue.name}" lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+        };
       }
     }),
   );
@@ -262,7 +288,8 @@ async function ends(a: [number, number], b: [number, number]): Promise<[number, 
   const geom = JSON.stringify({ type: "LineString", coordinates: [a, b] });
   const j = await getJson(`${PROFILE}?geom=${encodeURIComponent(geom)}&sr=2056&nb_points=3`);
   const z = (q: any) => Number(q?.alts?.COMB ?? q?.alts?.DTM2 ?? q?.alts?.DTM25);
-  const first = z(j[0]), last = z(j[j.length - 1]);
+  const first = z(j[0]),
+    last = z(j[j.length - 1]);
   if (!Number.isFinite(first) || !Number.isFinite(last)) throw new Error("no height");
   return [first, last];
 }
@@ -277,14 +304,17 @@ export function terrainAt(lat: number, lon: number): Promise<Terrain | null> {
       const [e, n] = lv95(lat, lon);
       const [w, east] = await ends([e - 25, n], [e + 25, n]);
       const [s, north] = await ends([e, n - 25], [e, n + 25]);
-      const dzdx = (east - w) / 50, dzdy = (north - s) / 50;
+      const dzdx = (east - w) / 50,
+        dzdy = (north - s) / 50;
       const grade = Math.hypot(dzdx, dzdy);
       // Downhill is against the gradient; 0° = north, clockwise.
       const downhill = grade > 0 ? ((Math.atan2(-dzdx, -dzdy) * 180) / Math.PI + 360) % 360 : null;
       return { downhill, grade };
     })().catch(() => null);
     terrainCache.set(key, hit);
-    void hit.then((t) => { if (!t) terrainCache.delete(key); });
+    void hit.then((t) => {
+      if (!t) terrainCache.delete(key);
+    });
   }
   return hit;
 }
@@ -331,13 +361,13 @@ export function coerceLocation(v: unknown): LocationClues | undefined {
   const o = v as Record<string, unknown>;
   const conf = (x: unknown): ClueConfidence => (x === "sure" || x === "likely" || x === "guess" ? x : "guess");
   const dir = (x: unknown): Direction | undefined => {
-    const d = String(x ?? "").trim().toUpperCase();
+    const d = asText(x).trim().toUpperCase();
     return (DIRECTIONS as readonly string[]).includes(d) ? (d as Direction) : undefined;
   };
   const out: LocationClues = {};
   const sl = o.slope as Record<string, unknown> | undefined;
   if (sl && typeof sl === "object") {
-    const faces = String(sl.faces ?? "").trim().toLowerCase() === "flat" ? "flat" : dir(sl.faces);
+    const faces = asText(sl.faces).trim().toLowerCase() === "flat" ? "flat" : dir(sl.faces);
     if (faces) out.slope = { faces, confidence: conf(sl.confidence) };
   }
   if (Array.isArray(o.landmarks)) {
@@ -363,8 +393,13 @@ export function coerceLocation(v: unknown): LocationClues | undefined {
 
 export function cluesText(c: LocationClues): string {
   const parts: string[] = [];
-  if (c.slope) parts.push(`slope falls ${c.slope.faces === "flat" ? "nowhere (flat)" : `to the ${c.slope.faces}`} (${c.slope.confidence})`);
+  if (c.slope)
+    parts.push(
+      `slope falls ${c.slope.faces === "flat" ? "nowhere (flat)" : `to the ${c.slope.faces}`} (${c.slope.confidence})`,
+    );
   for (const l of c.landmarks ?? [])
-    parts.push(`${l.name ?? l.kind}${l.direction ? ` to the ${l.direction}` : ""}${l.distanceM ? ` ~${l.distanceM} m` : ""} (${l.confidence})`);
+    parts.push(
+      `${l.name ?? l.kind}${l.direction ? ` to the ${l.direction}` : ""}${l.distanceM ? ` ~${l.distanceM} m` : ""} (${l.confidence})`,
+    );
   return parts.join("; ");
 }

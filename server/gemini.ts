@@ -70,7 +70,11 @@ function toContents(messages: Anthropic.Messages.MessageParam[]) {
         if (b.type === "tool_use") {
           calls.set(b.id, { name: b.name, noid: !!b._noid });
           parts.push({
-            functionCall: { ...(b._noid ? {} : { id: b.id }), name: b.name, args: (b.input ?? {}) as Record<string, unknown> },
+            functionCall: {
+              ...(b._noid ? {} : { id: b.id }),
+              name: b.name,
+              args: (b.input ?? {}) as Record<string, unknown>,
+            },
             ...(b._g ? { thoughtSignature: b._g } : {}),
           });
         }
@@ -146,13 +150,26 @@ async function create(params: Anthropic.Messages.MessageCreateParamsNonStreaming
     systemInstruction: { parts: [{ text: systemText(params.system) }] },
     contents: toContents(params.messages),
     ...(tools.length
-      ? { tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description ?? "", parametersJsonSchema: t.input_schema })) }] }
+      ? {
+          tools: [
+            {
+              functionDeclarations: tools.map((t) => ({
+                name: t.name,
+                description: t.description ?? "",
+                parametersJsonSchema: t.input_schema,
+              })),
+            },
+          ],
+        }
       : {}),
     generationConfig: {
       maxOutputTokens: params.max_tokens,
       // The run's effort picks the thinking level: Gemini has low / medium / high
       // (3.8 Flash has no "minimal"; ai.google.dev/gemini-api/docs/thinking, 05.10.2026).
-      thinkingConfig: { thinkingLevel: levelOf((params as { output_config?: { effort?: string } }).output_config?.effort), includeThoughts: true },
+      thinkingConfig: {
+        thinkingLevel: levelOf((params as { output_config?: { effort?: string } }).output_config?.effort),
+        includeThoughts: true,
+      },
     },
   });
 
@@ -178,7 +195,12 @@ async function create(params: Anthropic.Messages.MessageCreateParamsNonStreaming
       } as Anthropic.Messages.ToolUseBlock & Carried);
       pending = undefined;
     } else if (p.text !== undefined) {
-      content.push({ type: "text", text: p.text, citations: null, ...(sig ? { _g: sig } : {}) } as Anthropic.Messages.TextBlock & Carried);
+      content.push({
+        type: "text",
+        text: p.text,
+        citations: null,
+        ...(sig ? { _g: sig } : {}),
+      } as Anthropic.Messages.TextBlock & Carried);
       pending = undefined;
     }
   }

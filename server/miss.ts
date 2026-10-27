@@ -60,13 +60,19 @@ async function diagnose(r: PracticeResult): Promise<MissReason | null> {
         };
       }
     }
-    return { code: "not_found", text: "The house is not in the register of the communes it searched or the ones next to the listing's." };
+    return {
+      code: "not_found",
+      text: "The house is not in the register of the communes it searched or the ones next to the listing's.",
+    };
   }
 
   const calls = (s.calls ?? []).filter((c) => normalizeCommune(c.commune) === normalizeCommune(house!.commune));
   if (calls.some((c) => c.ranked)) {
     if (homeStatus(house) === null)
-      return { code: "not_residential", text: `The register does not list the house as a home (category ${house.category ?? "?"}, status ${house.status ?? "?"}), so the shortlist never offers it.` };
+      return {
+        code: "not_residential",
+        text: `The register does not list the house as a home (category ${house.category ?? "?"}, status ${house.status ?? "?"}), so the shortlist never offers it.`,
+      };
     const c = calls.filter((x) => x.ranked).sort((a, b) => b.returned - a.returned)[0];
     const seen = calls.filter((x) => x.ranked).reduce((t, x) => t + x.returned, 0);
     return {
@@ -81,7 +87,10 @@ async function diagnose(r: PracticeResult): Promise<MissReason | null> {
     };
 
   if (!calls.length)
-    return { code: "cut_off", text: `It was in ${house.commune}, but the run's shortlist filters were not recorded (an older run).` };
+    return {
+      code: "cut_off",
+      text: `It was in ${house.commune}, but the run's shortlist filters were not recorded (an older run).`,
+    };
 
   // The call that came closest: the fewest filters the house fails.
   const fails = (c: (typeof calls)[number]) => {
@@ -89,9 +98,15 @@ async function diagnose(r: PracticeResult): Promise<MissReason | null> {
     if (!inRange(house!.floors, c.floors, 1, 1))
       out.push({ code: "floors", text: `floors guessed ${c.floors}, the register says ${house!.floors}` });
     if (!inRange(house!.dwellings, c.dwellings, 1, 1))
-      out.push({ code: "dwellings", text: `homes in the building guessed ${c.dwellings}, the register says ${house!.dwellings}` });
+      out.push({
+        code: "dwellings",
+        text: `homes in the building guessed ${c.dwellings}, the register says ${house!.dwellings}`,
+      });
     if (!inBand(house!.footprintM2, c.footprintM2))
-      out.push({ code: "footprint", text: `footprint guessed ${c.footprintM2} m², the register says ${house!.footprintM2} m²` });
+      out.push({
+        code: "footprint",
+        text: `footprint guessed ${c.footprintM2} m², the register says ${house!.footprintM2} m²`,
+      });
     return out;
   };
   const best = calls.map(fails).sort((a, b) => a.length - b.length)[0];

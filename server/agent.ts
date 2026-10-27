@@ -9,53 +9,25 @@
 // the documented trace the user asked for.
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
-import { createHash } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  runBash,
-  writeSandboxFile,
-  readSandboxFile,
-} from "./sandbox";
 import { RunFiles } from "./files";
 import { seedGeoHelper } from "./geo-helper";
-import { renderCandidateRoofs, readRoofPng } from "./roofs";
-import { buildingAt, buildingByEgid, flatsOf, normalizeCommune, sameRegisterPlot } from "./gwr";
-import {
-  annotateFit,
-  decisive,
-  factRows,
-  fitText,
-  listingFacts,
-  neighbourPlots,
-  plotAt,
-  plotByEgrid,
-  plotGroupFor,
-  strongFit,
-  type ListingFacts,
-  type Plot,
-} from "./proof";
-import { shortlistBuildings } from "./shortlist";
-import { renderContactSheet } from "./sheet";
+import { buildingByEgid } from "./gwr";
+import { listingFacts } from "./proof";
 import {
   type LedgerEntry,
   type SearchState,
-  addCandidates,
   assessCommune,
   claimedEntry,
-  openPossibles,
   coverageText,
-  leavePrimaryBlocked,
   mustCheck,
-  nextToView,
   pendingCommunes,
   searchPlanText,
   topCheckText,
-  unchecked,
 } from "./search";
 import {
   type Answer,
-  type AnswerProof,
   type Confidence,
   type Job,
   type Signature,
@@ -72,13 +44,26 @@ import {
   VARIANTS,
   apiModel,
 } from "./jobs";
-import { DIRECTIONS, cluesText, coerceLocation, type Direction } from "./locate";
-import { shapeAt } from "./neighbours";
-import { viewFrom } from "./view";
+import { cluesText, coerceLocation } from "./locate";
 import { BINDING_BETA, GEMINI_LABEL, onLogin, poolOn, THINKING } from "./claude-pool";
-import { keptLessons, lessonsBlock } from "./lessons-store";
+import { keptLessons } from "./lessons-store";
 import { houseNumberOf, streetOf } from "./consensus";
 import { twinsOf } from "./twins";
+import { asText } from "./text";
+import { searchOf } from "./agent-ledger";
+import {
+  type AgentImage,
+  initialContent,
+  isPlain,
+  PLAIN_TASK,
+  PROMPT_VERSION,
+  pruneOldImages,
+  systemOf,
+  TASK,
+} from "./agent-prompt";
+import { clearState, loadState, saveConversation, saveState } from "./agent-state";
+import { clip, dispatchTool, TOOLS } from "./agent-tools";
+import { proveAnswer, unprovenAsShortlist } from "./prove";
 
 export const MODEL = DEFAULT_MODEL;
 const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS ?? 150);
@@ -87,7 +72,6 @@ const MAX_STALLS = 2;
 // Wall-clock budget for one investigation. Checking every candidate takes longer
 // than giving up early, so the cap is what keeps a hopeless search bounded.
 const MAX_MINUTES = Number(process.env.AGENT_MAX_MINUTES ?? 45);
-const MAX_TOOL_TEXT = 16_000; // chars of command output fed back to the model
 // Speed. Fast mode runs the same model at up to 2.5x the output speed for 2x the
 // price; only some models offer it. AGENT_FAST=0 turns it off.
 const FAST_MODELS = new Set(["claude-opus-4-8", "claude-opus-5-5"]); // 4.8: resumed old runs
@@ -103,427 +87,6 @@ const EFFORT: (typeof EFFORTS)[number] = (EFFORTS as readonly string[]).includes
 // in order, so "write fetch.mjs, then run it" still works.
 const PARALLEL_TOOLS = new Set(["bash", "read_file", "render_roofs", "view_from"]);
 
-export interface AgentImage {
-  base64: string;
-  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
-}
-
-// The "computer" — the only tools both the finder and the build-potential
-// analyst share. No domain logic; the model writes its own access.
-export const COMPUTER_TOOLS = [
-  {
-    name: "bash",
-    description:
-      "Run a shell command in your working directory and get stdout+stderr back. Node.js (>=18, with global fetch) is available; curl and python3 may be. Use it to fetch public data (cadastre/aerial/register/OSM), run scripts you wrote, compute distances, inspect files. Long output is truncated.",
-    input_schema: {
-      type: "object",
-      properties: { command: { type: "string" } },
-      required: ["command"],
-    },
-  },
-  {
-    name: "write_file",
-    description:
-      "Write a text file (a script, a note) in your working directory. Prefer this over shell here-docs for code — it avoids escaping mistakes. Then run it with bash (e.g. `node fetch.mjs`).",
-    input_schema: {
-      type: "object",
-      properties: {
-        path: { type: "string", description: "relative path inside the working dir, e.g. 'fetch.mjs'" },
-        content: { type: "string" },
-      },
-      required: ["path", "content"],
-    },
-  },
-  {
-    name: "read_file",
-    description:
-      "Read a file back. If it is an image (jpg/png/webp/gif) you SEE it — this is how you look at aerial photos you downloaded, crops of the listing photos, or maps you rendered. Otherwise you get its text.",
-    input_schema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-    },
-  },
-] as unknown as Anthropic.Messages.ToolUnion[];
-
-const TOOLS = [
-  ...COMPUTER_TOOLS,
-  {
-    name: "record_signature",
-    description:
-      "Call this ONCE, first, before searching: from the listing photos, describe what this property looks like FROM ABOVE, as an ordered list of aerial-visible clues, biggest discriminator first. LEAD with the hard, cadastre-matchable STRUCTURE — number of floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda/conservatory, pool — because those are what filter the building register. Then topology/context ('bar of attached houses' / 'detached villa next to a forest' / 'next to a church'), then the plot (garden size, shape, roads on which sides), then fine roof detail (shape, dormers, solar). Rank vegetation (hedges, topiary, trees) LAST — it barely shows from above. This signature drives the enumerate-and-filter search. Also fill `location` with what the photos say about WHERE the house is (which way the slope falls, landmarks seen from it and in which direction): the shortlist puts the houses whose surroundings fit first.",
-    input_schema: {
-      type: "object",
-      properties: {
-        clues: {
-          type: "array",
-          items: { type: "string" },
-          description: "Ordered clues, biggest/most-discriminating filter FIRST, finest detail last.",
-        },
-        schematic_svg: {
-          type: ["string", "null"],
-          description: "Optional: a small top-down SVG sketch of the target (house, row, garden outline, positions of tree/path/pool/dependency, which sides have roads).",
-        },
-        location: {
-          type: "object",
-          description:
-            "WHERE the photos place the house — read it from views through windows, from the terrace or garden, and from the slope. This ORDERS the shortlist (best fit first); it never removes a house, so give what the photos show, with an honest confidence, and omit what they don't.",
-          properties: {
-            slope: {
-              type: "object",
-              description: "The direction the ground falls away from the house (its view side), as on a map — read it from the photos (the view, shadows, the terrain). A listing's 'plein sud' / 'versant sud' / 'Südhang' usually means sunny, not where the slope falls (a chalet sold as 'versant sud' can stand on a slope that falls west), so text alone is a guess. Use 'flat' for level ground.",
-              properties: {
-                faces: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "flat"] },
-                confidence: { type: "string", enum: ["sure", "likely", "guess"] },
-              },
-              required: ["faces", "confidence"],
-            },
-            landmarks: {
-              type: "array",
-              description: "Distinctive things visible from the house: a church or chapel, a named peak, a lake, a village. Direction is where it lies SEEN FROM THE HOUSE (map compass: work it out from the sun, shadows, the slope or known geography). Omit name for an unnamed local church. ALSO every place the listing's DESCRIPTION names near the house — a sports centre, a school, the station, a shop, the lake shore ('à proximité du centre sportif du Grand-Donzel', '5 Gehminuten zum Bahnhof'): kind 'other' (or 'place' for a village or quarter), its proper name, distance_m from what the text says (a walking minute ≈ 80 m, 'proximité' ≈ 300 m) and no direction unless the text gives one.",
-              items: {
-                type: "object",
-                properties: {
-                  kind: { type: "string", enum: ["church", "peak", "lake", "place", "other"] },
-                  name: { type: "string", description: "its proper name if you know it, e.g. 'Matterhorn', 'Lac Léman'" },
-                  direction: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] },
-                  distance_m: { type: "number", description: "rough distance from the house, if the photos allow it" },
-                  confidence: { type: "string", enum: ["sure", "likely", "guess"] },
-                },
-                required: ["kind", "confidence"],
-              },
-            },
-            neighbours: {
-              type: "array",
-              description:
-                "The buildings the photos show NEXT TO the house (up to 6), and open sides — the strongest way to tell look-alike houses apart, because swissBUILDINGS3D has every neighbour's outline, height and roof and each candidate's surroundings are compared with these. Side: a compass point if you can tell it (sun, shadows, slope), otherwise where it stands as seen in the photo of the house's front: left, right, behind, front — the pattern is then tried in every orientation. Fill only what you can see; one sure neighbour beats three guesses.",
-              items: {
-                type: "object",
-                properties: {
-                  side: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "left", "right", "behind", "front"] },
-                  distance_m: { type: "number", description: "the gap between the two buildings, roughly" },
-                  size: { type: "string", enum: ["smaller", "similar", "bigger"], description: "its footprint against the house's" },
-                  height: { type: "string", enum: ["lower", "similar", "taller"] },
-                  roof: { type: "string", enum: ["flat", "pitched"] },
-                  ridge: { type: "string", enum: ["parallel", "perpendicular"], description: "its ridge against the house's ridge, both pitched" },
-                  none: { type: "boolean", description: "true: NO building on that side within ~40 m (field, road, lake, garden)" },
-                  confidence: { type: "string", enum: ["sure", "likely", "guess"] },
-                },
-                required: ["confidence"],
-              },
-            },
-          },
-        },
-      },
-      required: ["clues"],
-    },
-  },
-  {
-    name: "shortlist_buildings",
-    description:
-      "Enumerate EVERY home in a Swiss commune — any canton (from the federal building register GWR), new builds (planned or being built) and buildings with shops or offices included — RANKED, nothing removed. The ranking uses what the LISTING states (the plot of its land area for a house, a flat of its living area for a flat, year built, homes in the building); candidates that fit on every checked fact come first and say so. Your estimates (floors, footprint, dwellings) only reorder, so a wrong guess costs places, not the house. Every candidate returned goes into your checklist; look at them with view_candidates and record a verdict with mark_candidates. Call again with the same commune for the next page. Do NOT re-filter the result by era or exact floors.",
-    input_schema: {
-      type: "object",
-      properties: {
-        commune: { type: "string", description: "the commune, e.g. 'Denges' or 'Saint-Sulpice (VD)'" },
-        floors: { type: "number", description: "your estimate of the levels the register counts: a semi-basement + 2 storeys + attic is 4. Orders only." },
-        footprintM2: { type: "number", description: "your estimate of THIS building's ground footprint in m² — for a flat, semi-detached or terraced house the register's entry is often just its own part of the block, not the whole block. NOT the listing's living area. Orders only." },
-        dwellings: { type: "number", description: "homes in the building if the listing says (\"PPE de deux logements\" = 2). Orders only." },
-        attached: { type: "boolean", description: "Geneva only: true for an attached/row house, false if free-standing; omit if unsure" },
-        maxResults: { type: "number" },
-      },
-      required: ["commune"],
-    },
-  },
-  {
-    name: "view_candidates",
-    description:
-      "LOOK at shortlisted candidates fast: returns ONE contact-sheet image of up to 16 north-up aerial tiles (SWISSIMAGE, ~90 m across), each centred on a candidate building (red cross) and numbered, plus the legend number → EGID/address. Omit egids to get the next 16 unviewed candidates of your checklist (optionally of one commune). Compare each tile against the listing's photos and signature, then pass your verdicts as `marks` on the next view_candidates call (one turn per sheet), or with mark_candidates. Zoom on a tile with a tighter WMS aerial only when it is a real contender.",
-    input_schema: {
-      type: "object",
-      properties: {
-        egids: { type: "array", items: { type: "string" }, description: "specific candidates to show (max 16); omit for the next unviewed ones" },
-        commune: { type: "string", description: "with no egids: take the next unviewed candidates of this commune" },
-        marks: {
-          type: "array",
-          description: "your verdicts on the PREVIOUS sheet, recorded before the next one is drawn (same shape as mark_candidates)",
-          items: {
-            type: "object",
-            properties: {
-              egid: { type: "string" },
-              verdict: { type: "string", enum: ["rejected", "possible", "match"] },
-              reason: { type: "string" },
-            },
-            required: ["egid", "verdict", "reason"],
-          },
-        },
-      },
-    },
-  },
-  {
-    name: "mark_candidates",
-    description:
-      "Record your verdict on candidates you have LOOKED at (view_candidates): rejected (with the visible reason — 'hip roof, no separate garage'), possible, or match. This is the checklist that proves a commune was exhausted; candidates you never viewed can't be rejected.",
-    input_schema: {
-      type: "object",
-      properties: {
-        marks: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              egid: { type: "string" },
-              verdict: { type: "string", enum: ["rejected", "possible", "match"] },
-              reason: { type: "string" },
-            },
-            required: ["egid", "verdict", "reason"],
-          },
-        },
-      },
-      required: ["marks"],
-    },
-  },
-  {
-    name: "inspect_candidate",
-    description:
-      "Take a CLOSE LOOK at one candidate: its fact sheet (register floors, dwellings and footprint, and its cadastral plot with the plot's area, each checked against the listing's own numbers ✓/✗), a tight 40 m north-up aerial centred on it, and its real 3D roof. Required before you reject a candidate the shortlist flags STRONG FIT, and before the candidate you submit as the answer — an exact answer must be a candidate you inspected and marked match. Pass the EGID from your checklist; a building not on it can be given by lat/lon and is added.",
-    input_schema: {
-      type: "object",
-      properties: {
-        egid: { type: "string" },
-        lat: { type: "number", description: "only for a building not on your checklist" },
-        lon: { type: "number" },
-      },
-    },
-  },
-  {
-    name: "view_from",
-    description:
-      "What a candidate house can actually SEE, from swisstopo's terrain model out to 25 km: per direction, the skyline (how high and how far), whether the ground falls away in front (a view down), a slope blocking the view close by, and a dead-flat surface in view below (a lake, or a valley floor). Use it when the photos show a view — through a window, from a terrace or a balcony: a lake below to the south, mountains far off, a hillside right in front. Look-alike houses a few hundred metres apart see very different things. Pass the candidate (EGID from your checklist, or lat/lon) and the directions the photos look in, if you know them (all 8 otherwise).",
-    input_schema: {
-      type: "object",
-      properties: {
-        egid: { type: "string" },
-        lat: { type: "number" },
-        lon: { type: "number" },
-        directions: { type: "array", items: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] } },
-      },
-    },
-  },
-  {
-    name: "render_roofs",
-    description:
-      "Given your shortlist of candidate buildings (each with lat/lon), render each one's REAL roof from swissBUILDINGS3D — swisstopo's national 3D building models — as a clean two-angle oblique 3D view, and get the images back to LOOK at. Use this in the confirm step to separate near-identical row houses: compare each candidate's roof SHAPE against the roof in the listing photos — hip vs gable, ridge direction, the step down to a lower wing. Pure built structure; vegetation is irrelevant here. Pass 2–12 candidates. Covers all of Switzerland.",
-    input_schema: {
-      type: "object",
-      properties: {
-        candidates: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              label: { type: "string", description: "a short id you'll recognise, e.g. the parcel no. or address" },
-              lat: { type: "number" },
-              lon: { type: "number" },
-            },
-            required: ["label", "lat", "lon"],
-          },
-        },
-      },
-      required: ["candidates"],
-    },
-  },
-  {
-    name: "submit_answer",
-    description:
-      "Call once, when you are confident, to report the final result (or found=false). A street/building answer is only recorded once it is PROVEN: it is a candidate you inspected (inspect_candidate) and marked match, nothing else is marked match, every shortlisted candidate has a verdict, none is left as possible, and the listing's facts (homes, living area, plot area) do not contradict it. Otherwise it is sent back with what is missing — and near the time limit an unproven address is recorded as a ranked shortlist, not as the address.",
-    input_schema: {
-      type: "object",
-      properties: {
-        found: { type: "boolean" },
-        address: { type: ["string", "null"] },
-        parcel: { type: ["string", "null"], description: "e.g. 'Plan-les-Ouates 10917'" },
-        parcels: {
-          type: "array",
-          description:
-            "Every exact cadastral plot the property covers, when you have pinned them (one entry per plot). Use the commune name with accents and the plot number exactly as the land register writes it (e.g. 'HN12522'). For building land with no address, this IS the answer.",
-          items: {
-            type: "object",
-            properties: {
-              commune: { type: "string" },
-              plot: { type: "string" },
-              egrid: { type: ["string", "null"] },
-            },
-            required: ["commune", "plot"],
-          },
-        },
-        commune: { type: ["string", "null"] },
-        confidence: {
-          type: "string",
-          enum: ["street", "building", "parcel", "block", "neighborhood", "city", "region", "country", "unknown"],
-          description:
-            "street/building: exact address. parcel: the exact plot(s) are pinned in parcels[] but there is no address (e.g. vacant building land). Then wider areas.",
-        },
-        latitude: { type: ["number", "null"] },
-        longitude: { type: ["number", "null"] },
-        reasoning: { type: "string" },
-        candidates: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              parcel: { type: ["string", "null"] },
-              address: { type: ["string", "null"] },
-              note: { type: "string" },
-            },
-            required: ["note"],
-          },
-        },
-        links: {
-          type: "array",
-          items: { type: "string" },
-          description: "Direct links: cadastre extract, Google/swisstopo satellite, OSM — the exact URLs.",
-        },
-      },
-      required: ["found", "confidence", "reasoning"],
-    },
-  },
-] as unknown as Anthropic.Messages.ToolUnion[];
-
-const SYSTEM = `You are GeoFinder — an autonomous investigator that finds the exact street address and cadastral parcel of a Swiss property from its listing (photos + text + municipality).
-
-You have no geo tools. You have a real Linux computer (Node ≥18 with global fetch, network access) and you build your own access to public data by writing and running code, like a human analyst. The method is entirely yours — reason it out, invent and switch approaches freely, and verify however you see fit.
-
-PRIMITIVES
-- bash(command): run a shell command, get stdout+stderr (truncated).
-- write_file(path, content) / read_file(path): read_file on an image lets you SEE it (vision) — that's how you look at aerials you download.
-- submit_answer(...): call once, when confident.
-
-ENVIRONMENT
-- Each bash call is a fresh process: no cd, use paths relative to the working directory. The photos are already there as photo1.jpg, photo2.jpg, … (also shown inline). Save what you fetch there and read images back to look at them.
-- No Python/pip, no image libraries. To zoom, re-fetch a WMS aerial with a tighter bbox centred on the point — never crop or compute GPS→pixels.
-- A tested helper geo.mjs is already in your working directory — import it instead of hand-rolling the fiddly geometry (that is where the mistakes creep in, and it is why hand-computed distances are unreliable): wmsBbox4326(lat,lon,spanM) gives the correct lat,lon-order BBOX for a swisstopo WMS aerial; also haversine, bearing, wgs84ToLv95, polygonAreaMetres, polygonCentroid, pointInPolygon, and minEdgeDistanceMetres(ringA,ringB) — ≈0 means two footprints share a wall, i.e. an attached row house. Rings are [lon,lat] arrays. e.g. node -e "import('./geo.mjs').then(g=>console.log(g.wmsBbox4326(46.16,6.04,140)))".
-
-GROUNDING ONLY
-Never web-search, and never look up the listing, the agency, or the property online. Deduce everything from the given photos + text, grounded only against neutral geodata (cadastre, aerials, building register, OSM). Nominatim is fine solely to turn a place NAME into coordinates.
-
-METHOD — enumerate, don't scan
-Your first message carries a SEARCH PLAN: the commune confidence and the ring of neighbouring communes, nearest first. Follow it. HIGH confidence: the property is in the stated commune — exhaust that commune before looking anywhere else (the tools enforce this). LOW confidence: the listing only places the property NEAR the stated commune ("à 5 minutes de …") — search outward commune by commune, nearest first, finishing each before the next.
-Treat each commune as a FINITE, listable set of buildings, not a map to eyeball. You pin a house by enumerating every candidate and filtering — not by wandering the aerial hoping to recognise it. (This is the difference that matters: runs that only scan reach the right neighbourhood but never look at the actual house.)
-1. Read the building's HARD structural attributes off the photos: the levels the register counts (a two-storey block + single-storey wing reads as ~3; a semi-basement "rez inférieur" + two storeys + attic is 4), the number of dwellings when the listing says it ("PPE de deux logements" = 2), the rough FOOTPRINT in m² of the main building, attached-vs-free-standing (one of a row/terrace, or detached?), roof shape, plus any second building in the garden / veranda-conservatory / pool. Do NOT judge by how OLD it looks — the registered construction era routinely disagrees with the appearance, so never filter on age.
-2. Get your candidate list from shortlist_buildings(commune, floors, footprintM2, dwellings, attached) — any canton. It ranks EVERY home in the commune (new builds and buildings with shops included) by what the listing states — the plot of its land area, a flat of its living area, year built, homes in the building — and removes none; your estimates only reorder. Candidates marked as fitting on every checked fact come first: look at those first. Never hand-write a filter yourself — a hand-written "2–3 floors" is exactly how a house the register counts as 4 was lost. When you pass estimates: footprintM2 is THIS building's GROUND footprint (for a flat or a semi-detached house the register often holds only its own part of the block), NOT the listing's living area; and estimate floors generously. If the house is not in the first page, call again for the next one before leaving the commune.
-3. Shortlist on the BUILDING (floors, footprint, dwellings), never on the plot. But once you have candidates, the listing's land area is strong evidence: the shortlist checks each strong candidate's cadastral plot against it, and a plot that matches to within a few m² (331 m² listed, plot 330.8 m²) all but names the house. A plot that does NOT match is not a rejection on its own — a property is often several plots (house plot + garden plots, e.g. 1481 m² listed = two plots summed) — so look at the neighbouring plots before ruling it out, and list every plot in parcels[] when you answer. For a FLAT, the register lists every flat in a building with its storey, rooms and m², and inspect_candidate checks the listing's flat against them: in a row of look-alike blocks or entrances, inspect every one — the entrances without a flat of that size on that floor are out, and that is often what names the address. A plot NUMBER the listing names is the plot before it was divided when the house is new or planned ("on plot 1064, 4 new villas"): the houses built on it carry new plot numbers (Conthey: 1064 became 30756). Never reject a new house only because its plot number differs: check whether it stands on, or right next to, the plot the listing names.
-4. LOOK at the candidates in ranked order: view_candidates shows 16 at a time on one contact sheet; record a verdict on each (pass them as marks on the next view_candidates call — one turn per sheet — or with mark_candidates). The list is ranked by how well the register fits the listing's own numbers, so the house is usually near the top. That checklist is how you (and the reminders) know a commune is exhausted — a commune is "searched" once the candidates the SEARCH PLAN owes a verdict (the top of its ranked list, as deep as the plan says, and every STRONG FIT) have one; go deeper only when a lead points there (a street name, a view, a neighbour), not by default. A rejection names what you SAW that rules it out ("hip roof, no garden terrace on the south side") — "no" or "small" is refused. A candidate flagged STRONG FIT (every register fact fits the listing) cannot be rejected from the contact sheet at all: inspect_candidate it first.
-5. Confirm survivors by ARRANGEMENT and ROOF SHAPE, on built structure only (vegetation — hedges, topiary, trees — does not reliably read from above). On the aerial: which side the veranda/terrace is on, a second building in the garden, roads on which sides, position in the row. And call render_roofs on your shortlist (pass each candidate's lat/lon) to SEE each one's real roof from swissBUILDINGS3D and match its shape to the roof in the photos — hip vs gable, ridge direction, the step down to a lower wing. That is what separates near-identical row houses. When the photos show a view (through a window, from a terrace or balcony), call view_from on your best candidates: a lake below, mountains far off or a slope right in front tells houses a few hundred metres apart. When the photos include a FLOOR PLAN, read its outer dimensions, its shape (rectangle, L) and which side the garden or terrace faces, and compare them with each candidate's outline in inspect_candidate.
-
-PROOF — what the code accepts as an exact address
-An exact (street/building) answer is recorded only when: it is a candidate you inspected with inspect_candidate and marked match; no other candidate is marked match; every shortlisted candidate has a verdict and none is left "possible" (settle each one: inspect it, then reject it with the visible difference, or match) — EXCEPT when your answer is decisive: its plot, or its plot together with neighbouring plots, matches the listing's land area within 2% and no register fact contradicts it; then the rest of the checklist need not be settled, so submit it at once; and the listing's facts do not contradict it (a single house in a 2-dwelling building, a living area the building cannot hold, a plot of a different size). Until then submit_answer sends it back with what is missing. If you cannot get there, submit found=false at block confidence with your ranked candidates and what would separate them.
-
-ANSWER HONESTLY — a shortlist beats a wrong pin
-Building-level confidence is EARNED, not asserted: claim a single precise address/parcel only when the aerial has CONFIRMED the arrangement AND your top candidate clearly beats the runner-up. If several candidates survive, or nothing confirms, that is still a SUCCESS — submit them as a ranked candidates[] at block/neighborhood confidence and say what would separate them. Never fabricate a precise address to seem more certain than the evidence; a confident wrong pin is the worst possible outcome — worse than an honest shortlist.
-Exact plots are a full result too: when you have pinned the exact cadastral plot(s) the property covers, list every one in parcels[] (commune + plot number as the land register writes it). For building land or other plots with no street address, that is a success: found=true, confidence "parcel". When it also has an address, give both.
-
-SOURCES (starting points, not limits; set a User-Agent header)
-- Geneva cadastre (SITG, ArcGIS REST, f=json&outSR=4326). Parcels: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_PARCELLE_MENSU/MapServer/0/query — NO_PARCELLE, SURFACE, COMMUNE; filter by where=COMMUNE='X' AND SURFACE BETWEEN a AND b, or geometry=lon,lat&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects; returnGeometry=true → geometry.rings. Buildings: https://vector.sitg.ge.ch/arcgis/rest/services/CAD_BATIMENT_HORSOL/MapServer/0/query — EPOQUE_CONSTRUCTION, NIVEAUX_HORSOL, SURFACE (footprint), EGID.
-- Other cantons (ZH etc.) — official cadastre on geodienste.ch, WFS 2.0, bbox axis order lat,lon: https://geodienste.ch/db/av_0/deu?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=ms:RESF&SRSNAME=urn:ogc:def:crs:EPSG::4326&BBOX={latmin},{lonmin},{latmax},{lonmax},urn:ogc:def:crs:EPSG::4326&COUNT=30 — ms:RESF = parcel (ms:Flaeche = area, the villa key; ms:Nummer, ms:EGRIS_EGRID). ms:HADR = address (ms:Strassenname, ms:Hausnummer, ms:GWR_EGID). ms:LCSF = building footprints. Geometry is gml:posList (lat lon). av_0 is ZH; other cantons' free WFS: https://www.geodienste.ch/info/services.csv?base_topics=av&language=de.
-- Aerial (swisstopo SWISSIMAGE) — download the JPEG then read_file: https://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=ch.swisstopo.swissimage&CRS=EPSG:4326&BBOX={latmin},{lonmin},{latmax},{lonmax}&WIDTH=1200&HEIGHT=1200&FORMAT=image/jpeg (lat,lon order; square bbox in metres: dLat=span/2/111320, dLon=dLat/cos(lat)).
-- Building register (GWR, nationwide): https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometry={lon},{lat}&geometryType=esriGeometryPoint&layers=all:ch.bfs.gebaeude_wohnungs_register&tolerance=15&sr=4326&geometryFormat=geojson&mapExtent={lon-0.002},{lat-0.0015},{lon+0.002},{lat+0.0015}&imageDisplay=800,600,96 — strname_deinr (street+no.), gbauj (year), gastw (floors), ganzwhg (dwellings), egid. Its plot field lparz is often outdated (a plot from before a split) or swapped between the two halves of an attached pair: a building's plot is the one under its address point (gkode/gkodn), and its house number belongs to the building at that point.
-- OSM amenities: Overpass POST https://overpass-api.de/api/interpreter (body 'data='+urlencoded QL). Geocoding: https://nominatim.openstreetmap.org/search?q=...&format=json. Compute haversine/bearing yourself.
-
-SPEED
-Several tool calls in one turn run at the same time (bash, read_file, render_roofs). When calls do not depend on each other — fetching several aerials or registers, reading several images — make them all in the same turn instead of one per turn.
-
-Reason explicitly about why you run each command — your thinking is the saved trace of the investigation.`;
-
-// Plain mode (jobs.ts VARIANTS): no method, no plan, no lessons — the tools alone.
-const PLAIN_SYSTEM = `You are GeoFinder. You find the exact street address of a Swiss property from its listing, using the tools you are given. Decide for yourself how to search. When you are done, call submit_answer.`;
-const PLAIN_TASK = `The images above and the text below are a property listing. Find the property's exact street address.`;
-const isPlain = (job: Job) => !!(job.model && VARIANTS[job.model]?.plain);
-const systemOf = (job: Job) => (isPlain(job) ? PLAIN_SYSTEM : SYSTEM + lessonsBlock(job.lessons ?? []));
-
-const TASK = `The images above and the text below are a property listing. Find the property's exact street address and cadastral parcel with your computer.
-
-FIRST, before searching: study the photos and call record_signature — LEAD with the hard, register-matchable structure (floors, the main building's rough footprint in m², attached-vs-detached and position in a row, a second building in the garden, veranda, pool), biggest discriminator first, then the plot and finally roof detail. Fill its location too: which way the ground falls away, the church, peak, lake or village seen from the house and in which direction, and the NEIGHBOURS — every building the photos show next to the house (its side, the gap, bigger or smaller, taller or lower, flat or pitched roof, ridge parallel or across) and every open side. A house alone looks like hundreds of others; the houses around it are what single it out, and the shortlist checks every candidate's real surroundings against them first. A property can be several parcels fused into one visual unit — describe the whole unit, but name the main BUILDING footprint specifically.
-
-Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors + footprint + dwellings — the plot area is checked for you afterwards), look at every candidate with view_candidates and record a verdict with mark_candidates, inspect every strong fit and every possible with inspect_candidate, then confirm the survivor by its built arrangement. Work step by step and verify visually. Call submit_answer with a single address ONLY when it meets the PROOF rules — otherwise submit your ranked shortlist honestly.`;
-
-// A content fingerprint of the exact prompt (SYSTEM + TASK) a run is governed
-// by. Stamped onto every job at start and saved to prompt.txt, so a past run's
-// cost and reasoning are always attributable to the precise prompt that
-// produced them — otherwise a prompt edit + redeploy leaves the history in the
-// dark about what was actually in force. Short hex of sha256 is enough to tell
-// two prompt versions apart at a glance.
-const PROMPT_VERSION = createHash("sha256")
-  .update(`${SYSTEM}\n---TASK---\n${TASK}`)
-  .digest("hex")
-  .slice(0, 12);
-
-function initialContent(
-  images: AgentImage[],
-  listingText: string | undefined,
-  searchPlan: string,
-  plain = false,
-): Anthropic.Messages.ContentBlockParam[] {
-  const blocks: Anthropic.Messages.ContentBlockParam[] = [];
-  images.forEach((img, i) => {
-    blocks.push({ type: "text", text: `Listing photo ${i + 1} (saved as photo${i + 1}.jpg):` });
-    blocks.push({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.base64 } });
-  });
-  blocks.push({
-    type: "text",
-    text:
-      `${plain ? PLAIN_TASK : TASK}\n\nYou are already in your working directory; ${images.length} listing photo(s) are saved there as photo1.jpg … photo${images.length}.jpg. Read them with read_file, and save everything you fetch there too (relative paths only — do not cd).` +
-      `\n\nListing text:\n${listingText ? `"""${listingText}"""` : "(none provided)"}` +
-      (plain ? "" : `\n\n${searchPlan}`),
-  });
-  return blocks;
-}
-
-// Contact sheets, aerials and roof renders reach the model by file_id (see
-// files.ts), so they no longer weigh on the request. Only a picture whose upload
-// failed still travels inline, and if those ever pass IMAGES_MAX_BYTES the
-// oldest are replaced by a note until they are back under IMAGES_KEEP_BYTES —
-// in one go, rarely, since every such edit changes an earlier turn. The listing
-// photos in the first message are never touched.
-const SHEET_NOTE = "North-up aerials (SWISSIMAGE)";
-const IMAGES_MAX_BYTES = 14_000_000; // base64 characters
-const IMAGES_KEEP_BYTES = 5_000_000;
-
-function pruneOldImages(
-  messages: Anthropic.Messages.MessageParam[],
-  inline: (base64: string) => boolean = () => true,
-): boolean {
-  const images: { blocks: unknown[]; at: number; size: number; sheet: boolean }[] = [];
-  for (const m of messages) {
-    if (m.role !== "user" || !Array.isArray(m.content)) continue;
-    for (const b of m.content) {
-      if (b.type !== "tool_result" || !Array.isArray(b.content)) continue;
-      const sheet = b.content.some((c) => c.type === "text" && c.text.startsWith(SHEET_NOTE));
-      b.content.forEach((c, at) => {
-        if (c.type === "image" && c.source.type === "base64" && inline(c.source.data))
-          images.push({ blocks: b.content as unknown[], at, size: c.source.data.length, sheet });
-      });
-    }
-  }
-  let total = images.reduce((n, i) => n + i.size, 0);
-  if (total <= IMAGES_MAX_BYTES) return false;
-  for (const img of images) {
-    if (total <= IMAGES_KEEP_BYTES) break;
-    total -= img.size;
-    img.blocks[img.at] = {
-      type: "text",
-      text: img.sheet
-        ? "[contact sheet image removed to keep the request small — your verdicts on it are in the checklist]"
-        : "[image removed to keep the request small — read the file again if you need to see it]",
-    };
-  }
-  return true;
-}
-
-function clip(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + `\n…[truncated, ${s.length} chars total]` : s;
-}
-
 // Periodic anti-over-search nudge. Escalates as the step (or time) budget runs
 // down so the model reviews its best candidate and commits instead of scanning
 // forever. While the search plan still has candidates without a verdict (or
@@ -538,21 +101,18 @@ function convergeReminder(step: number, max: number, search?: SearchState, nearT
     const open = search ? mustCheck(search).length : 0;
     const todo = search ? pendingCommunes(search, 3) : [];
     if (search && (open > 0 || todo.length > 0)) {
-      return `[system-reminder] ${step} steps in. Coverage: ${coverageText(search)}.` +
-        (open > 0 ? ` ${open} of ${topCheckText(search)} still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.` : "") +
+      return (
+        `[system-reminder] ${step} steps in. Coverage: ${coverageText(search)}.` +
+        (open > 0
+          ? ` ${open} of ${topCheckText(search)} still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.`
+          : "") +
         (todo.length > 0 ? ` Not yet shortlisted, in plan order: ${todo.join(", ")}.` : "") +
-        ` If a candidate already matches EVERY hard signal, confirm it and submit_answer.`;
+        ` If a candidate already matches EVERY hard signal, confirm it and submit_answer.`
+      );
     }
     return `[system-reminder] ${step} steps in. Stop and assess your strongest candidate: does it match EVERY hard signal in the listing (area/footprint, era, floors, orientation, background landmarks, amenity distances)? If the signals CONVERGE, that is confirmation — submit_answer now and do not reopen the search (re-searching after convergence is how the right property gets discarded). If they do NOT converge, name the single check that would resolve it and do only that — or conclude honestly (found=false + candidates). Do not keep scanning the same way, and do not commit just because a candidate is the "best" of a weak field.`;
   }
   return null;
-}
-
-// The model sometimes addresses files as if from the repo root ("runs/<id>/x")
-// even though it is already inside the run dir. Strip that redundant prefix so
-// the read/write resolves instead of ENOENT-ing on a doubled path.
-function normalizePath(jobId: string, p: string): string {
-  return p.replace(new RegExp(`^\\.?/?(runs/)?${jobId}/`), "");
 }
 
 // Pull the model's own reasoning (thinking + any visible text) out of a turn.
@@ -571,16 +131,16 @@ function coerceSignature(input: Record<string, unknown>): Signature {
     .map((c) => (typeof c === "string" ? c.trim() : String(c ?? "").trim()))
     .filter(Boolean)
     .slice(0, 30);
-  const svg = typeof input.schematic_svg === "string" && input.schematic_svg.trim()
-    ? clip(input.schematic_svg, 20_000)
-    : undefined;
+  const svg =
+    typeof input.schematic_svg === "string" && input.schematic_svg.trim()
+      ? clip(input.schematic_svg, 20_000)
+      : undefined;
   return { clues, schematicSvg: svg, location: coerceLocation(input.location) };
 }
 
 function coerceAnswer(input: Record<string, unknown>): Answer {
-  const conf = String(input.confidence ?? "unknown") as Confidence;
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const conf = asText(input.confidence, "unknown") as Confidence;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
   const candsRaw = Array.isArray(input.candidates) ? input.candidates : [];
   return {
@@ -595,10 +155,10 @@ function coerceAnswer(input: Record<string, unknown>): Answer {
     confidence: conf,
     latitude: num(input.latitude),
     longitude: num(input.longitude),
-    reasoning: String(input.reasoning ?? ""),
+    reasoning: asText(input.reasoning),
     candidates: candsRaw.map((c) => {
       const o = (c ?? {}) as Record<string, unknown>;
-      return { parcel: str(o.parcel), address: str(o.address), note: String(o.note ?? "") };
+      return { parcel: str(o.parcel), address: str(o.address), note: asText(o.note) };
     }),
     links: Array.isArray(input.links) ? input.links.filter((l): l is string => typeof l === "string") : [],
   };
@@ -654,7 +214,6 @@ async function stampPrompt(job: Job): Promise<void> {
   await setPromptVersion(job, PROMPT_VERSION);
 }
 
-
 // Why a found=false is premature, or null when the plan's work is done.
 function prematureGiveUp(search: SearchState | undefined): string | null {
   if (!search || search.submitGated) return null;
@@ -663,7 +222,9 @@ function prematureGiveUp(search: SearchState | undefined): string | null {
   if (open === 0 && todo.length === 0) return null;
   return (
     `Not recorded — the search plan is not finished. Coverage: ${coverageText(search)}.` +
-    (open > 0 ? ` ${open} of ${topCheckText(search)} have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).` : "") +
+    (open > 0
+      ? ` ${open} of ${topCheckText(search)} have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).`
+      : "") +
     (todo.length > 0 ? ` Planned communes not yet shortlisted: ${todo.join(", ")}.` : "") +
     ` Continue the plan; submit found=false only once it is done (or if you can name a concrete reason the rest cannot hold the property).`
   );
@@ -706,11 +267,7 @@ export async function resumeInvestigation(job: Job): Promise<void> {
 // The investigation loop, shared by fresh and resumed runs. `startTurn` is the
 // number of model turns already completed, so the step budget and the
 // convergence nudges stay consistent across a restart.
-async function runLoop(
-  job: Job,
-  messages: Anthropic.Messages.MessageParam[],
-  startTurn: number,
-): Promise<void> {
+async function runLoop(job: Job, messages: Anthropic.Messages.MessageParam[], startTurn: number): Promise<void> {
   // Which Claude login the run is on (claude-pool.ts; null = the API key) and
   // the picture uploads made through each one — pictures belong to an account.
   let login: string | null = job.account ?? null;
@@ -751,7 +308,8 @@ async function runLoop(
           answer: coerceAnswer({
             found: false,
             confidence: "unknown",
-            reasoning: `Did not converge within the ${maxMinutes}-minute limit.` +
+            reasoning:
+              `Did not converge within the ${maxMinutes}-minute limit.` +
               (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
           }),
         });
@@ -767,7 +325,8 @@ async function runLoop(
           answer: coerceAnswer({
             found: false,
             confidence: "unknown",
-            reasoning: `Stopped at its $${budget.toFixed(2)} budget after ${i} steps.` +
+            reasoning:
+              `Stopped at its $${budget.toFixed(2)} budget after ${i} steps.` +
               (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
           }),
         });
@@ -777,7 +336,11 @@ async function runLoop(
         await addStep(job, { kind: "note", title: "Stopped by the user" });
         await finishJob(job, {
           status: "cancelled",
-          answer: coerceAnswer({ found: false, confidence: "unknown", reasoning: `Stopped by the user after ${i} steps.` }),
+          answer: coerceAnswer({
+            found: false,
+            confidence: "unknown",
+            reasoning: `Stopped by the user after ${i} steps.`,
+          }),
         });
         return;
       }
@@ -815,34 +378,42 @@ async function runLoop(
       });
       // Fast mode is an API-key feature; subscription logins run at standard speed.
       let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable && !poolOn();
-      const turn = await onLogin(login ?? undefined, async (client, label) => {
-        const files = await filesFor(client, label);
-        await files.upload(messages);
-        if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
-        const params = request(files);
-        try {
-          return fast
-            ? ((await client.beta.messages.create({
-                ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
-                speed: "fast",
-                betas: ["fast-mode-2026-02-01", BINDING_BETA], // betas replace the client's own beta header
-              })) as unknown as Anthropic.Messages.Message)
-            : await client.messages.create(params);
-        } catch (err) {
-          // Fast mode has its own rate limit: when it is exhausted (or refused),
-          // finish the run at standard speed instead of failing it.
-          if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError)) throw err;
-          fastUnavailable = true;
-          fast = false;
-          await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
-          return await client.messages.create(params);
-        }
-      }, model);
+      const turn = await onLogin(
+        login ?? undefined,
+        async (client, label) => {
+          const files = await filesFor(client, label);
+          await files.upload(messages);
+          if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
+          const params = request(files);
+          try {
+            return fast
+              ? ((await client.beta.messages.create({
+                  ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+                  speed: "fast",
+                  betas: ["fast-mode-2026-02-01", BINDING_BETA], // betas replace the client's own beta header
+                })) as unknown as Anthropic.Messages.Message)
+              : await client.messages.create(params);
+          } catch (err) {
+            // Fast mode has its own rate limit: when it is exhausted (or refused),
+            // finish the run at standard speed instead of failing it.
+            if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError))
+              throw err;
+            fastUnavailable = true;
+            fast = false;
+            await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
+            return await client.messages.create(params);
+          }
+        },
+        model,
+      );
       const resp = turn.value;
       waitedMs += turn.waitedMs;
       if (turn.label !== login) {
         if (login && turn.label && turn.label !== GEMINI_LABEL)
-          await addStep(job, { kind: "note", title: `Claude login ${login} is unavailable (limit reached or refused) — continuing on ${turn.label}` });
+          await addStep(job, {
+            kind: "note",
+            title: `Claude login ${login} is unavailable (limit reached or refused) — continuing on ${turn.label}`,
+          });
         login = turn.label;
         await setAccount(job, login);
       }
@@ -867,9 +438,7 @@ async function runLoop(
 
       messages.push({ role: "assistant", content: resp.content });
 
-      const toolUses = resp.content.filter(
-        (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-      );
+      const toolUses = resp.content.filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
       if (toolUses.length === 0 && stalls < MAX_STALLS) {
         // A turn with no tool call is not an answer: Gemini 3.1 Pro sometimes
         // ends a turn by echoing a tool's output, or by looping on one token
@@ -924,7 +493,10 @@ async function runLoop(
           // with the answer still unviewed is how run c5bc3cfd was lost. Near
           // the step/time limit it always goes through.
           // A tie-breaker compares two houses; its "neither" is an answer, not giving up.
-          const gate = !answer.found && !nearLimit(i + 1) && !isPlain(job) && !job.input.tieBreak ? prematureGiveUp(job.search) : null;
+          const gate =
+            !answer.found && !nearLimit(i + 1) && !isPlain(job) && !job.input.tieBreak
+              ? prematureGiveUp(job.search)
+              : null;
           if (gate && job.search) {
             job.search.submitGated = true;
             await saveSearch(job, job.search);
@@ -935,15 +507,25 @@ async function runLoop(
           // The tie-breaker may name another house only once it rejected every named one (tiebreak.ts).
           if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence) && !nearLimit(i + 1)) {
             const search = searchOf(job);
-            const picked = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
-            const named = (job.input.tieBreakEgids ?? []).map((e) => search.candidates[e]).filter((c): c is LedgerEntry => !!c);
+            const picked = claimedEntry(search, {
+              lat: answer.latitude,
+              lon: answer.longitude,
+              address: answer.address,
+            });
+            const named = (job.input.tieBreakEgids ?? [])
+              .map((e) => search.candidates[e])
+              .filter((c): c is LedgerEntry => !!c);
             const other = !picked || !named.some((c) => c.egid === picked.egid);
             const open = named.filter((c) => c.verdict !== "rejected");
             if (other && open.length && (search.thirdGates ?? 0) < 2) {
               search.thirdGates = (search.thirdGates ?? 0) + 1;
               await saveSearch(job, search);
               const msg = `Not recorded — you named another house while ${open.map((c) => c.address ?? `EGID ${c.egid}`).join(" and ")} ${open.length > 1 ? "are" : "is"} not rejected. Inspect ${open.length > 1 ? "them" : "it"} and mark each match or rejected with the visible difference; another house counts only once every named one is rejected.`;
-              await addStep(job, { kind: "note", title: "Answer sent back — named houses not all rejected", detail: msg });
+              await addStep(job, {
+                kind: "note",
+                title: "Answer sent back — named houses not all rejected",
+                detail: msg,
+              });
               results.push({ type: "tool_result", tool_use_id: tu.id, content: msg, is_error: true });
               continue;
             }
@@ -952,11 +534,23 @@ async function runLoop(
           // the listing (Daniel, 09.10): it is recorded as a candidate, not found.
           if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence)) {
             const search = searchOf(job);
-            const picked = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
+            const picked = claimedEntry(search, {
+              lat: answer.latitude,
+              lon: answer.longitude,
+              address: answer.address,
+            });
             const why = picked ? await registerContradiction(job, picked).catch(() => null) : null;
             if (why) {
-              Object.assign(answer, { found: false, confidence: "block", reasoning: `${answer.reasoning}\n\nNot confirmed: the register contradicts the listing — ${why}.` });
-              await addStep(job, { kind: "note", title: "Pick not confirmed — the register contradicts it", detail: why });
+              Object.assign(answer, {
+                found: false,
+                confidence: "block",
+                reasoning: `${answer.reasoning}\n\nNot confirmed: the register contradicts the listing — ${why}.`,
+              });
+              await addStep(job, {
+                kind: "note",
+                title: "Pick not confirmed — the register contradicts it",
+                detail: why,
+              });
             }
           }
           // An exact address is recorded only once it is proven (proveAnswer).
@@ -965,11 +559,20 @@ async function runLoop(
           let final = answer;
           // Practice: an answer short of an exact house is first tried as a
           // twin pick, then sent back while the top of the ranked list is unseen.
-          if (job.input.noProof && !(answer.found && EXACT.has(answer.confidence)) && !isPlain(job) && !job.input.tieBreak) {
+          if (
+            job.input.noProof &&
+            !(answer.found && EXACT.has(answer.confidence)) &&
+            !isPlain(job) &&
+            !job.input.tieBreak
+          ) {
             const pick = await twinPick(job, answer).catch(() => null);
             if (pick) {
               final = pick;
-              await addStep(job, { kind: "note", title: "Twin pick", detail: `${pick.address} and ${pick.twinPick!.other} are attached twins at one street number; the plot closest to the listing was named.` });
+              await addStep(job, {
+                kind: "note",
+                title: "Twin pick",
+                detail: `${pick.address} and ${pick.twinPick!.other} are attached twins at one street number; the plot closest to the listing was named.`,
+              });
             } else {
               const search = searchOf(job);
               const gap = unseenTop(search);
@@ -1090,460 +693,6 @@ async function runLoop(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Resume state — the full conversation, persisted so a running investigation
-// outlives the process. Written atomically (tmp + rename) so a crash mid-write
-// can never leave a half-written, unparseable state file.
-// ---------------------------------------------------------------------------
-const STATE_FILE = "state.json";
-
-interface ResumeState {
-  turn: number;
-  messages: Anthropic.Messages.MessageParam[];
-}
-
-async function saveState(
-  job: Job,
-  turn: number,
-  messages: Anthropic.Messages.MessageParam[],
-): Promise<void> {
-  try {
-    const abs = path.join(job.runDir, STATE_FILE);
-    const tmp = `${abs}.tmp`;
-    await writeFile(tmp, JSON.stringify({ turn, messages } satisfies ResumeState));
-    await rename(tmp, abs);
-  } catch (err) {
-    console.error(`[agent] could not save resume state for ${job.id}:`, err);
-  }
-}
-
-async function loadState(runDir: string): Promise<ResumeState | null> {
-  try {
-    const raw = await readFile(path.join(runDir, STATE_FILE), "utf8");
-    const parsed = JSON.parse(raw) as ResumeState;
-    if (!Array.isArray(parsed.messages) || typeof parsed.turn !== "number") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-// The finished run's full conversation, kept for the export (never served raw).
-export const CONVERSATION_FILE = "conversation.json";
-
-async function saveConversation(job: Job, messages: Anthropic.Messages.MessageParam[]): Promise<void> {
-  try {
-    await writeFile(path.join(job.runDir, CONVERSATION_FILE), JSON.stringify({ messages }));
-  } catch (err) {
-    console.error(`[agent] could not save the conversation for ${job.id}:`, err);
-  }
-}
-
-/** The run's conversation: the kept one when finished, the live one while running/paused. */
-export async function loadConversation(runDir: string): Promise<Anthropic.Messages.MessageParam[] | null> {
-  for (const file of [CONVERSATION_FILE, STATE_FILE]) {
-    try {
-      const parsed = JSON.parse(await readFile(path.join(runDir, file), "utf8")) as { messages?: unknown };
-      if (Array.isArray(parsed.messages)) return parsed.messages as Anthropic.Messages.MessageParam[];
-    } catch {
-      /* try the next */
-    }
-  }
-  return null;
-}
-
-async function clearState(job: Job): Promise<void> {
-  try {
-    await rm(path.join(job.runDir, STATE_FILE), { force: true });
-  } catch {
-    /* best effort */
-  }
-}
-
-export async function dispatchTool(
-  job: Job,
-  name: string,
-  input: Record<string, unknown>,
-): Promise<Anthropic.Messages.ToolResultBlockParam["content"]> {
-  if (name === "bash") {
-    const command = String(input.command ?? "");
-    const res = await runBash(job.runDir, command);
-    const body =
-      (res.stdout ? res.stdout : "") +
-      (res.stderr ? `\n[stderr]\n${res.stderr}` : "") +
-      (res.timedOut ? "\n[timed out]" : "") +
-      (res.code !== 0 && res.code !== null ? `\n[exit ${res.code}]` : "");
-    const trimmed = body.trim() || "(no output)";
-    await addStep(job, {
-      kind: "bash",
-      title: clip(command, 200),
-      detail: clip(trimmed, 4_000),
-    });
-    return clip(trimmed, MAX_TOOL_TEXT);
-  }
-
-  if (name === "write_file") {
-    const p = normalizePath(job.id, String(input.path ?? ""));
-    const content = String(input.content ?? "");
-    try {
-      const w = await writeSandboxFile(job.runDir, p, content);
-      await addStep(job, { kind: "write", title: `wrote ${p}`, detail: `${w.bytes} bytes` });
-      return `wrote ${p} (${w.bytes} bytes)`;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await addStep(job, { kind: "error", title: `write ${p} failed`, detail: message });
-      return `error: ${message}`;
-    }
-  }
-
-  if (name === "read_file") {
-    const p = normalizePath(job.id, String(input.path ?? ""));
-    try {
-      const r = await readSandboxFile(job.runDir, p);
-      if (r.kind === "image") {
-        await addStep(job, {
-          kind: "read",
-          title: `viewed ${r.relPath}`,
-          detail: `${r.mediaType}, ${r.bytes} bytes`,
-          image: `/runs/${job.id}/${r.relPath}`,
-        });
-        return [
-          { type: "image", source: { type: "base64", media_type: r.mediaType, data: r.base64 } },
-          { type: "text", text: `(viewed ${r.relPath}, ${r.bytes} bytes)` },
-        ];
-      }
-      await addStep(job, { kind: "read", title: `read ${r.relPath}`, detail: `${r.bytes} bytes` });
-      return clip(r.text, MAX_TOOL_TEXT);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await addStep(job, { kind: "error", title: `read ${p} failed`, detail: message });
-      return `error: ${message}`;
-    }
-  }
-
-  if (name === "shortlist_buildings") {
-    const commune = String(input.commune ?? "").trim();
-    if (!commune) return "error: pass { commune, floors?, footprintM2?, dwellings?, attached? }";
-    const search = searchOf(job);
-    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
-    try {
-      const r = await shortlistBuildings({
-        commune,
-        floors: num(input.floors),
-        footprintM2: num(input.footprintM2),
-        dwellings: num(input.dwellings),
-        attached: typeof input.attached === "boolean" ? input.attached : undefined,
-        maxResults: num(input.maxResults),
-        // `near` is deliberately not in the tool schema: the shortlist note
-        // offers it only when the run comes back for more of a commune, so
-        // every other run keeps exactly the prompt it had.
-        near: nearOf(input.near),
-        known: new Set(Object.keys(search.candidates)),
-        location: job.signature?.location,
-        listing: listingFacts(job.input.listingText),
-      });
-      // HIGH commune confidence: the stated commune is exhausted before any other.
-      const blocked = r.supported ? leavePrimaryBlocked(search, r.commune) : null;
-      if (blocked) {
-        await addStep(job, { kind: "note", title: `shortlist_buildings(${r.commune}) refused`, detail: blocked });
-        return `refused: ${blocked}`;
-      }
-      const facts = listingFacts(job.input.listingText);
-      // Strong fits (every register fact fits the listing) are checked first;
-      // otherwise the shortlist's own order (location, then footprint) stands.
-      const cands = (r.supported ? await annotateFit(facts, r.candidates) : []).sort(
-        (a, b) => Number(b.strongFit) - Number(a.strongFit),
-      );
-      const added = r.supported ? addCandidates(search, r.commune, cands) : 0;
-      if (r.supported)
-        (search.calls ??= []).push({
-          commune: r.commune,
-          floors: num(input.floors),
-          footprintM2: num(input.footprintM2),
-          dwellings: num(input.dwellings),
-          survivors: r.survivors,
-          returned: r.candidates.length,
-          ranked: true,
-          ...(r.ranking ? { order: r.ranking } : {}),
-        });
-      await saveSearch(job, search);
-      await addStep(job, {
-        kind: "bash",
-        title: `shortlist_buildings(${r.commune})`,
-        detail: `${r.enumerated} enumerated → ${r.residential} residential → ${r.survivors} survivors; returned ${r.candidates.length} (${added} new on the checklist)`,
-      });
-      const strong = cands.filter((c) => c.strongFit).length;
-      const lines = cands.map(
-        (c) =>
-          `${c.egid} | ${c.address ?? "?"} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
-          `${c.attached == null ? "" : c.attached ? " | attached" : " | detached"} | ${c.lat.toFixed(6)},${c.lon.toFixed(6)}` +
-          (c.strongFit ? ` | STRONG FIT: ${c.fit}` : "") +
-          (c.note ? ` | ${c.note}` : "") +
-          (c.loc ? ` | location ${c.loc.score.toFixed(2)}: ${c.loc.why}` : ""),
-      );
-      const strongNote = strong
-        ? `\n\n${strong} candidate(s) are STRONG FIT: every fact the register holds fits the listing's own numbers. Reject one only after inspect_candidate.`
-        : "";
-      return clip(
-        `${r.note}${strongNote}\n\nChecklist coverage: ${coverageText(search)}.\n\negid | address | floors | dwellings | footprint | lat,lon | fit\n${lines.join("\n")}`,
-        MAX_TOOL_TEXT,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await addStep(job, { kind: "error", title: `shortlist_buildings failed`, detail: message });
-      return `error: ${message}`;
-    }
-  }
-
-  if (name === "view_candidates") {
-    const search = searchOf(job);
-    // Verdicts on the previous sheet can ride along: one turn per sheet.
-    const marked = Array.isArray(input.marks) && input.marks.length ? await recordMarks(job, search, input.marks) : null;
-    const asked = Array.isArray(input.egids) ? input.egids.map((e) => String(e).trim()).filter(Boolean).slice(0, 16) : [];
-    const commune = typeof input.commune === "string" && input.commune.trim() ? input.commune.trim() : undefined;
-    const unknown = asked.filter((e) => !search.candidates[e]);
-    let list = asked.length
-      ? asked.map((e) => search.candidates[e]).filter(Boolean)
-      : nextToView(search, 16, commune);
-    if (!list.length && commune && !asked.length) {
-      // Accept "Denges" for "Denges" / "Saint-Sulpice" for "Saint-Sulpice (VD)".
-      const key = commune.toLowerCase();
-      const match = search.shortlisted.find((c) => c.toLowerCase().startsWith(key));
-      if (match) list = nextToView(search, 16, match);
-    }
-    if (!list.length) {
-      if (marked) return `Recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""}. Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
-      return unknown.length
-        ? `error: ${unknown.join(", ")} not on your checklist — shortlist their commune first (shortlist_buildings).`
-        : `Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
-    }
-    try {
-      const sheetNo = String(job.steps.filter((st) => st.title.startsWith("contact sheet")).length + 1).padStart(2, "0");
-      const sheet = await renderContactSheet(
-        job.runDir,
-        `sheet_${sheetNo}.png`,
-        list.map((c, k) => ({ label: String(k + 1), lat: c.lat, lon: c.lon })),
-      );
-      for (const c of list) c.viewed = true;
-      await saveSearch(job, search);
-      const legend = list
-        .map(
-          (c, k) =>
-            `${k + 1}: ${c.egid} | ${c.address ?? "?"}, ${c.commune} | floors ${c.floors ?? "?"} | dwellings ${c.dwellings ?? "?"} | ${c.footprintM2 ?? "?"} m²` +
-            (c.strongFit ? ` | STRONG FIT (${c.fit}) — inspect before rejecting` : "") +
-            (c.loc ? ` | location ${c.loc.score.toFixed(2)}: ${c.loc.why}` : ""),
-        )
-        .join("\n");
-      await addStep(job, {
-        kind: "read",
-        title: `contact sheet ${sheetNo}: ${list.length} candidates`,
-        detail: legend,
-        image: `/runs/${job.id}/${sheet.relPath}`,
-      });
-      const left = unchecked(search).filter((c) => !c.viewed).length;
-      return [
-        {
-          type: "text",
-          text:
-            `North-up aerials (SWISSIMAGE), ~90 m across, the red cross on each tile is the candidate building. Legend:\n${legend}` +
-            (sheet.failed.length ? `\n(tiles ${sheet.failed.join(", ")} failed to load — view them again or zoom yourself)` : "") +
-            (unknown.length ? `\n(not on your checklist, skipped: ${unknown.join(", ")})` : "") +
-            (marked ? `\n(recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""})` : "") +
-            `\nRecord a verdict for each — pass them as marks on your next view_candidates call (or mark_candidates). ${left} candidates not yet viewed.`,
-        },
-        { type: "image", source: { type: "base64", media_type: "image/png", data: sheet.png.toString("base64") } },
-      ];
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await addStep(job, { kind: "error", title: `view_candidates failed`, detail: message });
-      return `error: ${message}`;
-    }
-  }
-
-  if (name === "mark_candidates") {
-    const search = searchOf(job);
-    const { done, refused } = await recordMarks(job, search, input.marks);
-    return (
-      `Recorded ${done.length}.` +
-      (refused.length ? ` Refused: ${refused.join("; ")}.` : "") +
-      ` Coverage: ${coverageText(search)}.`
-    );
-  }
-
-  if (name === "inspect_candidate") return inspectCandidate(job, input);
-  if (name === "view_from") {
-    const c = input.egid != null ? searchOf(job).candidates[String(input.egid).trim()] : undefined;
-    const lat = c?.lat ?? (typeof input.lat === "number" ? input.lat : null);
-    const lon = c?.lon ?? (typeof input.lon === "number" ? input.lon : null);
-    if (lat == null || lon == null) return "error: pass an EGID from your checklist, or lat/lon.";
-    const dirs = (Array.isArray(input.directions) ? input.directions : [])
-      .map((d) => String(d).trim().toUpperCase())
-      .filter((d): d is Direction => (DIRECTIONS as readonly string[]).includes(d));
-    const view = await viewFrom(lat, lon, dirs.length ? dirs : undefined);
-    await addStep(job, { kind: "read", title: `view from ${c?.address ?? `${lat.toFixed(5)},${lon.toFixed(5)}`}`, detail: view });
-    return `View from ${c?.address ?? "that point"} (eye 6 m above ground):\n${view}\nCompare it with what the photos show through the windows and from the terrace.`;
-  }
-
-  if (name === "render_roofs") {
-    const raw = Array.isArray(input.candidates) ? input.candidates : [];
-    const list = raw
-      .map((c, i) => {
-        const o = (c ?? {}) as Record<string, unknown>;
-        return { label: String(o.label ?? `cand${i + 1}`), lat: Number(o.lat), lon: Number(o.lon) };
-      })
-      .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon))
-      .slice(0, 12);
-    if (list.length === 0) return "error: pass candidates:[{label,lat,lon}, …]";
-    const rendered = await renderCandidateRoofs(job.runDir, list);
-    const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [
-      {
-        type: "text",
-        text: "Real roofs from swissBUILDINGS3D (each: two oblique angles). Match roof SHAPE to the listing photos — hip vs gable, ridge direction, the low-wing step.",
-      },
-    ];
-    for (const r of rendered) {
-      if (r.relPath) {
-        await addStep(job, {
-          kind: "read",
-          title: `rendered roof: ${r.label}`,
-          detail: `${r.faces} roof faces`,
-          image: `/runs/${job.id}/${r.relPath}`,
-        });
-        blocks.push({ type: "text", text: `${r.label} (${r.faces} faces):` });
-        blocks.push({
-          type: "image",
-          source: { type: "base64", media_type: "image/png", data: await readRoofPng(job.runDir, r.relPath) },
-        });
-      } else {
-        blocks.push({ type: "text", text: `${r.label}: ${r.note}` });
-      }
-    }
-    return blocks;
-  }
-
-  return `Unknown tool: ${name}`;
-}
-
-// Why a verdict is refused, or null. A rejection has to name what was seen
-// ("no" and "small" threw out the right house in Zermatt), and a strong fit
-// can only be rejected after a close look, never from a 90 m contact sheet.
-export function rejectionProblem(
-  c: Pick<LedgerEntry, "strongFit" | "closeLook">,
-  verdict: string,
-  reason: string,
-): string | null {
-  if (verdict !== "rejected") return null;
-  const words = reason.trim().split(/\s+/).filter((w) => /[a-z0-9]/i.test(w));
-  if (words.length < 3) return `"${reason.trim() || "no reason"}" is not a reason — name what you saw that rules it out`;
-  if (c.strongFit && !c.closeLook) return "STRONG FIT: every register fact fits the listing — inspect_candidate it before rejecting";
-  return null;
-}
-
-// inspect_candidate: the fact sheet, a tight aerial and the roof of one house.
-// A 3D building's outline in words, for a floor plan: its length and width
-// along its long axis, the axis direction, and how far it fills that rectangle.
-function outlineText(sh: { areaM2: number; axisDeg: number; hull: number[][]; heightM: number }): string {
-  const rad = (sh.axisDeg * Math.PI) / 180;
-  const along = sh.hull.map(([x, y]) => x * Math.sin(rad) + y * Math.cos(rad));
-  const across = sh.hull.map(([x, y]) => x * Math.cos(rad) - y * Math.sin(rad));
-  const L = Math.max(...along) - Math.min(...along), W = Math.max(...across) - Math.min(...across);
-  const names = ["N–S", "NNE–SSW", "NE–SW", "ENE–WSW", "E–W", "ESE–WNW", "SE–NW", "SSE–NNW"];
-  const axis = names[Math.round(sh.axisDeg / 22.5) % 8];
-  return `${L.toFixed(1)} × ${W.toFixed(1)} m, long side ${axis}, about ${Math.round(sh.areaM2)} m² from above, ${sh.heightM.toFixed(1)} m high`;
-}
-
-async function inspectCandidate(
-  job: Job,
-  input: Record<string, unknown>,
-): Promise<Anthropic.Messages.ToolResultBlockParam["content"]> {
-  const search = searchOf(job);
-  let c = input.egid != null ? search.candidates[String(input.egid).trim()] : undefined;
-  if (!c && typeof input.lat === "number" && typeof input.lon === "number") {
-    c = (await addFromRegister(search, input.lat, input.lon)) ?? undefined;
-  }
-  if (!c) return `error: ${input.egid ?? "that point"} is not on your checklist and no register building of a shortlisted commune was found there — pass an EGID from your checklist, or lat/lon on the building (shortlist its commune first if it is in another one).`;
-  const facts = listingFacts(job.input.listingText);
-  const plot = c.plot ?? (await plotAt(c.lat, c.lon)) ?? undefined;
-  const flats = await flatsFor(facts, c.egid);
-  // Several plots can make one property: a smaller plot is tried with its neighbours.
-  const group =
-    c.plotGroup ?? (plot && facts.landM2 != null && !facts.sharedLand ? ((await plotGroupFor(plot, facts.landM2)) ?? undefined) : undefined);
-  const plotGroup = group && group.length > 1 ? group : undefined;
-  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plotGroup ?? (plot ? [plot] : []), flats });
-  Object.assign(c, { plot, plotGroup, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
-  await saveSearch(job, search);
-  const outline = await shapeAt(c.lat, c.lon).then((sh) => (sh ? outlineText(sh) : null)).catch(() => null);
-  // The register's plot field against the plot under the address point: they
-  // disagreed for 18 of 292 practice houses, and where the listing gave a land
-  // area the address point's plot matched it 9 times out of 10, the register's
-  // never (Ovronnaz, Chevalley 27/29: the field names the other half's plot).
-  const registerPlot = await buildingByEgid(c.egid).then((b) => b?.registerPlot ?? null).catch(() => null);
-  const plotClash =
-    plot && registerPlot && !sameRegisterPlot(registerPlot, plot.number)
-      ? `The register's own plot field says ${registerPlot}, but the plot under this building's official address point is ${plot.number}. Trust ${plot.number} and the address point: the register's field is often an old plot from before a split, or the plot of the other half of an attached pair. The house number ${c.address ?? ""} belongs to the building at the address point (the red cross).`
-      : null;
-  const sheetNo = String(job.steps.filter((st) => st.title.startsWith("close look")).length + 1).padStart(2, "0");
-  const blocks: Array<Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam> = [];
-  const sheet = text(
-    [
-      `Close look at ${c.egid} | ${c.address ?? "?"}, ${c.commune} (verdict so far: ${c.verdict}).`,
-      `Register: floors ${c.floors ?? "?"}, dwellings ${c.dwellings ?? "?"}, footprint ${c.footprintM2 ?? "?"} m².`,
-      `Plot: ${plot ? `${plot.number}${plot.egrid ? ` (${plot.egrid})` : ""}, ${plot.areaM2} m²` : "not found"}.`,
-      ...(plotClash ? [plotClash] : []),
-      outline ? `Outline (swissBUILDINGS3D, from above): ${outline} — compare it with a floor plan in the photos, if there is one.` : "Outline: not in swissBUILDINGS3D.",
-      rows.length
-        ? `Against the listing:\n${rows.map((r) => `- ${r.fact}: listing ${r.listing}, building ${r.building} → ${r.verdict}`).join("\n")}`
-        : "The listing states no homes / living area / land area to check against.",
-      `Below: a 40 m north-up aerial (red cross = register point) and the real 3D roof. Compare them with the photos, then record your verdict with mark_candidates — a rejection names the difference you see.`,
-    ].join("\n"),
-  );
-  blocks.push(sheet);
-  try {
-    const aerial = await renderContactSheet(job.runDir, `close_${sheetNo}.png`, [{ label: "", lat: c.lat, lon: c.lon }], {
-      spanM: 40,
-      tile: 640,
-      cols: 1,
-    });
-    await addStep(job, {
-      kind: "read",
-      title: `close look ${sheetNo}: ${c.address ?? c.egid}`,
-      detail: rows.map((r) => `${r.fact}: ${r.listing} vs ${r.building} → ${r.verdict}`).join("\n"),
-      image: `/runs/${job.id}/${aerial.relPath}`,
-    });
-    blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: aerial.png.toString("base64") } });
-  } catch (err) {
-    blocks.push(text(`(aerial failed: ${err instanceof Error ? err.message : String(err)})`));
-  }
-  try {
-    const [roof] = await renderCandidateRoofs(job.runDir, [{ label: `roof_${c.egid}`, lat: c.lat, lon: c.lon }]);
-    if (roof?.relPath) {
-      blocks.push(text(`Real roof (${roof.faces} faces):`));
-      blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: await readRoofPng(job.runDir, roof.relPath) } });
-    } else if (roof) blocks.push(text(`Roof: ${roof.note}`));
-  } catch (err) {
-    blocks.push(text(`(roof render failed: ${err instanceof Error ? err.message : String(err)})`));
-  }
-  return blocks;
-}
-
-const text = (t: string): Anthropic.Messages.TextBlockParam => ({ type: "text", text: t });
-
-// Put the register building at a point on the checklist (an answer or a close
-// look outside the shortlist). Only into a commune already being searched.
-async function addFromRegister(search: SearchState, lat: number, lon: number): Promise<LedgerEntry | null> {
-  const b = await buildingAt(lat, lon).catch(() => null);
-  if (!b) return null;
-  const commune = search.shortlisted.find((x) => normalizeCommune(x) === normalizeCommune(b.commune));
-  if (!commune) return null;
-  const key = String(Number(b.egid));
-  if (!search.candidates[key]) {
-    addCandidates(search, commune, [
-      { egid: Number(b.egid), lat: b.lat, lon: b.lon, floors: b.floors, footprintM2: b.footprintM2, dwellings: b.dwellings, address: b.address },
-    ]);
-  }
-  return search.candidates[key];
-}
-
 const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"]);
 
 // Practice (Daniel, 05.10): of 7 runs that ended "not sure" with time left, 6
@@ -1551,7 +700,8 @@ const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"
 // not stop short of an exact answer before it has viewed or judged them.
 const TOP_LOOK = 150;
 // Big communes (Daniel, 09.10): past 2000 homes the top 300 must be seen.
-const TOP_LOOK_BIG = 300, BIG_LIST = 2000;
+const TOP_LOOK_BIG = 300,
+  BIG_LIST = 2000;
 function unseenTop(search: SearchState): string | null {
   const calls = (search.calls ?? []).filter((c) => c.order?.length);
   if (!calls.length) return null;
@@ -1581,10 +731,12 @@ async function registerContradiction(job: Job, e: LedgerEntry): Promise<string |
   const l = listingFacts(job.input.listingText);
   const b = await buildingByEgid(e.egid).catch(() => null);
   const out: string[] = [];
-  if (l.kind === "house" && b?.dwellings != null && b.dwellings > 3) out.push(`${b.dwellings} homes in the building for a single house`);
+  if (l.kind === "house" && b?.dwellings != null && b.dwellings > 3)
+    out.push(`${b.dwellings} homes in the building for a single house`);
   if (l.kind === "house" && l.livingM2 && b?.livingM2 && Math.abs(b.livingM2 - l.livingM2) / l.livingM2 > 0.35)
     out.push(`a living area of ${b.livingM2} m² for ${l.livingM2} m² listed`);
-  if (l.kind === "house" && l.rooms && b?.rooms && Math.abs(l.rooms - b.rooms) > 2.5) out.push(`${b.rooms} rooms for ${l.rooms} listed`);
+  if (l.kind === "house" && l.rooms && b?.rooms && Math.abs(l.rooms - b.rooms) > 2.5)
+    out.push(`${b.rooms} rooms for ${l.rooms} listed`);
   const plot = e.plotGroup?.length ? e.plotGroup.reduce((t, p) => t + p.areaM2, 0) : e.plot?.areaM2;
   if (l.kind === "house" && l.landM2 && !l.sharedLand && plot && Math.abs(plot - l.landM2) / l.landM2 > 0.15)
     out.push(`a plot of ${Math.round(plot)} m² for ${l.landM2} m² listed`);
@@ -1603,8 +755,11 @@ async function twinPick(job: Job, a: Answer): Promise<Answer | null> {
   if (!land || !search) return null;
   const named = [a.address, ...a.candidates.map((c) => c.address)].filter((x): x is string => !!x);
   const byAddress = (addr: string) => {
-    const st = streetOf(addr), no = houseNumberOf(addr);
-    return Object.values(search.candidates).find((c) => c.address && streetOf(c.address) === st && houseNumberOf(c.address) === no);
+    const st = streetOf(addr),
+      no = houseNumberOf(addr);
+    return Object.values(search.candidates).find(
+      (c) => c.address && streetOf(c.address) === st && houseNumberOf(c.address) === no,
+    );
   };
   const entries = Array.from(new Set(named.map(byAddress).filter((c): c is NonNullable<typeof c> => !!c && !!c.plot)));
   if (entries.length !== 2) return null;
@@ -1630,7 +785,7 @@ async function twinPick(job: Job, a: Answer): Promise<Answer | null> {
 function sanityProblem(job: Job, a: Answer, egid: string | number | undefined): string | null {
   const first = (a.address ?? "").split(",")[0];
   if (!/[A-Za-zÀ-ÿ]{3}/.test(first) || !/\d/.test(first))
-    return "Not recorded — an answer must be a street address with a house number (\"Steinweg 21, Aesch\"). Give the building's address, or submit found=false with your ranked candidates.";
+    return 'Not recorded — an answer must be a street address with a house number ("Steinweg 21, Aesch"). Give the building\'s address, or submit found=false with your ranked candidates.';
   const facts = listingFacts(job.input.listingText);
   // A flat's "land" is its garden share of a co-owned plot, never the plot
   // (Saladin 9a, Chêne-Bougeries, 16.10: 308 m² of private garden on a 1,489 m²
@@ -1641,12 +796,6 @@ function sanityProblem(job: Job, a: Answer, egid: string | number | undefined): 
   if (land && plot && (plot > 2 * land || plot < land / 2))
     return `Not recorded — this house's plot is ${Math.round(plot)} m² and the listing states ${land} m² of land: that is not the same property. Keep looking (the next candidates on your list), or submit found=false with your ranked candidates.`;
   return null;
-}
-
-export interface ProofResult {
-  proof: AnswerProof | null;
-  blocking: string[]; // must be fixed before the address is recorded
-  soft: string[]; // mismatches to explain or reconsider (sent back once)
 }
 
 /**
@@ -1677,172 +826,6 @@ async function answerAtLimit(job: Job, limit: string): Promise<boolean> {
   return true;
 }
 
-// Is this exact answer proven? See the PROOF section of the prompt.
-export async function proveAnswer(job: Job, a: Answer): Promise<ProofResult> {
-  const search = searchOf(job);
-  const blocking: string[] = [], soft: string[] = [];
-  if (!search.shortlisted.length) {
-    blocking.push("Nothing is shortlisted: shortlist the commune, view every candidate and give each a verdict.");
-    return { proof: null, blocking, soft };
-  }
-  const claim =
-    claimedEntry(search, { lat: a.latitude, lon: a.longitude, address: a.address }) ??
-    (a.latitude != null && a.longitude != null ? await addFromRegister(search, a.latitude, a.longitude) : null);
-  if (!claim) {
-    blocking.push("Your answer is not a building on the checklist: give its exact pin (latitude/longitude on the building), shortlist its commune if it is not shortlisted yet, and inspect it with inspect_candidate.");
-  } else {
-    if (!claim.closeLook) blocking.push(`Inspect your answer first: inspect_candidate ${claim.egid} (${claim.address ?? "?"}).`);
-    if (claim.verdict !== "match") blocking.push(`Mark ${claim.egid} (${claim.address ?? "?"}) as match once the close look confirms it.`);
-  }
-  const all = Object.values(search.candidates);
-  const others = all.filter((c) => c !== claim && c.verdict === "match");
-  if (others.length) {
-    blocking.push(
-      `Other candidates are also marked match: ${others.slice(0, 6).map((c) => `${c.egid} ${c.address ?? ""}`).join(", ")}. Reject them with the visible difference, or submit a ranked shortlist at block confidence.`,
-    );
-  }
-  // The rest of the checklist must be settled — unless the answer is decisive
-  // on its own: its plot(s) match the listing's land within 2% and no register
-  // fact contradicts it (proof.ts decisive).
-  const checklist: string[] = [];
-  const open = mustCheck(search).length;
-  if (open) checklist.push(`${open} of ${topCheckText(search)} have no verdict yet (${coverageText(search)}): view and mark them.`);
-  const poss = openPossibles(search).filter((c) => c !== claim);
-  if (poss.length) {
-    checklist.push(
-      `${poss.length} candidates are still "possible" (${poss.slice(0, 8).map((c) => `${c.egid} ${c.address ?? ""}`).join(", ")}${poss.length > 8 ? ", …" : ""}): inspect each and settle it — rejected with the difference you see, or match.`,
-    );
-  }
-  if (!claim) return { proof: null, blocking: [...blocking, ...checklist], soft };
-
-  const plots = await plotsOf(a, claim);
-  const facts = listingFacts(job.input.listingText);
-  const rows = factRows(facts, {
-    floors: claim.floors,
-    dwellings: claim.dwellings,
-    footprintM2: claim.footprintM2,
-    plots,
-    flats: await flatsFor(facts, claim.egid),
-  });
-  const isDecisive = !facts.sharedLand && decisive(rows, plots, facts.landM2, facts.landAltM2) && (await plotsBelong(claim, plots));
-  if (!isDecisive) blocking.push(...checklist);
-  for (const r of rows.filter((x) => x.verdict === "mismatch")) {
-    const line = `${r.fact} does not fit: the listing says ${r.listing}, the building has ${r.building}.`;
-    if (r.hard) blocking.push(`${line} If the property covers several plots, list every one in parcels[]; otherwise this is not the house.`);
-    else soft.push(`${line} Check it against the photos and reconsider; if you still hold it is the house, submit again and say why in the reasoning.`);
-  }
-  return {
-    proof: {
-      egid: claim.egid,
-      facts: rows.map(({ fact, listing, building, verdict, off }) => ({ fact, listing, building, verdict, ...(off != null ? { off } : {}) })),
-      ruledOut: all.filter((c) => c.verdict === "rejected").length,
-      total: all.length,
-    },
-    blocking,
-    soft,
-  };
-}
-
-// The register's flats, when the listing is a flat with a living area to find among them.
-function flatsFor(facts: ListingFacts, egid: string | number) {
-  return facts.livingM2 != null && facts.dwellings !== 1 ? flatsOf(egid) : Promise.resolve(undefined);
-}
-
-// The plots an answer covers: the ones it names (by EGRID), else the group its
-// building's plot was found to make with its neighbours, else that plot alone.
-async function plotsOf(a: Answer, claim: LedgerEntry): Promise<Plot[]> {
-  const named = (await Promise.all(a.parcels.filter((p) => p.egrid).map((p) => plotByEgrid(p.egrid!)))).filter(
-    (p): p is Plot => !!p,
-  );
-  if (named.length) return named;
-  if (claim.plotGroup?.length) return claim.plotGroup;
-  const own = claim.plot ?? (await plotAt(claim.lat, claim.lon));
-  return own ? [own] : [];
-}
-
-// Decisive only for plots that are the building's own and its neighbours, so a
-// sum of unrelated plots picked to match the listing can never prove an answer.
-async function plotsBelong(claim: LedgerEntry, plots: Plot[]): Promise<boolean> {
-  const own = claim.plot ?? (await plotAt(claim.lat, claim.lon));
-  if (!own) return false;
-  const same = (x: Plot, y: Plot) => (x.egrid && y.egrid ? x.egrid === y.egrid : x.number === y.number);
-  if (!plots.some((p) => same(p, own))) return false;
-  if (plots.length === 1) return true;
-  const near = await neighbourPlots(own);
-  return plots.every((p) => same(p, own) || near.some((n) => same(n, p)));
-}
-
-// An address that could not be proven is kept, as the top of a ranked
-// shortlist, but not reported as the address.
-export function unprovenAsShortlist(a: Answer, problems: string[]): Answer {
-  return {
-    ...a,
-    found: false,
-    confidence: "block",
-    candidates: [
-      { address: a.address, parcel: a.parcel, note: "Best candidate, not proven: " + problems.join(" ") },
-      ...a.candidates,
-    ],
-    reasoning: `Not reported as the address because it is not proven: ${problems.join(" ")}\n\n${a.reasoning}`,
-  };
-}
-
-// Apply verdicts to the checklist. A rejection needs the candidate to have been
-// on a contact sheet — the checklist must mean "looked at", not "dismissed".
-async function recordMarks(
-  job: Job,
-  search: SearchState,
-  marks: unknown,
-): Promise<{ done: string[]; refused: string[] }> {
-  const done: string[] = [], refused: string[] = [];
-  for (const m of Array.isArray(marks) ? marks : []) {
-    const o = (m ?? {}) as Record<string, unknown>;
-    const egid = String(o.egid ?? "").trim();
-    const verdict = String(o.verdict ?? "");
-    const c = search.candidates[egid];
-    if (!c || !["rejected", "possible", "match"].includes(verdict)) {
-      refused.push(`${egid || "?"} (not on the checklist or bad verdict)`);
-      continue;
-    }
-    if (verdict === "rejected" && !c.viewed && !c.closeLook) {
-      refused.push(`${egid} (never viewed — view_candidates first)`);
-      continue;
-    }
-    const why = rejectionProblem(c, verdict, String(o.reason ?? ""));
-    if (why) {
-      refused.push(`${egid} (${why})`);
-      continue;
-    }
-    c.verdict = verdict as "rejected" | "possible" | "match";
-    c.reason = String(o.reason ?? "").slice(0, 300);
-    done.push(`${egid} ${verdict}`);
-  }
-  await saveSearch(job, search);
-  await addStep(job, {
-    kind: "note",
-    title: `marked ${done.length} candidate(s)`,
-    detail: [...done, ...refused.map((r) => `refused: ${r}`)].join("\n"),
-  });
-  return { done, refused };
-}
-
-// The job's search plan + checklist; runs started before it existed get an
-// empty one (no plan, nothing gated) so the tools still work on resume.
-function searchOf(job: Job): SearchState {
-  if (!job.search) {
-    job.search = {
-      stated: job.input.municipality ?? null,
-      primary: null,
-      confidence: "unknown",
-      evidence: [],
-      ring: [],
-      shortlisted: [],
-      candidates: {},
-    };
-  }
-  return job.search;
-}
-
 // Where the answer stood in the checking order of its commune — the measure of
 // whether the shortlist's ordering (location clues, footprint) put it early.
 function answerRank(search: SearchState, answer: Answer): string | null {
@@ -1857,55 +840,4 @@ function answerRank(search: SearchState, answer: Answer): string | null {
     ` (contact sheet ${Math.ceil(k / 16)})` +
     (claim.loc ? `; location fit ${claim.loc.score.toFixed(2)}: ${claim.loc.why}.` : "; no location score.")
   );
-}
-
-// shortlist_buildings' `near`: {lat, lon} or "lat,lon"; anything else is ignored.
-function nearOf(v: unknown): { lat: number; lon: number } | undefined {
-  let lat: unknown, lon: unknown;
-  if (typeof v === "string") [lat, lon] = v.split(",").map((x) => Number(x.trim()));
-  else if (v && typeof v === "object") ({ lat, lon } = v as { lat?: unknown; lon?: unknown });
-  else return undefined;
-  const ok = (x: unknown, lo: number, hi: number): x is number => typeof x === "number" && Number.isFinite(x) && x >= lo && x <= hi;
-  return ok(lat, 45, 48.5) && ok(lon, 5.5, 11) ? { lat, lon } : undefined;
-}
-
-// Persist the listing photos into the run dir so the model can crop/inspect
-// them as files (photo1.jpg, …), matching what it's shown inline.
-export async function saveListingPhotos(runDir: string, images: AgentImage[]): Promise<void> {
-  await Promise.all(
-    images.map((img, i) => {
-      const ext = img.mediaType.split("/")[1].replace("jpeg", "jpg");
-      return writeFile(path.join(runDir, `photo${i + 1}.${ext}`), Buffer.from(img.base64, "base64"));
-    }),
-  );
-}
-
-const EXT_MEDIA: Record<string, AgentImage["mediaType"]> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-};
-
-// Read the saved listing photos (photo1.jpg, …) back out of a run dir, in order.
-// Used to relaunch a past investigation from its original photos.
-export async function loadListingPhotos(runDir: string): Promise<AgentImage[]> {
-  const { readdir, readFile } = await import("node:fs/promises");
-  let names: string[];
-  try {
-    names = await readdir(runDir);
-  } catch {
-    return [];
-  }
-  const photos = names
-    .map((n) => n.match(/^photo(\d+)\.(jpe?g|png|webp|gif)$/i))
-    .filter((m): m is RegExpMatchArray => !!m)
-    .sort((a, b) => Number(a[1]) - Number(b[1]));
-  const images: AgentImage[] = [];
-  for (const m of photos) {
-    const buf = await readFile(path.join(runDir, m[0]));
-    images.push({ base64: buf.toString("base64"), mediaType: EXT_MEDIA[m[2].toLowerCase()] ?? "image/jpeg" });
-  }
-  return images;
 }

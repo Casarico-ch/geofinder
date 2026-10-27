@@ -51,15 +51,7 @@ const MODEL_LABEL: Record<string, string> = {
 };
 
 type RangeKey =
-  | "today"
-  | "yesterday"
-  | "thisWeek"
-  | "last7"
-  | "lastWeek"
-  | "thisMonth"
-  | "lastMonth"
-  | "all"
-  | "custom";
+  "today" | "yesterday" | "thisWeek" | "last7" | "lastWeek" | "thisMonth" | "lastMonth" | "all" | "custom";
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
@@ -184,7 +176,12 @@ function CostChart({ buckets, unit }: { buckets: Bucket[]; unit: "day" | "week" 
   return (
     <div className="relative">
       <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[480px] h-auto block" role="img" aria-label={`AI cost per ${unit}`}>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full min-w-[480px] h-auto block"
+          role="img"
+          aria-label={`AI cost per ${unit}`}
+        >
           {Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step).map((v) => (
             <g key={v}>
               <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} className="stroke-border" strokeWidth={1} />
@@ -206,7 +203,13 @@ function CostChart({ buckets, unit }: { buckets: Bucket[]; unit: "day" | "week" 
                   />
                 )}
                 {i % labelEvery === 0 && (
-                  <text x={L + i * slot + slot / 2} y={H - 8} textAnchor="middle" className="fill-muted-foreground" fontSize={11}>
+                  <text
+                    x={L + i * slot + slot / 2}
+                    y={H - 8}
+                    textAnchor="middle"
+                    className="fill-muted-foreground"
+                    fontSize={11}
+                  >
                     {b.label}
                   </text>
                 )}
@@ -230,6 +233,8 @@ function CostChart({ buckets, unit }: { buckets: Bucket[]; unit: "day" | "week" 
 export default function Usage() {
   const [, navigate] = useLocation();
   const [data, setData] = useState<{ runs: Run[]; popety: PopetyCharge[]; searches?: Search[] } | null>(null);
+  // When the data was fetched: "now" for the chart, so rendering stays pure.
+  const [asOf, setAsOf] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>(() => readStored("usage-range", "last7" as RangeKey));
   const [customFrom, setCustomFrom] = useState(() => readStored("usage-from", isoDay(new Date(Date.now() - 30 * DAY))));
@@ -244,6 +249,7 @@ export default function Usage() {
         const body = await res.json();
         if (alive) {
           setData(body);
+          setAsOf(Date.now());
           setError(null);
         }
       } catch {
@@ -316,16 +322,30 @@ export default function Usage() {
       .sort((a, b) => b.cost - a.cost);
 
     // Buckets: from the first run (or range start) to the range end, daily up to 90 days, else weekly.
-    const first = from ?? (runs.length ? startOfDay(new Date(Math.min(...runs.map((r) => Date.parse(r.createdAt))))) : startOfDay(new Date()));
-    const last = to ? new Date(to.getTime() - 1) : new Date();
+    const first =
+      from ??
+      (runs.length
+        ? startOfDay(new Date(Math.min(...runs.map((r) => Date.parse(r.createdAt)))))
+        : startOfDay(new Date(asOf)));
+    const last = to ? new Date(to.getTime() - 1) : new Date(asOf);
     const days = Math.max(1, Math.round((startOfDay(last).getTime() - startOfDay(first).getTime()) / DAY) + 1);
     const unit: "day" | "week" = days > 90 ? "week" : "day";
     const bucketStart = (d: Date) => (unit === "week" ? startOfWeek(d) : startOfDay(d));
     const buckets: Bucket[] = [];
     const index = new Map<string, Bucket>();
-    for (let d = bucketStart(first); d.getTime() <= last.getTime(); d = new Date(d.getTime() + (unit === "week" ? 7 : 1) * DAY)) {
+    for (
+      let d = bucketStart(first);
+      d.getTime() <= last.getTime();
+      d = new Date(d.getTime() + (unit === "week" ? 7 : 1) * DAY)
+    ) {
       const key = isoDay(d);
-      const b = { key, label: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }), cost: 0, tokens: 0, runs: 0 };
+      const b = {
+        key,
+        label: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        cost: 0,
+        tokens: 0,
+        runs: 0,
+      };
       buckets.push(b);
       index.set(key, b);
       if (buckets.length > 400) break;
@@ -349,7 +369,9 @@ export default function Usage() {
     }
     const top = byModel[0];
     if (top && cost > 0 && byModel.length > 1) {
-      insights.push(`${MODEL_LABEL[top.model] ?? top.model} accounts for ${pct(top.cost / cost)} of the AI spend in this period.`);
+      insights.push(
+        `${MODEL_LABEL[top.model] ?? top.model} accounts for ${pct(top.cost / cost)} of the AI spend in this period.`,
+      );
     }
     const stopped = runs.filter((r) => r.status === "paused" || r.status === "cancelled" || r.status === "error");
     const stoppedCost = stopped.reduce((s, r) => s + r.costUsd, 0);
@@ -364,13 +386,32 @@ export default function Usage() {
       );
     }
     if (output > 0 && input > 0) {
-      insights.push(`Runs read ${Math.round(input / Math.max(1, output))} input tokens for every output token, so input is the main cost driver.`);
+      insights.push(
+        `Runs read ${Math.round(input / Math.max(1, output))} input tokens for every output token, so input is the main cost driver.`,
+      );
     }
 
     const expensive = [...runs].sort((a, b) => b.costUsd - a.costUsd).slice(0, 5);
     const popetyChf = popety.reduce((s, p) => s + p.costChf, 0);
-    return { runs, popety, counted, solved, cost, input, output, cached, finished, found, byModel, buckets, unit, insights, expensive, popetyChf };
-  }, [data, range, customFrom, customTo]);
+    return {
+      runs,
+      popety,
+      counted,
+      solved,
+      cost,
+      input,
+      output,
+      cached,
+      finished,
+      found,
+      byModel,
+      buckets,
+      unit,
+      insights,
+      expensive,
+      popetyChf,
+    };
+  }, [data, asOf, range, customFrom, customTo]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -439,7 +480,9 @@ export default function Usage() {
                 />
                 <Tile
                   label="Addresses found"
-                  value={view.counted.length ? `${((view.solved.length / view.counted.length) * 100).toFixed(1)}%` : "—"}
+                  value={
+                    view.counted.length ? `${((view.solved.length / view.counted.length) * 100).toFixed(1)}%` : "—"
+                  }
                   sub={`${view.solved.length} of ${view.counted.length} requests · ${view.runs.length} runs`}
                 />
                 <Tile label="Popety" value={chf(view.popetyChf)} sub={`${view.popety.length} property lookups`} />
@@ -501,7 +544,9 @@ export default function Usage() {
                             <TableCell className="text-right">{tok(m.tokens)}</TableCell>
                             <TableCell className="text-right">{m.cacheRate != null ? pct(m.cacheRate) : "—"}</TableCell>
                             <TableCell className="text-right">{usd(m.avgCost)}</TableCell>
-                            <TableCell className="text-right">{m.costPerFound != null ? usd(m.costPerFound) : "—"}</TableCell>
+                            <TableCell className="text-right">
+                              {m.costPerFound != null ? usd(m.costPerFound) : "—"}
+                            </TableCell>
                             <TableCell className="text-right">{m.avgTime != null ? mins(m.avgTime) : "—"}</TableCell>
                             <TableCell className="text-right font-medium">{usd(m.cost)}</TableCell>
                           </TableRow>
@@ -523,7 +568,9 @@ export default function Usage() {
                       <TableBody>
                         {view.expensive.map((r) => (
                           <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`/i/${r.id}`)}>
-                            <TableCell className="w-24 text-muted-foreground">{MODEL_LABEL[r.model] ?? r.model}</TableCell>
+                            <TableCell className="w-24 text-muted-foreground">
+                              {MODEL_LABEL[r.model] ?? r.model}
+                            </TableCell>
                             <TableCell className="max-w-0 w-full truncate">{r.title ?? "Listing"}</TableCell>
                             <TableCell className="hidden sm:table-cell text-right text-xs text-muted-foreground tabular-nums">
                               {tok(r.tokens.total)} tokens · {r.steps} steps

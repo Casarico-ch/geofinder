@@ -42,18 +42,30 @@ for (const c of communes) {
   const egrid = Object.keys(index.egrid).find((e) => index.egrid[e] === c)!;
   assert.ok(genevaAnswer(egrid)?.status.buildability, `commune ${c} loads`);
 }
-assert.ok(isGenevaEgrid("CH768265634625") && !isGenevaEgrid("CH890977745220"), "Bernex 6036 is Geneva, Oberrieden is not");
+assert.ok(
+  isGenevaEgrid("CH768265634625") && !isGenevaEgrid("CH890977745220"),
+  "Bernex 6036 is Geneva, Oberrieden is not",
+);
 assert.deepEqual(genevaEgridsByPlot("Bernex", "6036"), ["CH768265634625"], "commune + plot number");
 assert.ok(genevaEgridsByPlot("Genève", "5475").length >= 1, "'Genève' searches the four city sections");
 
 // Our scores' built-area ranges must hold 95% of the time on held-out halves (geneva/build/scores.py).
 const qa = JSON.parse(readFileSync(path.join(DIR, "data/scores_qa.json"), "utf8"));
 for (const [kind, c] of Object.entries<any>(qa.calibration_95pct_ranges)) {
-  assert.ok(c.heldout_worst >= 0.95, `built-area range for ${kind} holds only ${c.heldout_worst} on its worst held-out half`);
+  assert.ok(
+    c.heldout_worst >= 0.95,
+    `built-area range for ${kind} holds only ${c.heldout_worst} on its worst held-out half`,
+  );
 }
 assert.ok(qa.coverage.score_shape >= 0.99, "every plot has a shape score");
 // Rebuild potential must still rank what owners did next (permits after the 3D survey) on held-out plots.
-assert.ok(qa.rebuild.backtest.heldout_auc_worst >= 0.7, `rebuild score AUC only ${qa.rebuild.backtest.heldout_auc_worst} on its worst held-out fold`);
-assert.ok(qa.rebuild.backtest.top_decile_lift >= 2, `rebuild score top 10% only ${qa.rebuild.backtest.top_decile_lift}x the average`);
+assert.ok(
+  qa.rebuild.backtest.heldout_auc_worst >= 0.7,
+  `rebuild score AUC only ${qa.rebuild.backtest.heldout_auc_worst} on its worst held-out fold`,
+);
+assert.ok(
+  qa.rebuild.backtest.top_decile_lift >= 2,
+  `rebuild score top 10% only ${qa.rebuild.backtest.top_decile_lift}x the average`,
+);
 
 console.log(`geneva: ${n} answers identical to compose.py, ${schema.parcels} plots in ${communes.size} communes ✓`);

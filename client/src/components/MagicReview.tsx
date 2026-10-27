@@ -4,14 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { ReviewPage } from "@/lib/magic-feedback-widget";
-import {
-  POP_W,
-  barCopy,
-  keptNotes,
-  pageLabel,
-  popPlace,
-  type ReviewNote,
-} from "@/lib/magic-feedback";
+import { POP_W, barCopy, keptNotes, pageLabel, popPlace, type ReviewNote } from "@/lib/magic-feedback";
 
 // Magic feedback's review screen, ported from the Rico cockpit's MagicReview:
 // numbered pins only, 1..N in the order they were spoken. Hovering a pin opens
@@ -25,6 +18,10 @@ import {
 // globally; a page that is not the one on screen is shown as its own
 // screenshot behind the pins, at the size it was captured, so every pin lands
 // on the picture it was measured on.
+
+// A note emptied and then closed is gone, so the pins on screen always
+// number exactly what will be filed.
+const prune = (ns: ReviewNote[]) => (ns.every((x) => x.text.trim()) ? ns : ns.filter((x) => x.text.trim()));
 export default function MagicReview({
   initialNotes,
   pages,
@@ -40,7 +37,7 @@ export default function MagicReview({
   onDiscard: () => void;
   onSend: (notes: ReviewNote[]) => void;
 }) {
-  const [notes, setNotes] = useState(initialNotes);
+  const [notes, setNotes] = useState(() => prune(initialNotes));
   const [sel, setSel] = useState(Math.max(0, pages.length - 1));
   const [hover, setHover] = useState(-1);
   const [open, setOpen] = useState(-1);
@@ -51,38 +48,32 @@ export default function MagicReview({
   const viewport = { width: window.innerWidth, height: window.innerHeight };
 
   const page = pages[sel];
-  const live =
-    sel === pages.length - 1 && (!page || page.url === location.href);
+  const live = sel === pages.length - 1 && (!page || page.url === location.href);
 
   useEffect(() => onChange(notes), [notes, onChange]);
 
+  const close = () => {
+    setOpen(-1);
+    setNotes(prune);
+  };
   const pick = (v: string) => {
     setSel(Number(v));
-    setOpen(-1);
+    close();
     setHover(-1);
   };
-  const unhover = (i: number) => setHover(h => (h === i ? -1 : h));
-  const edit = (i: number, text: string) =>
-    setNotes(ns => ns.map((n, k) => (k === i ? { ...n, text } : n)));
+  const unhover = (i: number) => setHover((h) => (h === i ? -1 : h));
+  const edit = (i: number, text: string) => setNotes((ns) => ns.map((n, k) => (k === i ? { ...n, text } : n)));
   const remove = (i: number) => {
-    setNotes(ns => ns.filter((_, k) => k !== i));
-    setOpen(-1);
+    setNotes((ns) => ns.filter((_, k) => k !== i));
+    close();
     setHover(-1);
   };
-
-  // A note emptied and then closed is gone, so the pins on screen always
-  // number exactly what will be filed.
-  useEffect(() => {
-    if (open !== -1) return;
-    setNotes(ns =>
-      ns.every(x => x.text.trim()) ? ns : ns.filter(x => x.text.trim())
-    );
-  }, [open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setOpen(-1);
+      setNotes(prune);
       setHover(-1);
     };
     window.addEventListener("keydown", onKey, true);
@@ -95,10 +86,7 @@ export default function MagicReview({
   return (
     <div data-mf-ui="">
       {!live && page && (
-        <div
-          aria-hidden
-          className="fixed inset-0 z-[2147482999] overflow-hidden bg-background"
-        >
+        <div aria-hidden className="fixed inset-0 z-[2147482999] overflow-hidden bg-background">
           <img
             src={page.shot}
             alt=""
@@ -120,11 +108,11 @@ export default function MagicReview({
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => unhover(i)}
             onFocus={() => setHover(i)}
-            onClick={() => setOpen(o => (o === i ? -1 : i))}
+            onClick={() => (open === i ? close() : setOpen(i))}
           >
             {i + 1}
           </Button>
-        )
+        ),
       )}
 
       {n && (
@@ -140,9 +128,7 @@ export default function MagicReview({
             <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10.5px] font-bold text-primary-foreground">
               {shown + 1}
             </span>
-            <span className="truncate text-xs text-muted-foreground">
-              {n.label}
-            </span>
+            <span className="truncate text-xs text-muted-foreground">{n.label}</span>
           </div>
           {editing ? (
             <>
@@ -151,23 +137,16 @@ export default function MagicReview({
                 rows={3}
                 autoFocus
                 aria-label={"Note " + (shown + 1) + " text"}
-                onFocus={e =>
-                  e.currentTarget.setSelectionRange(
-                    e.currentTarget.value.length,
-                    e.currentTarget.value.length
-                  )
+                onFocus={(e) =>
+                  e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)
                 }
-                onChange={e => edit(shown, e.target.value)}
+                onChange={(e) => edit(shown, e.target.value)}
               />
               <div className="flex justify-end gap-2">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => remove(shown)}
-                >
+                <Button variant="destructive" size="sm" onClick={() => remove(shown)}>
                   Remove
                 </Button>
-                <Button size="sm" onClick={() => setOpen(-1)}>
+                <Button size="sm" onClick={close}>
                   Done
                 </Button>
               </div>
@@ -175,9 +154,7 @@ export default function MagicReview({
           ) : (
             <>
               <p className="m-0 text-card-foreground">{n.text}</p>
-              <p className="m-0 text-xs text-muted-foreground">
-                Click the number to edit or remove
-              </p>
+              <p className="m-0 text-xs text-muted-foreground">Click the number to edit or remove</p>
             </>
           )}
         </Card>
@@ -185,15 +162,10 @@ export default function MagicReview({
 
       <Card className="fixed bottom-6 left-1/2 z-[2147483001] max-w-[calc(100vw-32px)] -translate-x-1/2 flex-row items-center gap-2.5 py-2.5 pl-4 pr-3 text-sm shadow-lg">
         <div className="min-w-0 flex-1 text-muted-foreground">
-          <strong className="font-semibold text-foreground">
-            {copy.count}
-          </strong>
+          <strong className="font-semibold text-foreground">{copy.count}</strong>
           <span className="hidden sm:inline">{copy.hint}</span>
           {qs.length > 0 && (
-            <span
-              className="block max-w-[340px] truncate"
-              title={qs.join(" · ")}
-            >
+            <span className="block max-w-[340px] truncate" title={qs.join(" · ")}>
               {qs.join(" · ")}
             </span>
           )}
@@ -202,11 +174,7 @@ export default function MagicReview({
           <Tabs value={String(sel)} onValueChange={pick}>
             <TabsList>
               {pages.map((p, k) => (
-                <TabsTrigger
-                  key={k}
-                  value={String(k)}
-                  title={pageLabel(k, p.url)}
-                >
+                <TabsTrigger key={k} value={String(k)} title={pageLabel(k, p.url)}>
                   Page {k + 1}
                 </TabsTrigger>
               ))}

@@ -57,7 +57,12 @@ export async function profileByLandId(
   matchedAddress: string | null,
 ): Promise<{ profile: PropertyProfile; paid: boolean; fetchedAt: string }> {
   const kept = await readStored(landId);
-  if (kept) return { profile: toPropertyProfile(matchedAddress, kept.land, kept.buildings, kept.zoning), paid: false, fetchedAt: kept.fetchedAt };
+  if (kept)
+    return {
+      profile: toPropertyProfile(matchedAddress, kept.land, kept.buildings, kept.zoning),
+      paid: false,
+      fetchedAt: kept.fetchedAt,
+    };
   let pending = buying.get(landId);
   const buyer = !pending;
   if (!pending) {
@@ -65,5 +70,9 @@ export async function profileByLandId(
     buying.set(landId, pending);
   }
   const s = await pending;
-  return { profile: toPropertyProfile(matchedAddress, s.land, s.buildings, s.zoning), paid: buyer, fetchedAt: s.fetchedAt };
+  return {
+    profile: toPropertyProfile(matchedAddress, s.land, s.buildings, s.zoning),
+    paid: buyer,
+    fetchedAt: s.fetchedAt,
+  };
 }

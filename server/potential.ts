@@ -12,13 +12,10 @@
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
 import { onLogin, THINKING } from "./claude-pool";
-import {
-  COMPUTER_TOOLS,
-  MODEL,
-  dispatchTool,
-  extractReasoning,
-} from "./agent";
+import { MODEL, extractReasoning } from "./agent";
+import { COMPUTER_TOOLS, dispatchTool } from "./agent-tools";
 import { addStep, addUsage, apiModel, setPotential, setPotentialStatus, type Answer, type Job } from "./jobs";
+import { asText } from "./text";
 
 const MAX_STEPS = Number(process.env.POTENTIAL_MAX_STEPS ?? 40);
 
@@ -60,14 +57,21 @@ const SUBMIT_TOOL = {
       commune: { type: ["string", "null"] },
       zone: { type: ["string", "null"], description: "zone code/designation, e.g. '5 (villa)', 'W2', 'K'" },
       parcelArea_m2: { type: ["number", "null"] },
-      metric: { type: ["string", "null"], description: "the governing rule, e.g. 'IUS 0.25', '3 Vollgeschosse + BMZ 0.9'" },
-      unit: { type: ["string", "null"], description: "unit of existing/allowed/additional, e.g. 'm² gross floor area', 'm³', 'full floors'" },
+      metric: {
+        type: ["string", "null"],
+        description: "the governing rule, e.g. 'IUS 0.25', '3 Vollgeschosse + BMZ 0.9'",
+      },
+      unit: {
+        type: ["string", "null"],
+        description: "unit of existing/allowed/additional, e.g. 'm² gross floor area', 'm³', 'full floors'",
+      },
       existing: { type: ["number", "null"], description: "already built, in `unit`" },
       allowed: { type: ["number", "null"], description: "max permitted by right, in `unit`" },
       additional: { type: ["number", "null"], description: "headroom by right = allowed − existing (0 if none)" },
       discretionary: {
         type: ["string", "null"],
-        description: "extra that MAY be granted at permit stage (bonus/derogation/Arealüberbauung), explicitly not guaranteed",
+        description:
+          "extra that MAY be granted at permit stage (bonus/derogation/Arealüberbauung), explicitly not guaranteed",
       },
       confidence: { type: "string", enum: ["exact", "estimated", "indicative"] },
       caveats: { type: "array", items: { type: "string" } },
@@ -124,15 +128,14 @@ function seedMessage(answer: Answer): string {
 }
 
 function coerce(input: Record<string, unknown>): BuildPotential {
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const s = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
   const conf = ["exact", "estimated", "indicative"].includes(String(input.confidence))
     ? (input.confidence as PotentialConfidence)
     : "indicative";
   return {
     generatedAt: new Date().toISOString(),
-    headline: String(input.headline ?? "Could not determine the construction potential."),
+    headline: asText(input.headline, "Could not determine the construction potential."),
     canton: s(input.canton),
     commune: s(input.commune),
     zone: s(input.zone),
@@ -146,7 +149,7 @@ function coerce(input: Record<string, unknown>): BuildPotential {
     confidence: conf,
     caveats: Array.isArray(input.caveats) ? input.caveats.filter((c): c is string => typeof c === "string") : [],
     sources: Array.isArray(input.sources) ? input.sources.filter((c): c is string => typeof c === "string") : [],
-    reasoning: String(input.reasoning ?? ""),
+    reasoning: asText(input.reasoning),
   };
 }
 
@@ -166,24 +169,27 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
   });
 
   let login = job.account ?? undefined; // stay on the investigation's Claude login while it can serve
-  const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: seedMessage(answer) },
-  ];
+  const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: seedMessage(answer) }];
 
   try {
     for (let i = 0; i < MAX_STEPS; i++) {
-      const turn = await onLogin(login, (client) => client.messages.create({
-        model: apiModel(job.model ?? MODEL),
-        max_tokens: 16_000,
-        thinking: THINKING, // adaptive, summarized; survives a switch of key (claude-pool.ts)
-        // Pin effort so every model runs at the same depth — Opus 5.5 would
-        // otherwise default to "medium" while the others default to "high".
-        output_config: { effort: "high" },
-        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-        tools: TOOLS,
-        cache_control: { type: "ephemeral" },
-        messages,
-      }), apiModel(job.model ?? MODEL));
+      const turn = await onLogin(
+        login,
+        (client) =>
+          client.messages.create({
+            model: apiModel(job.model ?? MODEL),
+            max_tokens: 16_000,
+            thinking: THINKING, // adaptive, summarized; survives a switch of key (claude-pool.ts)
+            // Pin effort so every model runs at the same depth — Opus 5.5 would
+            // otherwise default to "medium" while the others default to "high".
+            output_config: { effort: "high" },
+            system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+            tools: TOOLS,
+            cache_control: { type: "ephemeral" },
+            messages,
+          }),
+        apiModel(job.model ?? MODEL),
+      );
       const resp = turn.value;
       login = turn.label ?? undefined;
 
@@ -200,9 +206,7 @@ export async function analyzeBuildPotential(job: Job): Promise<void> {
 
       messages.push({ role: "assistant", content: resp.content });
 
-      const toolUses = resp.content.filter(
-        (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-      );
+      const toolUses = resp.content.filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
       if (toolUses.length === 0) {
         await setPotential(job, coerce({ headline: reasoning || "No conclusion.", reasoning }));
         return;

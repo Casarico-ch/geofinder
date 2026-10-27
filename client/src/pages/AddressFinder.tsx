@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLoad } from "@/hooks/useLoad";
 import { Link, useLocation, useRoute } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,15 +32,7 @@ import {
 import { toast } from "sonner";
 
 type Confidence =
-  | "street"
-  | "parcel"
-  | "building"
-  | "block"
-  | "neighborhood"
-  | "city"
-  | "region"
-  | "country"
-  | "unknown";
+  "street" | "parcel" | "building" | "block" | "neighborhood" | "city" | "region" | "country" | "unknown";
 
 interface AnswerCandidate {
   parcel: string | null;
@@ -161,7 +154,12 @@ interface LocationClues {
 
 function locationText(l: LocationClues): string {
   const parts: string[] = [];
-  if (l.slope) parts.push(l.slope.faces === "flat" ? `flat ground (${l.slope.confidence})` : `slope falls ${l.slope.faces} (${l.slope.confidence})`);
+  if (l.slope)
+    parts.push(
+      l.slope.faces === "flat"
+        ? `flat ground (${l.slope.confidence})`
+        : `slope falls ${l.slope.faces} (${l.slope.confidence})`,
+    );
   for (const m of l.landmarks ?? [])
     parts.push(`${m.name ?? m.kind} to the ${m.direction}${m.distanceM ? ` ~${m.distanceM} m` : ""} (${m.confidence})`);
   return parts.join(" · ");
@@ -175,7 +173,10 @@ interface SearchPlan {
   evidence: string[];
   ring: { commune: string; distanceM: number }[];
   shortlisted: string[];
-  candidates: Record<string, { commune: string; viewed: boolean; verdict: "unchecked" | "rejected" | "possible" | "match" }>;
+  candidates: Record<
+    string,
+    { commune: string; viewed: boolean; verdict: "unchecked" | "rejected" | "possible" | "match" }
+  >;
 }
 
 function SearchPlanCard({ search }: { search: SearchPlan }) {
@@ -184,7 +185,9 @@ function SearchPlanCard({ search }: { search: SearchPlan }) {
     <div className="rounded-xl border border-border bg-card p-5 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search plan</p>
-        <Badge variant={search.confidence === "high" ? "default" : search.confidence === "low" ? "secondary" : "outline"}>
+        <Badge
+          variant={search.confidence === "high" ? "default" : search.confidence === "low" ? "secondary" : "outline"}
+        >
           commune confidence {search.confidence}
         </Badge>
         {(search.primary ?? search.stated) && (
@@ -376,7 +379,11 @@ function PotentialView({ p }: { p: BuildPotential }) {
         <DRow k="Allowed by right" v={fmt(p.allowed)} />
         <DRow
           k="Additional by right"
-          v={p.additional != null ? <span className="text-primary font-semibold">{`+${p.additional.toLocaleString()}${unit ? ` ${unit}` : ""}`}</span> : null}
+          v={
+            p.additional != null ? (
+              <span className="text-primary font-semibold">{`+${p.additional.toLocaleString()}${unit ? ` ${unit}` : ""}`}</span>
+            ) : null
+          }
         />
       </div>
 
@@ -416,7 +423,12 @@ function PotentialView({ p }: { p: BuildPotential }) {
 interface RecheckInfo {
   requestId: string | null;
   requestStatus: string | null;
-  recheck: { jobId: string; model: string; status: string; answer: { address: string | null; parcel: string | null; confidence: string } | null } | null;
+  recheck: {
+    jobId: string;
+    model: string;
+    status: string;
+    answer: { address: string | null; parcel: string | null; confidence: string } | null;
+  } | null;
 }
 
 /**
@@ -454,7 +466,8 @@ function RecheckNote({ jobId, settled }: { jobId: string; settled: boolean }) {
   if (!r || r.jobId === jobId) return null;
   const busy = r.status === "running" || r.status === "paused";
   const who = (MODEL_LABEL[r.model] ?? r.model).replace(" · recheck", "");
-  const exact = r.answer && ["street", "building"].includes(r.answer.confidence) ? (r.answer.address ?? r.answer.parcel) : null;
+  const exact =
+    r.answer && ["street", "building"].includes(r.answer.confidence) ? (r.answer.address ?? r.answer.parcel) : null;
   return (
     <div className="rounded-xl border bg-card p-4 flex items-center justify-between gap-3 flex-wrap">
       <div className="flex items-start gap-2 min-w-0">
@@ -477,7 +490,13 @@ function RecheckNote({ jobId, settled }: { jobId: string; settled: boolean }) {
 function ListingCard({ job }: { job: Job }) {
   const { input } = job;
   const body = (input.listingText ?? "").replace(/^Municipality \/ commune: [^\n]*\n*/, "").trim();
-  const title = body.match(/^\s*Title:\s*(.+)$/im)?.[1] ?? body.split("\n").find((l) => l.trim())?.trim() ?? null;
+  const title =
+    body.match(/^\s*Title:\s*(.+)$/im)?.[1] ??
+    body
+      .split("\n")
+      .find((l) => l.trim())
+      ?.trim() ??
+    null;
   const [expanded, setExpanded] = useState(false);
   // The title is the heading already; show the rest of the listing text below.
   const rest = body.replace(/^\s*Title:.*$\n?/im, "").trim();
@@ -517,16 +536,27 @@ function ListingCard({ job }: { job: Job }) {
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {job.photos.map((src, i) => (
             <a key={src} href={src} target="_blank" rel="noopener noreferrer" className="shrink-0">
-              <img src={src} alt={`Listing photo ${i + 1}`} loading="lazy" className="h-16 w-24 rounded-md object-cover border border-border" />
+              <img
+                src={src}
+                alt={`Listing photo ${i + 1}`}
+                loading="lazy"
+                className="h-16 w-24 rounded-md object-cover border border-border"
+              />
             </a>
           ))}
         </div>
       )}
       {rest && (
         <div>
-          <p className={`text-sm text-muted-foreground whitespace-pre-wrap ${expanded ? "" : "line-clamp-3"}`}>{rest}</p>
+          <p className={`text-sm text-muted-foreground whitespace-pre-wrap ${expanded ? "" : "line-clamp-3"}`}>
+            {rest}
+          </p>
           {rest.length > 240 && (
-            <button type="button" onClick={() => setExpanded((e) => !e)} className="text-xs text-primary hover:underline mt-1">
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="text-xs text-primary hover:underline mt-1"
+            >
               {expanded ? "Show less" : "Show full listing text"}
             </button>
           )}
@@ -564,7 +594,12 @@ function StepRow({ step }: { step: Step }) {
           </pre>
         )}
         {step.image && (
-          <img src={step.image} alt={step.title} className="mt-1 rounded-md border border-border max-h-72" loading="lazy" />
+          <img
+            src={step.image}
+            alt={step.title}
+            className="mt-1 rounded-md border border-border max-h-72"
+            loading="lazy"
+          />
         )}
       </div>
     </li>
@@ -610,12 +645,7 @@ export default function AddressFinder() {
   }, []);
 
   // Keep the overview list fresh while it's on screen (running jobs update live).
-  useEffect(() => {
-    if (!isOverview) return;
-    void loadRecent();
-    const timer = setInterval(() => void loadRecent(), 3000);
-    return () => clearInterval(timer);
-  }, [isOverview, loadRecent]);
+  useLoad(loadRecent, { every: 3000, enabled: isOverview });
 
   // Fetch the next page of trace steps and append it. Guarded so overlapping
   // triggers (scroll + poll) can't double-fetch the same page.
@@ -639,14 +669,9 @@ export default function AddressFinder() {
     }
   }, [jobId]);
 
-  // Switching investigations: reset the trace and load only the FIRST page.
-  useEffect(() => {
-    setJob(null);
-    setNotFound(false);
-    setSteps([]);
-    loadedRef.current = 0;
-    if (jobId) void loadMoreSteps();
-  }, [jobId, loadMoreSteps]);
+  // Load only the FIRST page of the trace. Another investigation is a fresh
+  // mount (App keys this page by its id), so nothing has to be reset here.
+  useLoad(loadMoreSteps, { key: jobId, enabled: jobId != null });
 
   // Poll the investigation META (small — no trace) while anything is running:
   // the investigation itself, or a construction-potential analysis (which also
@@ -728,9 +753,7 @@ export default function AddressFinder() {
   }, [job, loadMoreSteps]);
 
   const addFiles = useCallback((list: FileList | File[]) => {
-    const chosen = Array.from(list).filter(
-      (f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name),
-    );
+    const chosen = Array.from(list).filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
     if (chosen.length === 0) {
       toast.error("Please choose image files");
       return;
@@ -885,7 +908,6 @@ export default function AddressFinder() {
       }
       setJob((j) => (j ? { ...j, potentialStatus: "running" } : j));
       setPollNonce((n) => n + 1); // resume polling so the analysis streams in
-
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start the analysis");
     }
@@ -894,7 +916,10 @@ export default function AddressFinder() {
   const answer = job?.answer ?? null;
   // The plot data check only makes sense once we know the place.
   const canCheckPotential =
-    !!job?.answer && !!(job.answer.address || job.answer.parcel) && job.answer.latitude != null && job.answer.longitude != null;
+    !!job?.answer &&
+    !!(job.answer.address || job.answer.parcel) &&
+    job.answer.latitude != null &&
+    job.answer.longitude != null;
   const coords =
     answer && answer.latitude !== null && answer.longitude !== null
       ? { lat: answer.latitude, lon: answer.longitude }
@@ -1082,7 +1107,11 @@ export default function AddressFinder() {
                   effort), whose answer then counts.
                 </p>
 
-                <Button onClick={() => void start()} disabled={submitting || pictures.length === 0} className="w-full h-10">
+                <Button
+                  onClick={() => void start()}
+                  disabled={submitting || pictures.length === 0}
+                  className="w-full h-10"
+                >
                   {submitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1128,86 +1157,90 @@ export default function AddressFinder() {
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <StatusDot status={job.status} />
                     <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {running
-                      ? "Investigating…"
-                      : job.status === "paused"
-                        ? "Paused"
-                        : job.status === "error"
-                          ? "Failed"
-                          : job.status === "cancelled"
-                            ? "Stopped"
-                            : "Done"}
-                    <span className="text-muted-foreground font-normal">
-                      {" · "}
-                      {job.model ? `${MODEL_LABEL[job.model]} · ` : ""}
-                      {job.stepCount} steps · {fmtDuration(job.elapsedMs)} · {fmtTokens(job.tokens.total)} tokens ·{" "}
-                      <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
-                    </span>
-                  </p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
-                    <Clock className="h-3 w-3 shrink-0" /> started {timeAgo(job.createdAt)}
-                    {job.tokens.total > 0 &&
-                      ` · ${fmtTokens(job.tokens.input)} in${job.tokens.cached > 0 ? ` (${fmtTokens(job.tokens.cached)} cached)` : ""} / ${fmtTokens(job.tokens.output)} out`}
-                    {job.promptVersion && (
-                      <>
-                        {" · "}
-                        <a
-                          href={`/runs/${job.id}/prompt.txt`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-mono hover:text-foreground hover:underline"
-                          title="View the exact prompt this run used"
-                        >
-                          prompt {job.promptVersion}
-                        </a>
-                      </>
-                    )}
-                  </p>
+                      <p className="text-sm font-medium text-foreground">
+                        {running
+                          ? "Investigating…"
+                          : job.status === "paused"
+                            ? "Paused"
+                            : job.status === "error"
+                              ? "Failed"
+                              : job.status === "cancelled"
+                                ? "Stopped"
+                                : "Done"}
+                        <span className="text-muted-foreground font-normal">
+                          {" · "}
+                          {job.model ? `${MODEL_LABEL[job.model]} · ` : ""}
+                          {job.stepCount} steps · {fmtDuration(job.elapsedMs)} · {fmtTokens(job.tokens.total)} tokens ·{" "}
+                          <span className="text-foreground font-medium">{fmtCost(job.cost)}</span>
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                        <Clock className="h-3 w-3 shrink-0" /> started {timeAgo(job.createdAt)}
+                        {job.tokens.total > 0 &&
+                          ` · ${fmtTokens(job.tokens.input)} in${job.tokens.cached > 0 ? ` (${fmtTokens(job.tokens.cached)} cached)` : ""} / ${fmtTokens(job.tokens.output)} out`}
+                        {job.promptVersion && (
+                          <>
+                            {" · "}
+                            <a
+                              href={`/runs/${job.id}/prompt.txt`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono hover:text-foreground hover:underline"
+                              title="View the exact prompt this run used"
+                            >
+                              prompt {job.promptVersion}
+                            </a>
+                          </>
+                        )}
+                      </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap sm:justify-end shrink-0">
-                {/* Contextual CTA: pause while running, resume while paused, and
+                    {/* Contextual CTA: pause while running, resume while paused, and
                     the construction-potential check once it's done. */}
-                {running && (
-                  <Button variant="outline" size="sm" onClick={() => void pause()} className="shrink-0">
-                    <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause
-                  </Button>
-                )}
-                {job.status === "paused" && (
-                  <Button size="sm" onClick={() => void resume()} className="shrink-0">
-                    <Play className="mr-1.5 h-3.5 w-3.5" /> Resume
-                  </Button>
-                )}
-                {/* Potential check needs a located place: an address or a plot number. */}
-                {job.status === "done" && !job.potential && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void analysePotential()}
-                    disabled={!canCheckPotential || job.potentialStatus === "running"}
-                    title={canCheckPotential ? undefined : "Needs an address or a plot number"}
-                    className="shrink-0"
-                  >
-                    {job.potentialStatus === "running" ? (
-                      <>
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Analysing…
-                      </>
-                    ) : (
-                      <>
-                        <Building2 className="mr-1.5 h-3.5 w-3.5" /> Potential check
-                      </>
+                    {running && (
+                      <Button variant="outline" size="sm" onClick={() => void pause()} className="shrink-0">
+                        <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause
+                      </Button>
                     )}
-                  </Button>
-                )}
-                {jobId && (
-                  <Button variant="ghost" size="sm" className="shrink-0" asChild>
-                    <a href={`/api/geo/investigate/${jobId}/export`} download title="Download the whole thread: photos, text, every step">
-                      <Download className="mr-1.5 h-3.5 w-3.5" /> Export
-                    </a>
-                  </Button>
-                )}
+                    {job.status === "paused" && (
+                      <Button size="sm" onClick={() => void resume()} className="shrink-0">
+                        <Play className="mr-1.5 h-3.5 w-3.5" /> Resume
+                      </Button>
+                    )}
+                    {/* Potential check needs a located place: an address or a plot number. */}
+                    {job.status === "done" && !job.potential && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void analysePotential()}
+                        disabled={!canCheckPotential || job.potentialStatus === "running"}
+                        title={canCheckPotential ? undefined : "Needs an address or a plot number"}
+                        className="shrink-0"
+                      >
+                        {job.potentialStatus === "running" ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Analysing…
+                          </>
+                        ) : (
+                          <>
+                            <Building2 className="mr-1.5 h-3.5 w-3.5" /> Potential check
+                          </>
+                        )}
+                      </Button>
+                    )}
+                    {jobId && (
+                      <Button variant="ghost" size="sm" className="shrink-0" asChild>
+                        <a
+                          href={`/api/geo/investigate/${jobId}/export`}
+                          download
+                          title="Download the whole thread: photos, text, every step"
+                        >
+                          <Download className="mr-1.5 h-3.5 w-3.5" /> Export
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1292,7 +1325,8 @@ export default function AddressFinder() {
                         <ul className="space-y-1">
                           {answer.candidates.map((c, i) => (
                             <li key={i} className="text-sm text-muted-foreground leading-relaxed">
-                              · <span className="text-foreground">{c.address ?? c.parcel ?? "candidate"}</span> — {c.note}
+                              · <span className="text-foreground">{c.address ?? c.parcel ?? "candidate"}</span> —{" "}
+                              {c.note}
                             </li>
                           ))}
                         </ul>
@@ -1309,7 +1343,8 @@ export default function AddressFinder() {
                       {answer.links.map((href, i) => (
                         <a key={i} href={href} target="_blank" rel="noopener noreferrer">
                           <Button variant="outline" size="sm">
-                            {new URL(href).hostname.replace(/^www\./, "")} <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                            {new URL(href).hostname.replace(/^www\./, "")}{" "}
+                            <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                           </Button>
                         </a>
                       ))}
@@ -1388,7 +1423,10 @@ export default function AddressFinder() {
                 </ol>
                 {/* Sentinel: scrolling this into view loads the next page. */}
                 {steps.length < job.stepCount && (
-                  <div ref={sentinelRef} className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                  <div
+                    ref={sentinelRef}
+                    className="flex items-center justify-center py-4 text-xs text-muted-foreground"
+                  >
                     <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> loading more steps…
                   </div>
                 )}

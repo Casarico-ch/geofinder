@@ -17,13 +17,14 @@
     "try:popety": "tsx --env-file-if-exists=.env scripts/try-popety.ts",
     "lock:run": "tsx scripts/lock-run.ts",
     "check": "tsc --noEmit",
-    "lint": "oxlint --type-aware server client/src scripts",
+    "lint": "oxlint --type-aware --deny-warnings server client/src scripts",
     "knip": "knip",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "tsx scripts/check-claude-pool.ts && tsx scripts/check-magic-feedback.ts && tsx scripts/check-proof.ts && tsx scripts/check-shortlist.ts && tsx scripts/check-gwr.ts && tsx scripts/check-popety-store.ts && tsx scripts/check-listing-search.ts && tsx scripts/check-geneva.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.137.0",
+    "@anthropic-ai/sdk": "^0.133.0",
     "@radix-ui/react-checkbox": "^1.4.1",
     "@radix-ui/react-collapsible": "^1.2.1",
     "@radix-ui/react-dialog": "^1.3.1",
@@ -37,9 +38,9 @@
     "express": "^5.3.0",
     "html2canvas-pro": "^2.5.2",
     "jpeg-js": "^0.4.4",
-    "lucide-react": "^1.62.0",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
+    "lucide-react": "^1.56.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "wouter": "^3.13.0",
@@ -53,15 +54,15 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "esbuild": "^0.28.2",
-    "knip": "6.43.0",
-    "oxlint": "1.90.0",
-    "oxlint-tsgolint": "7.0.2005",
+    "knip": "^6.41.0",
+    "oxlint": "^1.88.0",
+    "oxlint-tsgolint": "^7.0.2004",
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "tw-animate-css": "^1.4.0",
     "typescript": "7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.4"
   },
-  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
+  "packageManager": "pnpm@12.13.0"
 }

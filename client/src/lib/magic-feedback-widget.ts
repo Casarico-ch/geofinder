@@ -89,20 +89,12 @@ const ELEMENT_SELECTOR =
 /** Every visible, labelled, interactive-ish element on screen right now, capped. Viewport coordinates. */
 function buildElementMap(): MappedElement[] {
   const seen: MappedElement[] = [];
-  for (const el of Array.from(
-    document.querySelectorAll<HTMLElement>(ELEMENT_SELECTOR)
-  )) {
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>(ELEMENT_SELECTOR))) {
     if (seen.length >= MAX_ELEMENTS) break;
     if (el.closest("[data-mf-ui]")) continue; // never map the widget itself
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) continue;
-    if (
-      r.bottom < 0 ||
-      r.right < 0 ||
-      r.top > window.innerHeight ||
-      r.left > window.innerWidth
-    )
-      continue;
+    if (r.bottom < 0 || r.right < 0 || r.top > window.innerHeight || r.left > window.innerWidth) continue;
     const style = getComputedStyle(el);
     if (style.visibility === "hidden" || style.display === "none") continue;
     const label = labelFor(el);
@@ -121,22 +113,16 @@ function buildElementMap(): MappedElement[] {
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
-    r.onload = () => resolve(String(r.result || ""));
+    r.onload = () => resolve(typeof r.result === "string" ? r.result : "");
     r.onerror = () => reject(r.error);
     r.readAsDataURL(blob);
   });
 }
 
 function pickAudioMime(): string {
-  const cands = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-    "audio/ogg;codecs=opus",
-  ];
-  if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported)
-    return "";
-  return cands.find(c => MediaRecorder.isTypeSupported(c)) ?? "";
+  const cands = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+  if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return "";
+  return cands.find((c) => MediaRecorder.isTypeSupported(c)) ?? "";
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -174,19 +160,19 @@ async function modelShot(p: CapturedPage): Promise<string> {
 /** The pages as the read-back sends them: each with its model-sized shot. */
 async function modelPages(pages: CapturedPage[]): Promise<CapturedPage[]> {
   return Promise.all(
-    pages.map(async p => {
+    pages.map(async (p) => {
       try {
         return { ...p, shot: await modelShot(p) };
       } catch (err) {
         console.error("[magicFeedback.modelShot]", err);
         return p;
       }
-    })
+    }),
   );
 }
 
 function reviewPages(pages: CapturedPage[]): ReviewPage[] {
-  return pages.map(p => ({ url: p.url, shot: p.shot, vw: p.vw, vh: p.vh }));
+  return pages.map((p) => ({ url: p.url, shot: p.shot, vw: p.vw, vh: p.vh }));
 }
 
 /** The viewport as it is right now: picture (JPEG) and element map, in shared coordinates. */
@@ -206,9 +192,8 @@ async function capturePage(at: number): Promise<CapturedPage> {
     height: vh,
     windowWidth: vw,
     windowHeight: vh,
-    ignoreElements: el =>
-      el instanceof HTMLElement && el.hasAttribute("data-mf-ui"),
-    onclone: doc => {
+    ignoreElements: (el) => el instanceof HTMLElement && el.hasAttribute("data-mf-ui"),
+    onclone: (doc) => {
       maskClone(doc);
     },
   });
@@ -222,10 +207,7 @@ async function capturePage(at: number): Promise<CapturedPage> {
   };
 }
 
-async function postJson(
-  path: string,
-  body: unknown
-): Promise<{ ok: boolean; body: any; status: number }> {
+async function postJson(path: string, body: unknown): Promise<{ ok: boolean; body: any; status: number }> {
   const r = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -265,13 +247,12 @@ export class MagicFeedbackWidget {
   };
   private set(patch: Partial<MagicState>) {
     this.state = { ...this.state, ...patch };
-    this.listeners.forEach(fn => fn());
+    this.listeners.forEach((fn) => fn());
   }
 
   /** Wires the shortcut and picks up a recording a page load interrupted. A scripted browser gets nothing. */
   attach(): () => void {
-    if (typeof navigator !== "undefined" && navigator.webdriver)
-      return () => {};
+    if (typeof navigator !== "undefined" && navigator.webdriver) return () => {};
     document.addEventListener("keydown", this.onKeyDown, true);
     window.addEventListener("pagehide", this.onPageHide);
     void this.resumeFromStore();
@@ -374,17 +355,14 @@ export class MagicFeedbackWidget {
     try {
       first = await capturePage(0);
     } catch {
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach((t) => t.stop());
       if (gen !== this.gen) return;
       this.set({ phase: "idle" });
-      this.notify(
-        "error",
-        "Magic feedback could not capture this screen — nothing was recorded."
-      );
+      this.notify("error", "Magic feedback could not capture this screen — nothing was recorded.");
       return;
     }
     if (gen !== this.gen) {
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     this.session = {
@@ -407,9 +385,7 @@ export class MagicFeedbackWidget {
     const mime = pickAudioMime();
     let rec: MediaRecorder;
     try {
-      rec = mime
-        ? new MediaRecorder(stream, { mimeType: mime })
-        : new MediaRecorder(stream);
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
     } catch {
       rec = new MediaRecorder(stream);
     }
@@ -419,7 +395,7 @@ export class MagicFeedbackWidget {
       chunks: [],
     };
     s.clips.push(clip);
-    rec.ondataavailable = e => {
+    rec.ondataavailable = (e) => {
       if (e.data && e.data.size) {
         clip.chunks.push(e.data);
         this.scheduleSave();
@@ -452,13 +428,8 @@ export class MagicFeedbackWidget {
     const gen = this.gen;
     this.capturing = true;
     capturePage(Date.now() - s.startedAt)
-      .then(page => {
-        if (
-          gen !== this.gen ||
-          this.session !== s ||
-          this.state.phase !== "recording" ||
-          s.pages.length >= MAX_PAGES
-        )
+      .then((page) => {
+        if (gen !== this.gen || this.session !== s || this.state.phase !== "recording" || s.pages.length >= MAX_PAGES)
           return;
         s.pages.push(page);
         this.flush();
@@ -478,7 +449,7 @@ export class MagicFeedbackWidget {
     this.pollTimer = null;
     window.removeEventListener("mousemove", this.onMove);
     window.removeEventListener("click", this.onClick, { capture: true });
-    this.stream?.getTracks().forEach(t => t.stop());
+    this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
   }
 
@@ -486,7 +457,7 @@ export class MagicFeedbackWidget {
     if (this.state.phase !== "recording" || !this.recorder) return;
     this.set({ phase: "reading" });
     const rec = this.recorder;
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve) => {
       rec.addEventListener("stop", () => resolve(), { once: true });
       try {
         rec.stop();
@@ -525,7 +496,7 @@ export class MagicFeedbackWidget {
           mousePath: s.mousePath,
           clicks: s.clicks,
           ms: Math.min(Date.now() - s.startedAt, MAX_RECORD_MS),
-        })
+        }),
       );
       if (gen !== this.gen || this.session !== s) return;
       if (!r.ok) {
@@ -599,7 +570,7 @@ export class MagicFeedbackWidget {
       return;
     }
     if (gen !== this.gen || !this.session) {
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     const s = this.session;
@@ -612,11 +583,11 @@ export class MagicFeedbackWidget {
       }
     }
     if (gen !== this.gen || this.session !== s) {
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     if (Date.now() - s.startedAt >= MAX_RECORD_MS) {
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach((t) => t.stop());
       s.stopped = true;
       await this.readBack();
       return;
@@ -641,10 +612,8 @@ export class MagicFeedbackWidget {
 
   /** Every page with its pins burned in, numbered exactly as the card's notes are, stacked into one JPEG. */
   private async stitch(pages: CapturedPage[], kept: ReviewNote[]) {
-    const imgs = await Promise.all(pages.map(p => loadImage(p.shot)));
-    const layout = stitchLayout(
-      imgs.map(i => ({ w: i.naturalWidth, h: i.naturalHeight }))
-    );
+    const imgs = await Promise.all(pages.map((p) => loadImage(p.shot)));
+    const layout = stitchLayout(imgs.map((i) => ({ w: i.naturalWidth, h: i.naturalHeight })));
     const c = document.createElement("canvas");
     c.width = layout.width;
     c.height = layout.height;
@@ -694,40 +663,31 @@ export class MagicFeedbackWidget {
     const reply = this.state.reply;
     const s = this.session;
     if (this.state.phase !== "review" || !reply || !s) return;
-    const kept = notes.filter(n => String(n.text || "").trim());
+    const kept = notes.filter((n) => String(n.text || "").trim());
     const pages = s.pages;
     let annotated: string;
     try {
       annotated = await this.stitch(pages, kept);
     } catch {
-      this.notify(
-        "error",
-        "That did not file — the screenshots could not be prepared."
-      );
+      this.notify("error", "That did not file — the screenshots could not be prepared.");
       return;
     }
     // The screen clears before the call lands, so a failure has to say so itself.
     this.discard();
     try {
-      const r = await postJson(
-        "/api/magic-feedback/confirm",
-        confirmBody(reply, kept, annotated, pages)
-      );
+      const r = await postJson("/api/magic-feedback/confirm", confirmBody(reply, kept, annotated, pages));
       if (!r.ok) {
         this.notify(
           "error",
           r.body?.error
             ? "That did not file: " + String(r.body.error).slice(0, 120)
-            : "That did not file — try the shortcut again in a moment."
+            : "That did not file — try the shortcut again in a moment.",
         );
         return;
       }
       this.notify("success", filedToast(!!r.body.folded));
     } catch {
-      this.notify(
-        "error",
-        "That did not file — try the shortcut again in a moment."
-      );
+      this.notify("error", "That did not file — try the shortcut again in a moment.");
     }
   }
 

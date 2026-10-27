@@ -37,7 +37,12 @@ async function fetchBuffer(url: string, ms = 30_000): Promise<Buffer> {
 
 // Decode an 8-bit, non-interlaced PNG (RGB, RGBA, grey or palette) to RGB.
 export function decodePNG(buf: Buffer): { w: number; h: number; rgb: Buffer } {
-  let p = 8, w = 0, h = 0, depth = 0, type = 0, interlace = 0;
+  let p = 8,
+    w = 0,
+    h = 0,
+    depth = 0,
+    type = 0,
+    interlace = 0;
   let palette: Buffer | null = null;
   const idat: Buffer[] = [];
   while (p < buf.length) {
@@ -60,19 +65,25 @@ export function decodePNG(buf: Buffer): { w: number; h: number; rgb: Buffer } {
   if (!bpp) throw new Error(`unsupported PNG colour type ${type}`);
   const raw = zlib.inflateSync(Buffer.concat(idat));
   const stride = w * bpp;
-  const cur = Buffer.alloc(stride), prev = Buffer.alloc(stride);
+  const cur = Buffer.alloc(stride),
+    prev = Buffer.alloc(stride);
   const rgb = Buffer.alloc(w * h * 3);
   for (let y = 0; y < h; y++) {
     const f = raw[y * (stride + 1)];
     raw.copy(cur, 0, y * (stride + 1) + 1, (y + 1) * (stride + 1));
     for (let i = 0; i < stride; i++) {
-      const a = i >= bpp ? cur[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+      const a = i >= bpp ? cur[i - bpp] : 0,
+        b = prev[i],
+        c = i >= bpp ? prev[i - bpp] : 0;
       let v = cur[i];
       if (f === 1) v += a;
       else if (f === 2) v += b;
       else if (f === 3) v += (a + b) >> 1;
       else if (f === 4) {
-        const pp = a + b - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c);
+        const pp = a + b - c,
+          pa = Math.abs(pp - a),
+          pb = Math.abs(pp - b),
+          pc = Math.abs(pp - c);
         v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
       }
       cur[i] = v & 0xff;
@@ -112,12 +123,13 @@ const DIGITS: Record<string, string[]> = {
 };
 
 function fillRect(rgb: Buffer, W: number, x0: number, y0: number, w: number, h: number, col: number[]): void {
-  for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
-    const o = (y * W + x) * 3;
-    rgb[o] = col[0];
-    rgb[o + 1] = col[1];
-    rgb[o + 2] = col[2];
-  }
+  for (let y = y0; y < y0 + h; y++)
+    for (let x = x0; x < x0 + w; x++) {
+      const o = (y * W + x) * 3;
+      rgb[o] = col[0];
+      rgb[o + 1] = col[1];
+      rgb[o + 2] = col[2];
+    }
 }
 
 function drawLabel(rgb: Buffer, W: number, x0: number, y0: number, text: string): void {
@@ -157,7 +169,8 @@ export async function renderContactSheet(
   const spanM = opts.spanM ?? SPAN_M;
   const list = items.slice(0, COLS * COLS);
   const rows = Math.ceil(list.length / COLS);
-  const W = COLS * TILE, H = rows * TILE;
+  const W = COLS * TILE,
+    H = rows * TILE;
   const rgb = Buffer.alloc(W * H * 3, 255);
   const failed: string[] = [];
   let next = 0;
@@ -165,7 +178,8 @@ export async function renderContactSheet(
     while (next < list.length) {
       const i = next++;
       const it = list[i];
-      const ox = (i % COLS) * TILE, oy = Math.floor(i / COLS) * TILE;
+      const ox = (i % COLS) * TILE,
+        oy = Math.floor(i / COLS) * TILE;
       try {
         const img = decodePNG(await fetchBuffer(tileUrl(it.lat, it.lon, spanM, TILE)));
         for (let y = 0; y < Math.min(TILE, img.h); y++) {
@@ -175,7 +189,8 @@ export async function renderContactSheet(
         failed.push(it.label);
         fillRect(rgb, W, ox, oy, TILE, TILE, [60, 60, 60]);
       }
-      const cx = ox + TILE / 2, cy = oy + TILE / 2;
+      const cx = ox + TILE / 2,
+        cy = oy + TILE / 2;
       fillRect(rgb, W, cx - 6, cy - 1, 13, 3, [255, 0, 0]);
       fillRect(rgb, W, cx - 1, cy - 6, 3, 13, [255, 0, 0]);
       fillRect(rgb, W, ox, oy, TILE, 1, [255, 255, 255]);

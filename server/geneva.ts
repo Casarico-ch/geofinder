@@ -117,12 +117,18 @@ export function genevaAnswer(egrid: string): GenevaAnswer | null {
     rec.overlays.map((k) => {
       const o = r.catalogue.overlays[k];
       const keep = rec.overlay_items[k];
-      return [k, keep && Array.isArray(o?.items) ? { ...o, items: o.items.filter((it: any) => keep.includes(String(it.plan))) } : o];
+      return [
+        k,
+        keep && Array.isArray(o?.items)
+          ? { ...o, items: o.items.filter((it: any) => keep.includes(String(it.plan))) }
+          : o,
+      ];
     }),
   );
   out.plans_detail = rec.plans.map((p) => {
     const plan = p.ref ? (p.ref[0] === "pdzi" ? r.pdzi : r.sites)[p.ref[1]] : null;
-    const sectors = plan && plan.sectors && typeof plan.sectors === "object" && !Array.isArray(plan.sectors) ? plan.sectors : null;
+    const sectors =
+      plan && plan.sectors && typeof plan.sectors === "object" && !Array.isArray(plan.sectors) ? plan.sectors : null;
     return {
       plan: p.plan,
       sector: p.sector,
@@ -146,7 +152,10 @@ export function genevaAnswer(egrid: string): GenevaAnswer | null {
     oereb_extract_json: `https://ge.ch/terecadastrews/RdppfSVC.svc/extract/json/?EGRID=${egrid}`,
     sitg_map: "https://map.sitg.ch/app/?portail=cadastre",
   };
-  out.sources = { parcels_built: "geneva/build/parcels/build.py (SITG layers, see layers.json)", rules: r.catalogue.meta };
+  out.sources = {
+    parcels_built: "geneva/build/parcels/build.py (SITG layers, see layers.json)",
+    rules: r.catalogue.meta,
+  };
   return out as GenevaAnswer;
 }
 
@@ -180,7 +189,9 @@ export async function genevaEgridAt(lat: number, lon: number): Promise<string | 
       { signal: AbortSignal.timeout(15_000) },
     );
     if (!res.ok) return null;
-    const hits: string[] = ((await res.json()).results ?? []).map((r: any) => r.attributes?.egris_egrid).filter(Boolean);
+    const hits: string[] = ((await res.json()).results ?? [])
+      .map((r: any) => r.attributes?.egris_egrid)
+      .filter(Boolean);
     return hits.find(isGenevaEgrid) ?? null;
   } catch {
     return null;
@@ -196,7 +207,8 @@ export async function genevaPlotOfEgrid(egrid: string): Promise<string | null> {
   return genevaEgridAt((s + n) / 2, (w + e) / 2);
 }
 
-const GWR_FIND = "https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.bfs.gebaeude_wohnungs_register&searchField=egid&returnGeometry=false&searchText=";
+const GWR_FIND =
+  "https://api3.geo.admin.ch/rest/services/api/MapServer/find?layer=ch.bfs.gebaeude_wohnungs_register&searchField=egid&returnGeometry=false&searchText=";
 
 // The EGRID the building register records for a building.
 async function registerEgrid(egid: string): Promise<string | null> {

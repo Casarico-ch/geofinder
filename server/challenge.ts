@@ -15,7 +15,9 @@
 // so the screen has something to show while the run works.
 // =============================================================================
 import { randomUUID } from "node:crypto";
-import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { runInvestigation } from "./agent";
+import { type AgentImage } from "./agent-prompt";
+import { saveListingPhotos } from "./agent-state";
 import { exactAddressOf } from "./consensus";
 import { buildingAt, buildingByEgid, flatsOf, type GwrBuilding } from "./gwr";
 import { costUsd, createJob, getJob, type Job, type ModelId } from "./jobs";
@@ -74,13 +76,22 @@ export interface ChallengeView extends Challenge {
   caveat: string | null;
 }
 
-const FIT: Record<string, "yes" | "no" | "unclear"> = { fits: "yes", fit: "yes", yes: "yes", no: "no", "doesn't fit": "no", unclear: "unclear" };
+const FIT: Record<string, "yes" | "no" | "unclear"> = {
+  fits: "yes",
+  fit: "yes",
+  yes: "yes",
+  no: "no",
+  "doesn't fit": "no",
+  unclear: "unclear",
+};
 
 // "COMPARE: Plot | A: 800 m² vs 815 (fits) | B: 1355 m² (no)", "A: WINS — …", "DECIDED BY: …".
 function readReasoning(text: string, labels: string[]) {
   const compare: ChallengeView["compare"] = [];
   const summary: ChallengeView["summary"] = {};
-  let decidedBy: string | null = null, photos: string | null = null, caveat: string | null = null;
+  let decidedBy: string | null = null,
+    photos: string | null = null,
+    caveat: string | null = null;
   const rest: string[] = [];
   for (const raw of text.split("\n")) {
     const line = raw.trim().replace(/^[-*•]\s*/, "");
@@ -91,10 +102,14 @@ function readReasoning(text: string, labels: string[]) {
       const cells: Record<string, { text: string; fit: "yes" | "no" | "unclear" }> = {};
       for (const part of parts) {
         const c = part.match(/^([A-Z]):\s*(.*?)\s*(?:\((fits?|no|doesn't fit|unclear|yes)\))?$/i);
-        if (c && labels.includes(c[1].toUpperCase())) cells[c[1].toUpperCase()] = { text: c[2], fit: FIT[(c[3] ?? "unclear").toLowerCase()] ?? "unclear" };
+        if (c && labels.includes(c[1].toUpperCase()))
+          cells[c[1].toUpperCase()] = { text: c[2], fit: FIT[(c[3] ?? "unclear").toLowerCase()] ?? "unclear" };
       }
       if (criterion) compare.push({ criterion, cells });
-    } else if ((m = line.match(/^([A-Z])\s*(?::|—|-)\s*(WINS|LOSES)\b[\s:—-]*(.*)$/i)) && labels.includes(m[1].toUpperCase())) {
+    } else if (
+      (m = line.match(/^([A-Z])\s*(?::|—|-)\s*(WINS|LOSES)\b[\s:—-]*(.*)$/i)) &&
+      labels.includes(m[1].toUpperCase())
+    ) {
       summary[m[1].toUpperCase()] = { wins: m[2].toUpperCase() === "WINS", text: m[3].trim() };
     } else if ((m = line.match(/^DECIDED BY:\s*(.+)$/i))) decidedBy = m[1];
     else if ((m = line.match(/^PHOTOS:\s*(.+)$/i))) photos = m[1];
@@ -121,7 +136,9 @@ async function getJson(url: string, ms = 15_000): Promise<any> {
 async function findBuilding(query: string): Promise<GwrBuilding | null> {
   const q = query.trim();
   if (/^\d{4,10}$/.test(q)) return buildingByEgid(q);
-  const j = await getJson(`${SEARCH}?searchText=${encodeURIComponent(q)}&type=locations&origins=address&sr=4326&limit=1`);
+  const j = await getJson(
+    `${SEARCH}?searchText=${encodeURIComponent(q)}&type=locations&origins=address&sr=4326&limit=1`,
+  );
   const hit = (j.results ?? [])[0]?.attrs;
   if (!hit) return null;
   const egid = String(hit.featureId ?? "").split("_")[0];
@@ -138,9 +155,21 @@ function moreRows(l: ReturnType<typeof listingFacts>, b: Partial<GwrBuilding>): 
   if (l.year != null) {
     const p = b.period ?? null;
     const built = b.year ?? null;
-    const building = built != null ? String(built) : p ? (p[0] === 0 ? `before ${p[1] + 1}` : `${p[0]}–${p[1]}`) : "not in the register";
+    const building =
+      built != null
+        ? String(built)
+        : p
+          ? p[0] === 0
+            ? `before ${p[1] + 1}`
+            : `${p[0]}–${p[1]}`
+          : "not in the register";
     const fits = built != null ? Math.abs(built - l.year) <= 2 : p ? l.year >= p[0] - 1 && l.year <= p[1] + 1 : null;
-    rows.push({ fact: "Year built", listing: String(l.year), building, verdict: fits == null ? "unknown" : fits ? "match" : "mismatch" });
+    rows.push({
+      fact: "Year built",
+      listing: String(l.year),
+      building,
+      verdict: fits == null ? "unknown" : fits ? "match" : "mismatch",
+    });
   }
   return rows;
 }
@@ -169,9 +198,14 @@ async function quickCheck(
     reason = "Every fact fits, but they don't prove it on their own.";
   } else {
     verdict = "unsure";
-    reason = rows.length ? "Nothing rules it out, but no fact separates it from its neighbours." : "The listing states no size or home count to check.";
+    reason = rows.length
+      ? "Nothing rules it out, but no fact separates it from its neighbours."
+      : "The listing states no size or home count to check.";
   }
-  const facts = [...rows.map(({ fact, listing, building, verdict: v }) => ({ fact, listing, building, verdict: v })), ...moreRows(l, b)];
+  const facts = [
+    ...rows.map(({ fact, listing, building, verdict: v }) => ({ fact, listing, building, verdict: v })),
+    ...moreRows(l, b),
+  ];
   return { verdict, reason, facts };
 }
 
@@ -187,7 +221,10 @@ async function namedBuilding(job: Job | undefined): Promise<GwrBuilding | null> 
     if (b) return b;
   }
   const e = job?.search ? claimedEntry(job.search, { lat: c.latitude, lon: c.longitude, address: c.address }) : null;
-  if (e) return (await buildingByEgid(e.egid).catch(() => null)) ?? { ...e, egid: String(e.egid) } as unknown as GwrBuilding;
+  if (e)
+    return (
+      (await buildingByEgid(e.egid).catch(() => null)) ?? ({ ...e, egid: String(e.egid) } as unknown as GwrBuilding)
+    );
   return c.latitude != null && c.longitude != null ? buildingAt(c.latitude, c.longitude).catch(() => null) : null;
 }
 
@@ -197,7 +234,9 @@ function taskText(listingText: string, houses: ChallengeHouse[], noneFound: bool
   const sug = houses.find((h) => h.suggested)!;
   const describe = (h: ChallengeHouse) =>
     `${h.label}: ${h.address ?? "?"}, ${h.commune ?? ""} (lat ${h.lat}, lon ${h.lon}) — EGID ${h.egid} on your checklist — ` +
-    (h.suggested ? "SUGGESTED BY A PERSON as a challenge" : `named by the search${h.namedBy.length > 1 ? "es" : ""} (${h.namedBy.join(", ")})`) +
+    (h.suggested
+      ? "SUGGESTED BY A PERSON as a challenge"
+      : `named by the search${h.namedBy.length > 1 ? "es" : ""} (${h.namedBy.join(", ")})`) +
     `\n   Register (already decoded, use these and do not re-derive them): ${h.quick.facts.map((f) => `${f.fact.toLowerCase()} ${f.building}`).join("; ")}.`;
   return [
     listingText,
@@ -244,7 +283,9 @@ export async function startChallenge(req: PlatformRequest, query: string, images
     else named.set(k, { b, by: [by] });
   }
   if (named.has(key(suggested.egid))) {
-    throw new Error(`${suggested.address ?? `EGID ${suggested.egid}`} is the house the search already named — suggest a different one to challenge it.`);
+    throw new Error(
+      `${suggested.address ?? `EGID ${suggested.egid}`} is the house the search already named — suggest a different one to challenge it.`,
+    );
   }
 
   const all = [...Array.from(named.values()), { b: suggested, by: [] as string[] }];
@@ -267,8 +308,17 @@ export async function startChallenge(req: PlatformRequest, query: string, images
   houses.forEach((h, i) => {
     const b = all[i].b;
     candidates[h.egid] = {
-      egid: h.egid, order: i + 1, commune: h.commune ?? "", address: h.address, lat: h.lat, lon: h.lon,
-      floors: b.floors, dwellings: b.dwellings, footprintM2: b.footprintM2, viewed: false, verdict: "unchecked",
+      egid: h.egid,
+      order: i + 1,
+      commune: h.commune ?? "",
+      address: h.address,
+      lat: h.lat,
+      lon: h.lon,
+      floors: b.floors,
+      dwellings: b.dwellings,
+      footprintM2: b.footprintM2,
+      viewed: false,
+      verdict: "unchecked",
     };
   });
   const text = taskText(listingText, houses, noneFound);
@@ -291,7 +341,15 @@ export async function startChallenge(req: PlatformRequest, query: string, images
     await saveListingPhotos(job.runDir, images);
     await runInvestigation(job, images, text, { shortlisted: [], candidates });
   })().catch((err) => console.error(`[challenge] ${job.id} crashed:`, err));
-  return { id: randomUUID().slice(0, 8), createdAt: new Date().toISOString(), query, jobId: job.id, model: MODEL, houses, noneFound };
+  return {
+    id: randomUUID().slice(0, 8),
+    createdAt: new Date().toISOString(),
+    query,
+    jobId: job.id,
+    model: MODEL,
+    houses,
+    noneFound,
+  };
 }
 
 /** The challenge as it stands: the run's state, each house's verdict, and the winner. */
@@ -304,7 +362,10 @@ export function viewChallenge(c: Challenge): ChallengeView {
     verdicts[h.label] = { verdict: e?.verdict ?? "unchecked", reason: e?.reason ?? null, looked: !!e?.closeLook };
   }
   const a = job?.answer ?? null;
-  const read = readReasoning(a?.reasoning ?? "", c.houses.map((h) => h.label));
+  const read = readReasoning(
+    a?.reasoning ?? "",
+    c.houses.map((h) => h.label),
+  );
   let winner: string | null = null;
   if (a?.found && search && exactAddressOf(a)) {
     const picked = claimedEntry(search, { lat: a.latitude, lon: a.longitude, address: a.address });

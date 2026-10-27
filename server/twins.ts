@@ -32,7 +32,10 @@ function sameFacts(a: GwrBuilding, b: GwrBuilding): boolean {
 }
 
 async function attached(a: GwrBuilding, b: GwrBuilding): Promise<boolean> {
-  const [sa, sb] = await Promise.all([shapeAt(a.lat, a.lon).catch(() => null), shapeAt(b.lat, b.lon).catch(() => null)]);
+  const [sa, sb] = await Promise.all([
+    shapeAt(a.lat, a.lon).catch(() => null),
+    shapeAt(b.lat, b.lon).catch(() => null),
+  ]);
   if (!sa || !sb) return false;
   return sa === sb || outlineGap(sa, sb) <= TOUCH_M;
 }

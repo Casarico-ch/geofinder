@@ -10,20 +10,23 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import type Anthropic from "@anthropic-ai/sdk";
-import { loadConversation, loadListingPhotos } from "./agent";
+import { loadConversation, loadListingPhotos } from "./agent-state";
 import { costUsd, elapsedMs, type Job } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
+import { asText } from "./text";
 
 const esc = (s: unknown): string =>
-  String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  asText(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 const pre = (s: unknown) => `<pre>${esc(s)}</pre>`;
 
-const MEDIA: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
+const MEDIA: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+};
 
 // The same picture recurs across the thread (a listing photo is sent to the
 // model and shown in the photo grid; a step's screenshot is also its tool
@@ -67,7 +70,9 @@ class Images {
             if (import.meta.url.endsWith(".ts")) {
               const tsx = JSON.stringify(import.meta.resolve("tsx/esm/api"));
               const src = JSON.stringify(new URL("./export-worker.ts", import.meta.url).href);
-              worker = new Worker(`import(${tsx}).then((m) => { m.register(); return import(${src}); })`, { eval: true });
+              worker = new Worker(`import(${tsx}).then((m) => { m.register(); return import(${src}); })`, {
+                eval: true,
+              });
             } else {
               worker = new Worker(new URL("./export-worker.js", import.meta.url));
             }
@@ -98,7 +103,13 @@ class Images {
         } catch {
           /* not cached as a smaller JPEG */
         }
-        if (await readFile(kept).then(() => true, () => false)) continue;
+        if (
+          await readFile(kept).then(
+            () => true,
+            () => false,
+          )
+        )
+          continue;
         const out = await viaWorker(i, d.media, Buffer.from(d.base64, "base64"));
         if (!out) continue;
         if (!out.changed) {
@@ -160,7 +171,9 @@ function renderBlocks(content: Anthropic.Messages.MessageParam["content"], image
         case "tool_result": {
           const inner = b.content as Anthropic.Messages.ToolResultBlockParam["content"];
           const body =
-            typeof inner === "string" ? pre(inner) : renderBlocks((inner ?? []) as Anthropic.Messages.MessageParam["content"], images);
+            typeof inner === "string"
+              ? pre(inner)
+              : renderBlocks((inner ?? []) as Anthropic.Messages.MessageParam["content"], images);
           return `<div class="result"><b>Tool result${b.is_error ? " (error)" : ""}</b>${body}</div>`;
         }
         default:
@@ -192,7 +205,10 @@ export async function exportJobHtml(job: Job): Promise<string> {
 
   const conversationHtml = conversation
     ? conversation
-        .map((m, i) => `<div class="msg"><p class="muted">${i + 1} · ${m.role === "user" ? "Sent to the model" : "Model"}</p>${renderBlocks(m.content, images)}</div>`)
+        .map(
+          (m, i) =>
+            `<div class="msg"><p class="muted">${i + 1} · ${m.role === "user" ? "Sent to the model" : "Model"}</p>${renderBlocks(m.content, images)}</div>`,
+        )
         .join("\n")
     : `<p class="muted">This run finished before full conversations were kept; the steps above are everything recorded.</p>`;
   const photosHtml = photos.map((p) => images.tag(p.mediaType, p.base64)).join("");

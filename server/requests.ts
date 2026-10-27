@@ -176,7 +176,8 @@ export async function deleteRows(requestIds: string[], jobIds: string[]): Promis
     for (const c of requests.get(id)?.challenges ?? []) jobSet.add(c.jobId);
   }
   const reqSet = new Set(requestIds.filter((id) => requests.has(id)));
-  for (const r of Array.from(requests.values())) if ((r.results ?? []).some((m) => jobSet.has(m.jobId))) reqSet.add(r.id);
+  for (const r of Array.from(requests.values()))
+    if ((r.results ?? []).some((m) => jobSet.has(m.jobId))) reqSet.add(r.id);
   for (const id of Array.from(reqSet)) {
     requests.delete(id);
     await rm(path.join(dir(), `${id}.json`), { force: true }).catch(() => {});
@@ -204,7 +205,9 @@ const withoutCheck = (t?: string): string => {
 // carry the same listing and started within a few minutes of each other.
 export function listRequestsWithLooseJobs(): PlatformRequest[] {
   const all = listRequests();
-  const claimed = new Set(all.flatMap((r) => [...(r.results ?? []).map((m) => m.jobId), ...(r.challenges ?? []).map((c) => c.jobId)]));
+  const claimed = new Set(
+    all.flatMap((r) => [...(r.results ?? []).map((m) => m.jobId), ...(r.challenges ?? []).map((c) => c.jobId)]),
+  );
   const loose = listJobs()
     // Practice searches (practice.ts) are shown on the Practice page only.
     .filter((j) => !claimed.has(j.id) && !j.input.listingId?.startsWith("practice-"))
@@ -244,7 +247,10 @@ export function listRequestsWithLooseJobs(): PlatformRequest[] {
       source: "website",
       status: overallStatus(results),
       createdAt: g[0].createdAt,
-      updatedAt: g.map((j) => j.updatedAt).sort().at(-1)!,
+      updatedAt: g
+        .map((j) => j.updatedAt)
+        .sort()
+        .at(-1)!,
       input: {
         listingText: withoutCheck(first.input.listingText) || undefined,
         municipality: first.input.municipality,

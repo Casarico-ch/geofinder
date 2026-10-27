@@ -31,11 +31,18 @@ const INLINE = "inline";
 const EXPIRES_SECONDS = 90 * 24 * 3600;
 const PARALLEL_UPLOADS = 4;
 
-const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+const EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
 
 const keyOf = (base64: string) => createHash("sha1").update(base64).digest("hex");
 
-function isBase64Image(b: unknown): b is Anthropic.Messages.ImageBlockParam & { source: Anthropic.Messages.Base64ImageSource } {
+function isBase64Image(
+  b: unknown,
+): b is Anthropic.Messages.ImageBlockParam & { source: Anthropic.Messages.Base64ImageSource } {
   const x = b as Anthropic.Messages.ImageBlockParam;
   return x?.type === "image" && x.source?.type === "base64";
 }
@@ -47,7 +54,8 @@ function images(messages: Anthropic.Messages.MessageParam[]) {
     if (m.role !== "user" || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
       if (isBase64Image(b)) out.push(b);
-      if (b.type === "tool_result" && Array.isArray(b.content)) for (const c of b.content) if (isBase64Image(c)) out.push(c);
+      if (b.type === "tool_result" && Array.isArray(b.content))
+        for (const c of b.content) if (isBase64Image(c)) out.push(c);
     }
   }
   return out;
@@ -141,7 +149,9 @@ export class RunFiles {
       const chunk = known.slice(i, i + 100);
       try {
         const page = await this.client.files.list({ ids: chunk.map(([, id]) => id) });
-        const live = new Set(page.data.filter((f) => !f.expires_at || Date.parse(f.expires_at) > Date.now()).map((f) => f.id));
+        const live = new Set(
+          page.data.filter((f) => !f.expires_at || Date.parse(f.expires_at) > Date.now()).map((f) => f.id),
+        );
         for (const [key, id] of chunk) {
           if (!live.has(id)) {
             delete this.ids[key];

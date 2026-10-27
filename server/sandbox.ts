@@ -16,13 +16,12 @@ import { isPoolVariable } from "./claude-pool";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { asText } from "./text";
 
 // `let` so initRunsRoot() can fall back to a writable dir if the configured one
 // (e.g. a mis-mounted volume) can't be written — ESM live bindings propagate the
 // new value to importers. Never let a persistence-config issue crash the app.
-export let RUNS_ROOT = process.env.RUNS_DIR
-  ? path.resolve(process.env.RUNS_DIR)
-  : path.resolve(process.cwd(), "runs");
+export let RUNS_ROOT = process.env.RUNS_DIR ? path.resolve(process.env.RUNS_DIR) : path.resolve(process.cwd(), "runs");
 
 // Verify RUNS_ROOT is writable at boot; if not, fall back to <cwd>/runs so the
 // app still works (without cross-deploy persistence) instead of 502-ing.
@@ -33,7 +32,7 @@ export async function initRunsRoot(): Promise<void> {
   } catch (err) {
     const fallback = path.resolve(process.cwd(), "runs");
     console.error(
-      `[sandbox] RUNS_DIR "${RUNS_ROOT}" is not writable (${err instanceof Error ? err.message : err}); ` +
+      `[sandbox] RUNS_DIR "${RUNS_ROOT}" is not writable (${err instanceof Error ? err.message : asText(err)}); ` +
         `falling back to ${fallback}. Persistence across deploys is OFF until the volume mount path matches RUNS_DIR.`,
     );
     RUNS_ROOT = fallback;
@@ -75,8 +74,7 @@ function sniff(buf: Buffer): ImageMediaType | null {
   if (buf.length < 12) return null;
   if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg";
   if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
-  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP")
-    return "image/webp";
+  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "image/webp";
   if (buf.toString("ascii", 0, 3) === "GIF") return "image/gif";
   return null;
 }

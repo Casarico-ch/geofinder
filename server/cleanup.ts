@@ -14,7 +14,7 @@
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { listJobs, type Job } from "./jobs";
-import { CONVERSATION_FILE } from "./agent";
+import { CONVERSATION_FILE } from "./agent-state";
 
 const AFTER_MS = Number(process.env.CLEANUP_AFTER_MINUTES ?? 60) * 60_000;
 const EVERY_MS = 10 * 60_000;
@@ -72,7 +72,8 @@ async function cleanRun(job: Job): Promise<number> {
 
 async function sweep(): Promise<void> {
   const cutoff = Date.now() - AFTER_MS;
-  let runs = 0, freed = 0;
+  let runs = 0,
+    freed = 0;
   for (const job of listJobs()) {
     if (job.status === "running" || job.status === "paused") continue;
     // Runs from before finishedAt was kept: their last update.

@@ -17,14 +17,12 @@ import type { ErrorRequestHandler, Express, Request, Response } from "express";
 import express from "express";
 
 export const MAGIC_BY = "GeoFinder user";
-const DEFAULT_COCKPIT_URL =
-  "https://rico-cockpit-production.up.railway.app";
+const DEFAULT_COCKPIT_URL = "https://rico-cockpit-production.up.railway.app";
 export const READ_TIMEOUT_MS = 270_000; // ~4.5 min: the cockpit transcribes, then runs a vision call
 export const CONFIRM_TIMEOUT_MS = 60_000;
 // Up to five JPEG pages and six audio clips, plus the legacy single-page copy of page 1 and clip 1.
 const BODY_LIMIT = "25mb";
-export const NOT_CONFIGURED =
-  "Magic feedback is not configured on this server.";
+export const NOT_CONFIGURED = "Magic feedback is not configured on this server.";
 
 export type MagicKind = "read" | "confirm";
 
@@ -40,11 +38,7 @@ export type ForwardPlan =
   | { ok: false; status: number; body: { ok: false; error: string } };
 
 /** Pure: what this server would send to the cockpit for one browser request, or why it will not. */
-export function buildForward(
-  kind: MagicKind,
-  body: unknown,
-  env: Env = process.env
-): ForwardPlan {
+export function buildForward(kind: MagicKind, body: unknown, env: Env = process.env): ForwardPlan {
   const key = env.MAGIC_FEEDBACK_KEY;
   if (!key)
     return {
@@ -59,12 +53,8 @@ export function buildForward(
       body: { ok: false, error: "the request body must be a JSON object" },
     };
   }
-  const base = (env.RICO_COCKPIT_URL || DEFAULT_COCKPIT_URL).replace(
-    /\/+$/,
-    ""
-  );
-  const path =
-    kind === "read" ? "/api/magic-feedback" : "/api/magic-feedback/confirm";
+  const base = (env.RICO_COCKPIT_URL || DEFAULT_COCKPIT_URL).replace(/\/+$/, "");
+  const path = kind === "read" ? "/api/magic-feedback" : "/api/magic-feedback/confirm";
   const out: Record<string, unknown> = { ...(body as Record<string, unknown>) };
   if (kind === "confirm") {
     delete out.sender;
@@ -90,7 +80,7 @@ export function buildForward(
 /** Sends a plan and turns whatever happens into a status and a JSON body for the browser. */
 export async function relay(
   plan: Extract<ForwardPlan, { ok: true }>,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
 ): Promise<{ status: number; body: unknown }> {
   let r: globalThis.Response;
   try {
@@ -99,9 +89,7 @@ export async function relay(
       signal: AbortSignal.timeout(plan.timeoutMs),
     });
   } catch (err) {
-    const timedOut =
-      err instanceof Error &&
-      (err.name === "TimeoutError" || err.name === "AbortError");
+    const timedOut = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
     return {
       status: timedOut ? 504 : 502,
       body: {
@@ -115,8 +103,7 @@ export async function relay(
   const text = await r.text().catch(() => "");
   try {
     const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === "object")
-      return { status: r.status, body: parsed };
+    if (parsed && typeof parsed === "object") return { status: r.status, body: parsed };
   } catch {
     /* fall through */
   }
@@ -129,10 +116,7 @@ export async function relay(
   };
 }
 
-export function registerMagicFeedbackRoutes(
-  app: Express,
-  opts: { fetch?: typeof fetch } = {}
-) {
+export function registerMagicFeedbackRoutes(app: Express, opts: { fetch?: typeof fetch } = {}) {
   // Its own parser, registered before registerApiRoutes' global one so this
   // limit (not that one) is what applies to these two paths.
   const json = express.json({ limit: BODY_LIMIT });
@@ -144,10 +128,7 @@ export function registerMagicFeedbackRoutes(
       return;
     }
     const out = await relay(plan, opts.fetch ?? fetch);
-    if (out.status >= 500)
-      console.error(
-        `[magic-feedback] ${kind} → cockpit answered ${out.status}`
-      );
+    if (out.status >= 500) console.error(`[magic-feedback] ${kind} → cockpit answered ${out.status}`);
     res.status(out.status).json(out.body);
   };
 
@@ -160,9 +141,7 @@ export function registerMagicFeedbackRoutes(
     const tooLarge = err?.type === "entity.too.large";
     res.status(tooLarge ? 413 : 400).json({
       ok: false,
-      error: tooLarge
-        ? "That recording is too large to send."
-        : "the request body must be JSON",
+      error: tooLarge ? "That recording is too large to send." : "the request body must be JSON",
     });
   };
   app.use("/api/magic-feedback", onParseError);

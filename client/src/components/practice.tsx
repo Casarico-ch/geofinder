@@ -71,7 +71,6 @@ export interface Round {
   rechecks?: RecheckStats & { byModel?: (RecheckStats & { model: string; costUsd: number })[] };
 }
 
-
 // A lesson, as server/lessons-store.ts keeps it.
 interface Kpis {
   runs: number;
@@ -96,7 +95,10 @@ export interface Lesson {
   verdict?: string;
 }
 
-const STATUS: Record<Lesson["status"], { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
+const STATUS: Record<
+  Lesson["status"],
+  { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
+> = {
   proposed: { label: "Waiting to be tested", variant: "outline" },
   testing: { label: "Being tested", variant: "secondary" },
   kept: { label: "Kept", variant: "default" },
@@ -303,13 +305,19 @@ function RunCard({ label, r }: { label: string; r?: Result }) {
             {r.answer ?? "nothing"}
           </p>
           {r.twin && (
-            <p className="text-xs text-destructive">The attached twin of the right house: counted wrong, as Radar would show the neighbour's number.</p>
+            <p className="text-xs text-destructive">
+              The attached twin of the right house: counted wrong, as Radar would show the neighbour's number.
+            </p>
           )}
           {r.twinPick && (
-            <p className="text-xs text-amber-700">Twin pick: could not tell it from its attached twin {r.twinPick}; named the one whose plot is closest.</p>
+            <p className="text-xs text-amber-700">
+              Twin pick: could not tell it from its attached twin {r.twinPick}; named the one whose plot is closest.
+            </p>
           )}
           {r.doubt && (
-            <p className="text-xs text-muted-foreground">Searched again by the recheck models{r.doubtWhy ? `: ${r.doubtWhy}` : ""}.</p>
+            <p className="text-xs text-muted-foreground">
+              Searched again by the recheck models{r.doubtWhy ? `: ${r.doubtWhy}` : ""}.
+            </p>
           )}
           {r.rankOf != null && (
             <p className="text-xs">
@@ -368,7 +376,13 @@ export function ListingsPanel({
   const runsOf = (pid: number) => results.filter((r) => r.propertyId === pid);
   // One column per first-search model, then one per later step: recheck, confirm, tie-break.
   const stepOf = (r: Result) =>
-    r.confirm ? (runsOf(r.propertyId).filter((x) => x.confirm)[0] === r ? "confirm" : "tiebreak") : r.recheck ? "recheck" : r.model;
+    r.confirm
+      ? runsOf(r.propertyId).filter((x) => x.confirm)[0] === r
+        ? "confirm"
+        : "tiebreak"
+      : r.recheck
+        ? "recheck"
+        : r.model;
   const steps = [
     ...models.filter((m) => results.some((r) => !r.recheck && !r.confirm && r.model === m)),
     ...Object.keys(STEP_LABEL).filter((k) => results.some((r) => stepOf(r) === k)),
@@ -390,20 +404,32 @@ export function ListingsPanel({
     wrong: ids.filter((p) => has(p, "wrong")).length,
   };
   const shown = ids.filter((p) =>
-    filter === "all" ? true : filter === "found" ? has(p, "right") : filter === "unsure" ? has(p, "unsure") && !has(p, "right") : has(p, "wrong"),
+    filter === "all"
+      ? true
+      : filter === "found"
+        ? has(p, "right")
+        : filter === "unsure"
+          ? has(p, "unsure") && !has(p, "right")
+          : has(p, "wrong"),
   );
   if (sort) {
     const value = sort.by === "cost" ? costOf : rankOf;
     shown.sort((a, b) => {
-      const x = value(a), y = value(b);
+      const x = value(a),
+        y = value(b);
       if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1; // not measured: always last
       if (x === y) return 0;
       return sort.dir === "desc" ? (y > x ? 1 : -1) : x > y ? 1 : -1;
     });
   }
-  const iconFor = (by: "cost" | "rank") => (sort?.by !== by ? ArrowUpDown : sort.dir === "desc" ? ArrowDown : ArrowUp);
-  const RankIcon = iconFor("rank");
-  const CostIcon = iconFor("cost");
+  const sortIcon = (by: "cost" | "rank") =>
+    sort?.by !== by ? (
+      <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
+    ) : sort.dir === "desc" ? (
+      <ArrowDown className="ml-1 h-3.5 w-3.5" />
+    ) : (
+      <ArrowUp className="ml-1 h-3.5 w-3.5" />
+    );
   return (
     <div className="space-y-3">
       <Tabs value={filter} onValueChange={(v) => setFilter(v as ListingFilter)}>
@@ -429,18 +455,13 @@ export function ListingsPanel({
               <TableHead className="text-right whitespace-nowrap">
                 <Button variant="ghost" size="sm" className="-mr-3 h-8 px-3" onClick={() => cycle("rank")}>
                   Rank
-                  <RankIcon className="ml-1 h-3.5 w-3.5" />
+                  {sortIcon("rank")}
                 </Button>
               </TableHead>
               <TableHead className="text-right">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="-mr-3 h-8 px-3"
-                  onClick={() => cycle("cost")}
-                >
+                <Button variant="ghost" size="sm" className="-mr-3 h-8 px-3" onClick={() => cycle("cost")}>
                   Cost
-                  <CostIcon className="ml-1 h-3.5 w-3.5" />
+                  {sortIcon("cost")}
                 </Button>
               </TableHead>
             </TableRow>
@@ -463,13 +484,19 @@ export function ListingsPanel({
                 <Fragment key={pid}>
                   <TableRow className="cursor-pointer" onClick={() => setOpen(isOpen ? null : pid)}>
                     <TableCell className="align-top pt-3">
-                      {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      {isOpen ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
                     </TableCell>
                     <TableCell className="max-w-96">
                       <p className="text-sm font-medium truncate">{info?.title ?? `Listing #${pid}`}</p>
                       <div className="flex items-center gap-2 min-w-0">
                         <p className="text-xs text-muted-foreground truncate">
-                          {[info?.place, info?.kind, info?.rooms ? `${info.rooms} rooms` : null, `#${pid}`].filter(Boolean).join(" · ")}
+                          {[info?.place, info?.kind, info?.rooms ? `${info.rooms} rooms` : null, `#${pid}`]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </p>
                         <ListingLinks info={info} />
                       </div>
@@ -539,7 +566,17 @@ function TestRuns({ id, models }: { id: string; models: string[] }) {
 }
 
 // One number before and after a lesson, with the change coloured by whether it helps.
-function Delta({ before, after, better, format }: { before: number | null; after: number | null; better: "up" | "down"; format: (v: number) => string }) {
+function Delta({
+  before,
+  after,
+  better,
+  format,
+}: {
+  before: number | null;
+  after: number | null;
+  better: "up" | "down";
+  format: (v: number) => string;
+}) {
   if (before == null || after == null) return <span className="text-muted-foreground">—</span>;
   const d = after - before;
   const good = better === "up" ? d > 0 : d < 0;
@@ -584,7 +621,9 @@ export function LessonsPanel({
       </p>
     );
   const rank: Record<Lesson["status"], number> = { kept: 0, testing: 1, proposed: 2, dropped: 3 };
-  const list = lessons.filter((l) => filter === "all" || l.status === filter).sort((x, y) => rank[x.status] - rank[y.status]);
+  const list = lessons
+    .filter((l) => filter === "all" || l.status === filter)
+    .sort((x, y) => rank[x.status] - rank[y.status]);
   const fmt = {
     n: (v: number) => String(v),
     min: (v: number) => `${Math.round(v * 100) / 100} min`,
@@ -602,11 +641,29 @@ export function LessonsPanel({
         </TabsList>
       </Tabs>
       {list.map((l) => {
-        const rows: { label: string; b: number | null; a: number | null; better: "up" | "down"; f: (v: number) => string }[] = [
+        const rows: {
+          label: string;
+          b: number | null;
+          a: number | null;
+          better: "up" | "down";
+          f: (v: number) => string;
+        }[] = [
           { label: "Found", b: l.before?.right ?? null, a: l.after?.right ?? null, better: "up", f: fmt.n },
           { label: "Wrong", b: l.before?.wrong ?? null, a: l.after?.wrong ?? null, better: "down", f: fmt.n },
-          { label: "Avg time", b: l.before?.avgMinutes ?? null, a: l.after?.avgMinutes ?? null, better: "down", f: fmt.min },
-          { label: "Avg cost", b: l.before?.avgCostUsd ?? null, a: l.after?.avgCostUsd ?? null, better: "down", f: fmt.usd },
+          {
+            label: "Avg time",
+            b: l.before?.avgMinutes ?? null,
+            a: l.after?.avgMinutes ?? null,
+            better: "down",
+            f: fmt.min,
+          },
+          {
+            label: "Avg cost",
+            b: l.before?.avgCostUsd ?? null,
+            a: l.after?.avgCostUsd ?? null,
+            better: "down",
+            f: fmt.usd,
+          },
         ];
         return (
           <Card key={l.id} className="p-4 space-y-3">
@@ -631,7 +688,13 @@ export function LessonsPanel({
                     Keep
                   </Button>
                 )}
-                <Button variant="ghost" size="sm" disabled={busy === l.id} onClick={() => onAct(l, "delete")} aria-label="Delete lesson">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy === l.id}
+                  onClick={() => onAct(l, "delete")}
+                  aria-label="Delete lesson"
+                >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -656,8 +719,12 @@ export function LessonsPanel({
                       {rows.map((r) => (
                         <TableRow key={r.label}>
                           <TableCell className="py-1.5 text-xs">{r.label}</TableCell>
-                          <TableCell className="py-1.5 text-xs text-right tabular-nums">{r.b == null ? "—" : r.f(r.b)}</TableCell>
-                          <TableCell className="py-1.5 text-xs text-right tabular-nums">{r.a == null ? "—" : r.f(r.a)}</TableCell>
+                          <TableCell className="py-1.5 text-xs text-right tabular-nums">
+                            {r.b == null ? "—" : r.f(r.b)}
+                          </TableCell>
+                          <TableCell className="py-1.5 text-xs text-right tabular-nums">
+                            {r.a == null ? "—" : r.f(r.a)}
+                          </TableCell>
                           <TableCell className="py-1.5 text-xs text-right">
                             <Delta before={r.b} after={r.a} better={r.better} format={r.f} />
                           </TableCell>
@@ -670,11 +737,17 @@ export function LessonsPanel({
                   {l.verdict ? (
                     <p className="text-sm">{l.verdict}</p>
                   ) : (
-                    <p className="text-sm text-muted-foreground">The test is running; the decision comes when its runs finish.</p>
+                    <p className="text-sm text-muted-foreground">
+                      The test is running; the decision comes when its runs finish.
+                    </p>
                   )}
                   {l.trialRound && (
                     <Button variant="outline" size="sm" onClick={() => setShown(shown === l.id ? null : l.id)}>
-                      {shown === l.id ? <ChevronDown className="mr-1.5 h-3.5 w-3.5" /> : <ChevronRight className="mr-1.5 h-3.5 w-3.5" />}
+                      {shown === l.id ? (
+                        <ChevronDown className="mr-1.5 h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
+                      )}
                       {shown === l.id ? "Hide the test runs" : "See the test runs"}
                     </Button>
                   )}
@@ -732,4 +805,3 @@ export function LearningBadge({ l }: { l: Learning | null }) {
 
 export const LEARNING_HELP =
   "Learning runs only when you press Find lessons on a round: a reviewer reads its failed and slow runs and proposes rules. Each rule is tested on a small batch of that round's runs: the ones it should fix and a few that were right. It is kept only if no answer turns wrong and the search finds more, or the same faster and cheaper. Kept lessons are read by every search.";
-

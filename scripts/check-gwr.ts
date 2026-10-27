@@ -15,14 +15,23 @@ const features = Array.from({ length: 1800 }, (_, i) => {
   return {
     type: "Feature",
     geometry: { type: "Point", coordinates: [lon, lat] },
-    properties: { egid: 100000 + i, ggdenr: BFS, ggdename: "Testdorf", gastw: 2, ganzwhg: 1, garea: 90, gkat: 1020, gstat: 1004 },
+    properties: {
+      egid: 100000 + i,
+      ggdenr: BFS,
+      ggdename: "Testdorf",
+      gastw: 2,
+      ganzwhg: 1,
+      garea: 90,
+      gkat: 1020,
+      gstat: 1004,
+    },
   };
 });
 
 let calls = 0;
 globalThis.fetch = (async (input: string | URL | Request) => {
   calls++;
-  const url = new URL(String(input));
+  const url = new URL(input instanceof Request ? input.url : input);
   const [x0, y0, x1, y1] = url.searchParams.get("geometry")!.split(",").map(Number);
   const limit = Number(url.searchParams.get("limit"));
   const offset = Number(url.searchParams.get("offset") ?? 0);

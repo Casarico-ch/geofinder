@@ -18,7 +18,15 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { exactAddressOf, sameAddress, type Candidate } from "../server/consensus";
 import type { Answer } from "../server/jobs";
 
-type Result = { model: string; jobId: string; status: string; answer: Answer | null; confirm?: boolean; check?: boolean; startedAt?: string };
+type Result = {
+  model: string;
+  jobId: string;
+  status: string;
+  answer: Answer | null;
+  confirm?: boolean;
+  check?: boolean;
+  startedAt?: string;
+};
 type Req = {
   id: string;
   kind: string;
@@ -36,7 +44,9 @@ const arg = (name: string, fallback?: string): string | undefined => {
 const base = (arg("base") ?? "").replace(/\/+$/, "");
 const top = Number(arg("top"));
 if (!base || !(top > 0)) {
-  console.error("usage: lock-run --base <admin url> --top <depth> [--since YYYY-MM-DD] [--limit N] [--parallel N] [--password P] [--report ids.json]");
+  console.error(
+    "usage: lock-run --base <admin url> --top <depth> [--since YYYY-MM-DD] [--limit N] [--parallel N] [--password P] [--report ids.json]",
+  );
   process.exit(2);
 }
 const since = arg("since", "2026-10-15")!;
@@ -47,7 +57,10 @@ const headers: Record<string, string> = { "content-type": "application/json" };
 if (password) headers.authorization = `Basic ${Buffer.from(`admin:${password}`).toString("base64")}`;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${base}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string>) } });
+  const res = await fetch(`${base}${path}`, {
+    ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string>) },
+  });
   if (!res.ok) throw new Error(`${init?.method ?? "GET"} ${path}: ${res.status} ${(await res.text()).slice(0, 200)}`);
   return (await res.json()) as T;
 }
@@ -77,22 +90,30 @@ async function main() {
   let pairs: { oldId: string; newId: string }[];
   let startedAt = new Date().toISOString();
   if (report) {
-    const saved = JSON.parse(await (await import("node:fs/promises")).readFile(report, "utf8")) as { startedAt: string; pairs: typeof pairs } | typeof pairs;
+    const saved = JSON.parse(await (await import("node:fs/promises")).readFile(report, "utf8")) as
+      { startedAt: string; pairs: typeof pairs } | typeof pairs;
     if (Array.isArray(saved)) pairs = saved;
     else ({ startedAt, pairs } = saved);
   } else {
     // Every listing the current search ran (not the lock runs themselves, not
     // parking listings, not ones still running), newest first.
     const settled = listings
-      .filter((r) => r.createdAt >= since && !r.input.topCheck && !r.skipped && r.status !== "running" && (r.results ?? []).length)
+      .filter(
+        (r) =>
+          r.createdAt >= since && !r.input.topCheck && !r.skipped && r.status !== "running" && (r.results ?? []).length,
+      )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
     const foundBefore = settled.filter((r) => settledHouse(r)).length;
-    console.log(`${settled.length} listings since ${since}, ${foundBefore} found; re-running each with topCheck=${top}, ${parallel} at a time`);
+    console.log(
+      `${settled.length} listings since ${since}, ${foundBefore} found; re-running each with topCheck=${top}, ${parallel} at a time`,
+    );
     if (process.argv.includes("--dry")) {
       for (const r of settled) {
         const h = settledHouse(r);
-        console.log(`  ${(h ? "found" : "-").padEnd(6)} ${(r.input.listingId ?? r.id).padEnd(16)} ${(r.input.municipality ?? "").padEnd(20)} ${h ? (h.address ?? h.parcel) : ""}`);
+        console.log(
+          `  ${(h ? "found" : "-").padEnd(6)} ${(r.input.listingId ?? r.id).padEnd(16)} ${(r.input.municipality ?? "").padEnd(20)} ${h ? (h.address ?? h.parcel) : ""}`,
+        );
       }
       return;
     }
@@ -136,9 +157,19 @@ async function main() {
 
   const byId = new Map(listings.map((r) => [r.id, r]));
   const fresh = await Promise.all(pairs.map((p) => api<Req>(`/api/requests/${p.newId}`).catch(() => null)));
-  let kept = 0, lost = 0, other = 0, gained = 0, stillNot = 0, running = 0, before = 0, after = 0, costBefore = 0, costAfter = 0;
+  let kept = 0,
+    lost = 0,
+    other = 0,
+    gained = 0,
+    stillNot = 0,
+    running = 0,
+    before = 0,
+    after = 0,
+    costBefore = 0,
+    costAfter = 0;
   const rows: string[] = [];
-  const costOf = (r: Req) => (r.results ?? []).reduce((t, m) => t + ((m as unknown as { aiCostUsd?: number }).aiCostUsd ?? 0), 0);
+  const costOf = (r: Req) =>
+    (r.results ?? []).reduce((t, m) => t + ((m as unknown as { aiCostUsd?: number }).aiCostUsd ?? 0), 0);
   pairs.forEach((p, i) => {
     const old = byId.get(p.oldId);
     const now = fresh[i];
@@ -146,19 +177,37 @@ async function main() {
     const was = settledHouse(old, startedAt);
     const is = settledHouse(now);
     if (was) before++;
-    costBefore += costOf({ ...old, results: (old.results ?? []).filter((m) => !m.startedAt || m.startedAt < startedAt) });
+    costBefore += costOf({
+      ...old,
+      results: (old.results ?? []).filter((m) => !m.startedAt || m.startedAt < startedAt),
+    });
     let verdict: string;
-    if (now.status === "running") { verdict = "running"; running++; }
-    else {
+    if (now.status === "running") {
+      verdict = "running";
+      running++;
+    } else {
       if (is) after++;
       costAfter += costOf(now);
-      if (was && is && sameAddress(was, is)) { verdict = "kept"; kept++; }
-      else if (was && is) { verdict = `OTHER HOUSE: ${is.address}`; other++; }
-      else if (was) { verdict = "LOST"; lost++; }
-      else if (is) { verdict = `GAINED: ${is.address ?? is.parcel}`; gained++; }
-      else { verdict = "still not"; stillNot++; }
+      if (was && is && sameAddress(was, is)) {
+        verdict = "kept";
+        kept++;
+      } else if (was && is) {
+        verdict = `OTHER HOUSE: ${is.address}`;
+        other++;
+      } else if (was) {
+        verdict = "LOST";
+        lost++;
+      } else if (is) {
+        verdict = `GAINED: ${is.address ?? is.parcel}`;
+        gained++;
+      } else {
+        verdict = "still not";
+        stillNot++;
+      }
     }
-    rows.push(`${verdict.padEnd(12)} ${(old.input.listingId ?? p.oldId).padEnd(16)} ${(old.input.municipality ?? "").padEnd(20)} ${was ? (was.address ?? was.parcel) : "-"}  $${costOf(old).toFixed(2)} → $${costOf(now).toFixed(2)}  ${now.id}`);
+    rows.push(
+      `${verdict.padEnd(12)} ${(old.input.listingId ?? p.oldId).padEnd(16)} ${(old.input.municipality ?? "").padEnd(20)} ${was ? (was.address ?? was.parcel) : "-"}  $${costOf(old).toFixed(2)} → $${costOf(now).toFixed(2)}  ${now.id}`,
+    );
   });
   console.log(rows.sort().join("\n"));
   const done = rows.length - running;

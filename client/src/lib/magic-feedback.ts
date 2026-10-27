@@ -39,19 +39,10 @@ export const MODEL_SHOT_MAX = 1568;
  * coordinates), and never longer than MODEL_SHOT_MAX on its longest edge.
  * Never enlarges. The full-size shot is still the one the card's picture uses.
  */
-export function modelShotSize(
-  w: number,
-  h: number,
-  vw: number,
-  vh: number
-): { w: number; h: number } {
-  if (!(w > 0) || !(h > 0))
-    throw new Error("invariant violated: a screenshot has a size");
+export function modelShotSize(w: number, h: number, vw: number, vh: number): { w: number; h: number } {
+  if (!(w > 0) || !(h > 0)) throw new Error("invariant violated: a screenshot has a size");
   let scale = vw > 0 && vh > 0 ? Math.min(1, vw / w, vh / h) : 1;
-  scale = Math.min(
-    scale,
-    (MODEL_SHOT_MAX / Math.max(w * scale, h * scale)) * scale
-  );
+  scale = Math.min(scale, (MODEL_SHOT_MAX / Math.max(w * scale, h * scale)) * scale);
   return {
     w: Math.max(1, Math.round(w * scale)),
     h: Math.max(1, Math.round(h * scale)),
@@ -131,28 +122,15 @@ export interface ShortcutKey {
  * change event.key. A modifier combo is never typed by accident, so it fires
  * inside text fields too.
  */
-export function shortcutAction(
-  e: ShortcutKey,
-  active: boolean
-): ShortcutAction {
-  if (
-    e.code !== "KeyM" ||
-    !e.altKey ||
-    !e.shiftKey ||
-    e.metaKey ||
-    e.ctrlKey ||
-    e.isComposing ||
-    e.repeat
-  )
-    return null;
+export function shortcutAction(e: ShortcutKey, active: boolean): ShortcutAction {
+  if (e.code !== "KeyM" || !e.altKey || !e.shiftKey || e.metaKey || e.ctrlKey || e.isComposing || e.repeat) return null;
   return active ? "stop" : "start";
 }
 
 // ---- what counts as private on the page ---------------------------------------
 
 /** Elements whose content is the user's own input — blanked in the screenshot, never used as a label. */
-const MASK_SELECTOR =
-  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-mf-mask]';
+const MASK_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-mf-mask]';
 
 /** Input types whose value is the control's own caption, not something the user typed. */
 const CAPTION_INPUTS = new Set(["button", "submit", "reset", "image"]);
@@ -168,21 +146,14 @@ interface ElementLike {
 function isEditable(el: ElementLike | null | undefined): boolean {
   if (!el) return false;
   const t = (el.tagName || "").toLowerCase();
-  return (
-    t === "input" ||
-    t === "textarea" ||
-    t === "select" ||
-    !!el.isContentEditable
-  );
+  return t === "input" || t === "textarea" || t === "select" || !!el.isContentEditable;
 }
 
 /** Inside something marked private (data-mf-mask) or editable — its text must not leave the page. */
 function isPrivate(el: ElementLike): boolean {
   if (isEditable(el)) return true;
   if (el.getAttribute?.("data-mf-mask") != null) return true;
-  return !!el.closest?.(
-    "[data-mf-mask], [contenteditable]:not([contenteditable='false'])"
-  );
+  return !!el.closest?.("[data-mf-mask], [contenteditable]:not([contenteditable='false'])");
 }
 
 /** A short, human label for one element: aria-label, title, placeholder, then its own text — never a private value. */
@@ -210,9 +181,7 @@ interface MaskableElement extends ElementLike {
  * carries the layout, not what was in the fields. Returns how many elements
  * were masked.
  */
-export function maskClone(doc: {
-  querySelectorAll(selector: string): ArrayLike<unknown>;
-}): number {
+export function maskClone(doc: { querySelectorAll(selector: string): ArrayLike<unknown> }): number {
   const list = doc.querySelectorAll(MASK_SELECTOR);
   let n = 0;
   for (let i = 0; i < list.length; i++) {
@@ -229,14 +198,10 @@ export function maskClone(doc: {
     } else if (tag === "select") {
       const opts = el.options;
       if (opts) for (let k = 0; k < opts.length; k++) opts[k].text = "";
-    } else if (
-      el.isContentEditable ||
-      el.getAttribute?.("contenteditable") != null
-    ) {
+    } else if (el.isContentEditable || el.getAttribute?.("contenteditable") != null) {
       el.textContent = "";
     }
-    if (el.getAttribute?.("data-mf-mask") != null && el.style)
-      el.style.visibility = "hidden";
+    if (el.getAttribute?.("data-mf-mask") != null && el.style) el.style.visibility = "hidden";
     n++;
   }
   return n;
@@ -254,7 +219,7 @@ export function maskClone(doc: {
  */
 export function notesFromReply(
   annotations: Annotation[],
-  pages: Pick<CapturedPage, "elements" | "vw" | "vh">[]
+  pages: Pick<CapturedPage, "elements" | "vw" | "vh">[],
 ): ReviewNote[] {
   const perEl: Record<string, number> = {};
   const notes: ReviewNote[] = [];
@@ -279,27 +244,23 @@ export function notesFromReply(
 
 /** Only notes with words in them are filed, under the numbers burned into the shot. */
 export function keptNotes(notes: ReviewNote[]): ReviewNote[] {
-  return notes.filter(n => String(n.text || "").trim());
+  return notes.filter((n) => String(n.text || "").trim());
 }
 
 export function barCopy(kept: number): { count: string; hint: string } {
   return {
     count: kept + " note" + (kept === 1 ? "" : "s"),
-    hint: kept
-      ? " · hover a number to read it, click it to edit"
-      : " · your words still go to Rico",
+    hint: kept ? " · hover a number to read it, click it to edit" : " · your words still go to Rico",
   };
 }
 
 /** Where a note's box goes: under its pin, or above it near the bottom, always inside the window. */
 export function popPlace(
   pin: { x: number; y: number },
-  viewport: { width: number; height: number }
+  viewport: { width: number; height: number },
 ): { left: number; top?: number; bottom?: number } {
   const left = Math.max(12, Math.min(pin.x - 24, viewport.width - POP_W - 12));
-  return pin.y > viewport.height - 260
-    ? { left, bottom: viewport.height - pin.y + 18 }
-    : { left, top: pin.y + 18 };
+  return pin.y > viewport.height - 260 ? { left, bottom: viewport.height - pin.y + 18 } : { left, top: pin.y + 18 };
 }
 
 export function formatClock(ms: number): string {
@@ -311,36 +272,26 @@ export function formatClock(ms: number): string {
  * The body the confirm call sends. `by` is never set here — the server sets
  * it. `url` is the page the recording started on; `pages` lists every page.
  */
-export function confirmBody(
-  reply: ReadReply,
-  notes: ReviewNote[],
-  shot: string,
-  pages: Pick<CapturedPage, "url">[]
-) {
+export function confirmBody(reply: ReadReply, notes: ReviewNote[], shot: string, pages: Pick<CapturedPage, "url">[]) {
   return {
     shot,
     summary: reply.summary,
     thoughts: reply.thoughts,
     transcript: reply.transcript,
     questions: reply.questions,
-    notes: keptNotes(notes).map(n => ({ text: n.text, page: n.page })),
+    notes: keptNotes(notes).map((n) => ({ text: n.text, page: n.page })),
     url: pages[0]?.url ?? "",
-    pages: pages.slice(0, MAX_PAGES).map(p => ({ url: p.url })),
+    pages: pages.slice(0, MAX_PAGES).map((p) => ({ url: p.url })),
   };
 }
 
 /** The toast a failed read shows: the server's own sentence, capped, after a plain lead-in. */
 export function readFailureToast(said: string): string {
-  return (
-    "That recording did not come back: " +
-    (said ? said.slice(0, 120) : "try the shortcut again in a moment.")
-  );
+  return "That recording did not come back: " + (said ? said.slice(0, 120) : "try the shortcut again in a moment.");
 }
 
 export function filedToast(folded: boolean): string {
-  return folded
-    ? "Added to a card already on the board."
-    : "Sent to Rico — in Backlog and started.";
+  return folded ? "Added to a card already on the board." : "Sent to Rico — in Backlog and started.";
 }
 
 // ---- one recording, many pages ------------------------------------------------
@@ -357,15 +308,9 @@ export interface UrlWatch {
  * address has held still long enough (URL_SETTLE_MS) to capture its page. The
  * caller sets `current` once it has captured (or decided not to).
  */
-export function urlWatchStep(
-  w: UrlWatch,
-  href: string,
-  now: number
-): { watch: UrlWatch; capture: boolean } {
-  if (href === w.current)
-    return { watch: { ...w, pending: null }, capture: false };
-  if (!w.pending || w.pending.href !== href)
-    return { watch: { ...w, pending: { href, since: now } }, capture: false };
+export function urlWatchStep(w: UrlWatch, href: string, now: number): { watch: UrlWatch; capture: boolean } {
+  if (href === w.current) return { watch: { ...w, pending: null }, capture: false };
+  if (!w.pending || w.pending.href !== href) return { watch: { ...w, pending: { href, since: now } }, capture: false };
   return { watch: w, capture: now - w.pending.since >= URL_SETTLE_MS };
 }
 
@@ -399,7 +344,7 @@ export function stitchLayout(sizes: { w: number; h: number }[]): StitchLayout {
   const labelled = sizes.length > 1;
   let y = 0;
   let width = 0;
-  const blocks = sizes.map(s => {
+  const blocks = sizes.map((s) => {
     const labelTop = labelled ? y : null;
     if (labelled) y += LABEL_BAR_PX;
     const imageTop = y;
@@ -445,12 +390,10 @@ function isObj(x: unknown): x is Record<string, unknown> {
 /** A stored value back into a record, or null when it is not one this code wrote. */
 export function readRecord(raw: unknown): SessionRecord | null {
   if (!isObj(raw) || raw.v !== 1) return null;
-  if (typeof raw.startedAt !== "number" || !Number.isFinite(raw.startedAt))
-    return null;
+  if (typeof raw.startedAt !== "number" || !Number.isFinite(raw.startedAt)) return null;
   if (raw.phase !== "recording" && raw.phase !== "review") return null;
   const pages = raw.pages;
-  if (!Array.isArray(pages) || !pages.length || pages.length > MAX_PAGES)
-    return null;
+  if (!Array.isArray(pages) || !pages.length || pages.length > MAX_PAGES) return null;
   for (const p of pages) {
     if (
       !isObj(p) ||
@@ -466,20 +409,14 @@ export function readRecord(raw: unknown): SessionRecord | null {
   const clips = raw.clips;
   if (!Array.isArray(clips) || clips.length > MAX_CLIPS) return null;
   for (const c of clips)
-    if (
-      !isObj(c) ||
-      typeof c.at !== "number" ||
-      typeof c.mime !== "string" ||
-      !Array.isArray(c.chunks)
-    )
-      return null;
+    if (!isObj(c) || typeof c.at !== "number" || typeof c.mime !== "string" || !Array.isArray(c.chunks)) return null;
   let review: SessionRecord["review"];
   if (raw.phase === "review") {
     const r = raw.review;
     if (!isObj(r) || !isObj(r.reply) || !Array.isArray(r.notes)) return null;
     review = {
       reply: r.reply as unknown as ReadReply,
-      notes: (r.notes as ReviewNote[]).map(n => ({ ...n, page: n.page ?? 0 })),
+      notes: (r.notes as ReviewNote[]).map((n) => ({ ...n, page: n.page ?? 0 })),
     };
   }
   return {
@@ -489,9 +426,7 @@ export function readRecord(raw: unknown): SessionRecord | null {
     stopped: raw.stopped === true,
     pages: pages as CapturedPage[],
     clips: clips as SavedClip[],
-    mousePath: Array.isArray(raw.mousePath)
-      ? (raw.mousePath as PathPoint[])
-      : [],
+    mousePath: Array.isArray(raw.mousePath) ? (raw.mousePath as PathPoint[]) : [],
     clicks: Array.isArray(raw.clicks) ? (raw.clicks as PathPoint[]) : [],
     ...(review ? { review } : {}),
   };
@@ -500,24 +435,18 @@ export function readRecord(raw: unknown): SessionRecord | null {
 export type ResumeAction = "none" | "drop" | "resume" | "readback" | "review";
 
 /** What a fresh page does with what the last one left behind. */
-export function resumeDecision(
-  raw: unknown,
-  now: number
-): { action: ResumeAction; record: SessionRecord | null } {
+export function resumeDecision(raw: unknown, now: number): { action: ResumeAction; record: SessionRecord | null } {
   if (raw == null) return { action: "none", record: null };
   const rec = readRecord(raw);
   if (!rec) return { action: "drop", record: null };
   const age = now - rec.startedAt;
-  if (age < 0 || age > RESUME_MAX_AGE_MS)
-    return { action: "drop", record: null };
+  if (age < 0 || age > RESUME_MAX_AGE_MS) return { action: "drop", record: null };
   if (rec.phase === "review") return { action: "review", record: rec };
-  if (rec.stopped || age >= MAX_RECORD_MS || rec.clips.length >= MAX_CLIPS)
-    return { action: "readback", record: rec };
+  if (rec.stopped || age >= MAX_RECORD_MS || rec.clips.length >= MAX_CLIPS) return { action: "readback", record: rec };
   return { action: "resume", record: rec };
 }
 
-export const RESUMED_LINE =
-  "Still recording — picked up after the page reloaded.";
+export const RESUMED_LINE = "Still recording — picked up after the page reloaded.";
 
 /**
  * The read call's body. The legacy single-page fields are always sent, from
@@ -540,7 +469,7 @@ export function readBody(input: {
     audio: clips[0]?.audio ?? "",
     url: pages[0].url,
     ms: input.ms,
-    pages: pages.map(p => ({
+    pages: pages.map((p) => ({
       shot: p.shot,
       elements: p.elements,
       url: p.url,
@@ -548,6 +477,6 @@ export function readBody(input: {
       vw: p.vw,
       vh: p.vh,
     })),
-    clips: clips.map(c => ({ audio: c.audio, at: c.at })),
+    clips: clips.map((c) => ({ audio: c.audio, at: c.at })),
   };
 }

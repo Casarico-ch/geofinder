@@ -1,11 +1,12 @@
-// Checks for the proof rules: an exact address has to be earned (agent.ts
-// proveAnswer, rejectionProblem), the listing's facts against the building's
+// Checks for the proof rules: an exact address has to be earned (prove.ts
+// proveAnswer, agent-tools.ts rejectionProblem), the listing's facts against the building's
 // (proof.ts), and the checklist a cross-check starts from (platform.ts).
 // The numbers are Zermatt's (radar-6664063): Gryfelblatte 58 fits every fact,
 // Riedweg 89 — claimed and "confirmed" twice — fits none of the hard ones.
 // Run: pnpm test   (tsx, node:assert — no test framework; no network)
 import assert from "node:assert/strict";
-import { proveAnswer, rejectionProblem, unprovenAsShortlist } from "../server/agent";
+import { rejectionProblem } from "../server/agent-tools";
+import { proveAnswer, unprovenAsShortlist } from "../server/prove";
 import type { Answer, Job } from "../server/jobs";
 import { seedForCheck, verifySetup } from "../server/verify";
 import { factRows, listingFacts, polygonAreaM2, strongFit } from "../server/proof";
@@ -35,8 +36,18 @@ Lot number: 79589
 Description:
 Le Petit Pilou bénéficie d’un emplacement exceptionnel sur un versant sud…`;
 
-const GRYFELBLATTE = { floors: 3, dwellings: 1, footprintM2: 80, plots: [{ number: "1681", egrid: "CH687252302120", areaM2: 330.8 }] };
-const RIEDWEG = { floors: 2, dwellings: 2, footprintM2: 95, plots: [{ number: "1686", egrid: "CH622172523076", areaM2: 427.4 }] };
+const GRYFELBLATTE = {
+  floors: 3,
+  dwellings: 1,
+  footprintM2: 80,
+  plots: [{ number: "1681", egrid: "CH687252302120", areaM2: 330.8 }],
+};
+const RIEDWEG = {
+  floors: 2,
+  dwellings: 2,
+  footprintM2: 95,
+  plots: [{ number: "1686", egrid: "CH622172523076", areaM2: 427.4 }],
+};
 
 function entry(egid: string, over: Partial<LedgerEntry> = {}): LedgerEntry {
   return {
@@ -67,13 +78,34 @@ function zermatt(over: Record<string, Partial<LedgerEntry>> = {}): SearchState {
     strongFit: true,
     plot: GRYFELBLATTE.plots[0],
   });
-  const r = entry("960331", { address: "Riedweg 89", lat: 46.024131, lon: 7.756649, floors: 2, dwellings: 2, footprintM2: 95, plot: RIEDWEG.plots[0] });
-  const candidates: Record<string, LedgerEntry> = { [g.egid]: g, [r.egid]: r, "959951": entry("959951", { lat: 46.0184, lon: 7.7427 }) };
+  const r = entry("960331", {
+    address: "Riedweg 89",
+    lat: 46.024131,
+    lon: 7.756649,
+    floors: 2,
+    dwellings: 2,
+    footprintM2: 95,
+    plot: RIEDWEG.plots[0],
+  });
+  const candidates: Record<string, LedgerEntry> = {
+    [g.egid]: g,
+    [r.egid]: r,
+    "959951": entry("959951", { lat: 46.0184, lon: 7.7427 }),
+  };
   for (const [k, v] of Object.entries(over)) candidates[k] = { ...(candidates[k] ?? entry(k)), ...v };
-  return { stated: "Zermatt", primary: "Zermatt", confidence: "high", evidence: [], ring: [], shortlisted: ["Zermatt"], candidates };
+  return {
+    stated: "Zermatt",
+    primary: "Zermatt",
+    confidence: "high",
+    evidence: [],
+    ring: [],
+    shortlisted: ["Zermatt"],
+    candidates,
+  };
 }
 
-const job = (search: SearchState) => ({ id: "t", input: { listingText: LISTING, imageCount: 0 }, search }) as unknown as Job;
+const job = (search: SearchState) =>
+  ({ id: "t", input: { listingText: LISTING, imageCount: 0 }, search }) as unknown as Job;
 
 function answer(over: Partial<Answer>): Answer {
   return {
@@ -95,8 +127,18 @@ function answer(over: Partial<Answer>): Answer {
 // ---- the listing's own facts --------------------------------------------------
 await check("reads land, living area and a single dwelling from the listing", () => {
   assert.deepEqual(listingFacts(LISTING), {
-    landM2: 331, landAltM2: [], livingM2: 236, dwellings: 1, sharedLand: false, rooms: 7, floor: null,
-    kind: "house", year: null, units: null, postcode: null, newBuild: false,
+    landM2: 331,
+    landAltM2: [],
+    livingM2: 236,
+    dwellings: 1,
+    sharedLand: false,
+    rooms: 7,
+    floor: null,
+    kind: "house",
+    year: null,
+    units: null,
+    postcode: null,
+    newBuild: false,
   });
 });
 await check("a flat or multi-family listing does not pin dwellings; a PPE share is not a plot", () => {
@@ -107,12 +149,22 @@ await check("a flat or multi-family listing does not pin dwellings; a PPE share 
 
 // ---- listing vs building --------------------------------------------------------
 await check("a flat's living area is not compared with the whole building", () => {
-  const rows = factRows(listingFacts("Type: apartment\nLiving area m²: 95"), { floors: 4, dwellings: 8, footprintM2: 239 });
-  assert.equal(rows.find((r) => r.fact === "Living area"), undefined);
+  const rows = factRows(listingFacts("Type: apartment\nLiving area m²: 95"), {
+    floors: 4,
+    dwellings: 8,
+    footprintM2: 239,
+  });
+  assert.equal(
+    rows.find((r) => r.fact === "Living area"),
+    undefined,
+  );
 });
 await check("Gryfelblatte 58 fits every fact", () => {
   const rows = factRows(listingFacts(LISTING), GRYFELBLATTE);
-  assert.deepEqual(rows.map((r) => r.verdict), ["match", "match", "match"]);
+  assert.deepEqual(
+    rows.map((r) => r.verdict),
+    ["match", "match", "match"],
+  );
   assert.ok(strongFit(rows));
 });
 await check("Riedweg 89: two homes are unclear, a 427 m² plot does not fit and is a hard mismatch", () => {
@@ -125,8 +177,13 @@ await check("Riedweg 89: two homes are unclear, a 427 m² plot does not fit and 
 });
 await check("several plots summed to the land area are a lead, not a match", () => {
   const rows = factRows(listingFacts("Type: house\nLand area m²: 1481"), {
-    floors: 3, dwellings: 1, footprintM2: 130,
-    plots: [{ number: "1", egrid: null, areaM2: 900 }, { number: "2", egrid: null, areaM2: 580 }],
+    floors: 3,
+    dwellings: 1,
+    footprintM2: 130,
+    plots: [
+      { number: "1", egrid: null, areaM2: 900 },
+      { number: "2", egrid: null, areaM2: 580 },
+    ],
   });
   assert.equal(rows.find((r) => r.fact === "Plot area")?.verdict, "unknown");
 });
@@ -134,15 +191,23 @@ await check("several plots summed to the land area are a lead, not a match", () 
 // A 96 m² 3.5-room flat "im 5. Obergeschoss". Opus ranked 85/87 first but could
 // not tell the look-alike entrances apart; Sonnet claimed 89. The register's
 // flats separate them: [floor, rooms, m²] per flat, ground floor to attic.
-const RUOPIGEN = "Type: Apartment\nRooms: 3.5\nLiving area m²: 96\nIm 5. Obergeschoss gelegen und bequem mit dem Lift erreichbar.";
+const RUOPIGEN =
+  "Type: Apartment\nRooms: 3.5\nLiving area m²: 96\nIm 5. Obergeschoss gelegen und bequem mit dem Lift erreichbar.";
 const flats = (rows: [number, number, number][]) => rows.map(([floor, rooms, areaM2]) => ({ floor, rooms, areaM2 }));
 const upper = (big: [number, number], small: [number, number]) =>
-  [1, 2, 3, 4, 5].flatMap((f) => [[f, ...big], [f, ...small]] as [number, number, number][]);
+  [1, 2, 3, 4, 5].flatMap(
+    (f) =>
+      [
+        [f, ...big],
+        [f, ...small],
+      ] as [number, number, number][],
+  );
 const R85 = flats([[0, 4, 113], [0, 2, 83], ...upper([4, 113], [3, 96]), [6, 5, 135]]);
 const R83 = flats([[0, 3, 101], [0, 4, 118], ...upper([4, 113], [4, 118]), [6, 5, 134]]);
 const R89 = flats([[0, 5, 132], [0, 3, 95], ...upper([5, 132], [3, 99]), [6, 5, 150]]);
 const block = { floors: 7, dwellings: 13, footprintM2: 261 };
-const flatRowOf = (fl: ReturnType<typeof flats>) => factRows(listingFacts(RUOPIGEN), { ...block, flats: fl }).find((r) => r.fact === "The flat");
+const flatRowOf = (fl: ReturnType<typeof flats>) =>
+  factRows(listingFacts(RUOPIGEN), { ...block, flats: fl }).find((r) => r.fact === "The flat");
 
 await check("reads the flat's rooms and storey from the listing", () => {
   const f = listingFacts(RUOPIGEN);
@@ -162,13 +227,23 @@ await check("Ruopigenring 89 (99 m² there) is only close, 83 (no flat within 10
 });
 await check("no flat check without the register's flats, or for a house", () => {
   assert.equal(flatRowOf(undefined as never), undefined);
-  assert.equal(factRows(listingFacts(LISTING), { ...GRYFELBLATTE, flats: R85 }).find((r) => r.fact === "The flat"), undefined);
+  assert.equal(
+    factRows(listingFacts(LISTING), { ...GRYFELBLATTE, flats: R85 }).find((r) => r.fact === "The flat"),
+    undefined,
+  );
   assert.equal(flatRowOf([])?.verdict, "unknown");
 });
 
 await check("polygon area of a 20 m × 20 m square", () => {
-  const dLat = 20 / 111_320, dLon = dLat / Math.cos((46 * Math.PI) / 180);
-  const sq = [[7.75, 46], [7.75 + dLon, 46], [7.75 + dLon, 46 + dLat], [7.75, 46 + dLat], [7.75, 46]];
+  const dLat = 20 / 111_320,
+    dLon = dLat / Math.cos((46 * Math.PI) / 180);
+  const sq = [
+    [7.75, 46],
+    [7.75 + dLon, 46],
+    [7.75 + dLon, 46 + dLat],
+    [7.75, 46 + dLat],
+    [7.75, 46],
+  ];
   assert.ok(Math.abs(polygonAreaM2({ type: "Polygon", coordinates: [sq] }) - 400) < 2);
 });
 
@@ -203,7 +278,12 @@ await check("Gryfelblatte 58, inspected, matched, everything else ruled out: pro
 });
 await check("unviewed candidates, open possibles and a second match each block it", async () => {
   // A plot 4% off the listing matches but is not decisive, so the checklist must be settled.
-  const s = zermatt({ "960338": { plot: { ...GRYFELBLATTE.plots[0], areaM2: 345 } }, "1": { verdict: "unchecked", viewed: false }, "2": { verdict: "possible" }, "3": { verdict: "match", lat: 46.03 } });
+  const s = zermatt({
+    "960338": { plot: { ...GRYFELBLATTE.plots[0], areaM2: 345 } },
+    "1": { verdict: "unchecked", viewed: false },
+    "2": { verdict: "possible" },
+    "3": { verdict: "match", lat: 46.03 },
+  });
   const pr = await proveAnswer(job(s), answer({}));
   const all = pr.blocking.join("\n");
   assert.match(all, /1 of the first 150 of each commune.s ranked list and every STRONG FIT have no verdict/);
@@ -222,7 +302,10 @@ await check("Riedweg 89 is blocked by its plot even when inspected and matched",
     "960338": { verdict: "rejected", reason: "crane over the roof, under works" },
     "960331": { verdict: "match", closeLook: true, reason: "gable chalet with deck" },
   });
-  const pr = await proveAnswer(job(s), answer({ address: "Riedweg 89, 3920 Zermatt", latitude: 46.024131, longitude: 7.756649 }));
+  const pr = await proveAnswer(
+    job(s),
+    answer({ address: "Riedweg 89, 3920 Zermatt", latitude: 46.024131, longitude: 7.756649 }),
+  );
   assert.equal(pr.blocking.length, 1);
   assert.match(pr.blocking[0], /Plot area does not fit/);
   assert.deepEqual(pr.soft, []); // two homes for a single house are unclear, not a mismatch
@@ -248,7 +331,10 @@ await check("a cross-check re-opens the claim and the strongest alternatives, ke
     longitude: 7.756649,
   });
   assert.equal(claim?.egid, "960331");
-  assert.deepEqual(reopened.map((c) => c.egid), ["960338"]);
+  assert.deepEqual(
+    reopened.map((c) => c.egid),
+    ["960338"],
+  );
   assert.equal(reopened[0].reason, "small"); // what the checker is shown: the earlier verdict
   assert.equal(seed.candidates["960338"].verdict, "unchecked");
   assert.equal(seed.candidates["960331"].verdict, "unchecked");
@@ -258,18 +344,37 @@ await check("a cross-check re-opens the claim and the strongest alternatives, ke
   const finder = {
     model: "claude-opus-5-5",
     search: s,
-    answer: { found: true, confidence: "building", address: "Riedweg 89, 3920 Zermatt", parcel: null, latitude: 46.024131, longitude: 7.756649, reasoning: "Gable chalet." },
+    answer: {
+      found: true,
+      confidence: "building",
+      address: "Riedweg 89, 3920 Zermatt",
+      parcel: null,
+      latitude: 46.024131,
+      longitude: 7.756649,
+      reasoning: "Gable chalet.",
+    },
   } as unknown as Job;
   const missed = {
     model: "claude-opus-5-5",
     search: { ...s, shortlisted: ["Zermatt"] },
-    answer: { found: false, confidence: "block", address: null, parcel: null, latitude: null, longitude: null, reasoning: "Nothing on the shortlist fits the photos." },
+    answer: {
+      found: false,
+      confidence: "block",
+      address: null,
+      parcel: null,
+      latitude: null,
+      longitude: null,
+      reasoning: "Nothing on the shortlist fits the photos.",
+    },
   } as unknown as Job;
   const v = verifySetup(LISTING, finder, [missed]);
   assert.ok(v);
   assert.match(v.text, /--- VERIFICATION TASK ---/);
   assert.match(v.text, /Riedweg 89, 3920 Zermatt .*— EGID 960331 on your checklist/);
-  assert.match(v.text, /Opus 5.5 searched on its own and did NOT find this house\. It covered: Zermatt \d+\/\d+ checked\. It said: "Nothing on the shortlist fits the photos\."/);
+  assert.match(
+    v.text,
+    /Opus 5.5 searched on its own and did NOT find this house\. It covered: Zermatt \d+\/\d+ checked\. It said: "Nothing on the shortlist fits the photos\."/,
+  );
   assert.match(v.text, /You are the third judge/);
   assert.match(v.text, /960338 \| Gryfelblatte 58 \| STRONG FIT \| earlier: rejected — "small"/);
   assert.equal(v.seed.candidates["960331"].verdict, "unchecked");

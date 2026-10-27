@@ -9,7 +9,9 @@
  */
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import { runInvestigation, saveListingPhotos, type AgentImage } from "../server/agent";
+import { runInvestigation } from "../server/agent";
+import { type AgentImage } from "../server/agent-prompt";
+import { saveListingPhotos } from "../server/agent-state";
 import { createJob } from "../server/jobs";
 
 const MEDIA_TYPES: Record<string, AgentImage["mediaType"]> = {
