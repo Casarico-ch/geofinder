@@ -115,7 +115,8 @@ list and every strong fit have a verdict (`SHORTLIST_TOP_CHECK` overrides the
 the default: `pnpm lock:run -- --base <admin url> --top <depth>` runs every
 listing the current search ran again with that depth, and the total found must
 not go down (a house lost here is fine when more are found there). The 150 was
-locked on 22.10.2026: 100 listings, found 53 → 75, lost 0.
+locked on 22.10.2026: 100 listings, found 53 → 75, lost 0 (pairs in
+`docs/lock-runs/2026-10-22-top150.json`; `--report` re-reads them).
 
 The admin website lists every request at `/requests`, one row each, with every
 model's result and a link to its full trace. Set `ADMIN_PASSWORD` to put the
@@ -131,11 +132,13 @@ are blanked in the screenshot; mark anything else private with `data-mf-mask`.
 
 Environment: `ANTHROPIC_API_KEY`, `POPETY_API_KEY`, `GEOFINDER_API_KEY`,
 `ADMIN_PASSWORD`, `MAGIC_FEEDBACK_KEY`, and optionally `GEOFINDER_MODELS` and
-`RICO_COCKPIT_URL`.
+`RICO_COCKPIT_URL`. `RUNS_DIR` puts the runs (traces and pictures) on a persistent
+volume, e.g. `/var/data/runs`; unset, they live in the container and are lost on
+redeploy.
 
 ## Stack
 
-React 19 + Vite + Tailwind 4 + shadcn/ui on the client, Express + the Anthropic
+React 19 + Vite + Tailwind 4 + shadcn/ui on the client, Express 5 on Node 24 + the Anthropic
 SDK on the server.
 
 ## Development

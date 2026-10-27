@@ -14,7 +14,7 @@
 // Found = a listing request with two finished runs naming the same house
 // (practice.ts foundPair, re-implemented here from consensus.ts so the script
 // needs no server state). Exit code 1 when the total found went down.
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { exactAddressOf, sameAddress, type Candidate } from "../server/consensus";
 import type { Answer } from "../server/jobs";
 
@@ -127,7 +127,9 @@ async function main() {
       }
     };
     await Promise.all(Array.from({ length: parallel }, worker));
-    const file = `lock-run-${top}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
+    // Kept in the repo: the evidence a lock passed (docs/lock-runs/).
+    await mkdir("docs/lock-runs", { recursive: true });
+    const file = `docs/lock-runs/${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}-top${top}.json`;
     await writeFile(file, JSON.stringify({ startedAt, pairs }, null, 2));
     console.log(`pairs saved to ${file} (re-read with --report)`);
   }

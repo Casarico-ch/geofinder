@@ -7,8 +7,12 @@ Express API (`server/`), deployed on Railway (`railway.json`).
 
 ```bash
 pnpm install     # install dependencies
-pnpm check       # typecheck (tsc --noEmit) — the CI gate, job `check`
+pnpm check       # typecheck (tsc --noEmit, client, server and scripts)
+pnpm lint        # oxlint, type-aware (errors fail CI)
+pnpm knip        # unused files, dependencies and exports
+pnpm test        # every scripts/check-*.ts suite
 pnpm build       # client + server bundle
+                 # CI job `check` runs all five on Node 24 (.nvmrc)
 pnpm dev         # client dev server
 pnpm dev:api     # API dev server on :3001
 ```

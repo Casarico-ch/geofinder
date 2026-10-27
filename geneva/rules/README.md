@@ -44,12 +44,14 @@ The catalogue covers every zone code in the SITG zone plan, built on 2026-10-14.
 - **OCR:** communal regulations from scanned PDFs (Soral, Collex-Bossy, Puplinge, Lully, Bernex, Gy, Ruth, Tuilières, 4198, 28316, 27749, PUS 29188) were OCR'd with tesseract; their quotes are verbatim OCR output. 27749 and 28316 are partly illegible.
 
 ## Files
+In this repository the `scripts/` named below are in `geneva/build/rules/`. The research inputs they read (`raw/`, `regs/`,
+`dl/`, `ps_dl/`, `pdzi_dl/`) stayed in the workspace the catalogue was built in and are not committed.
 - `rules_catalogue.json` is the output.
 - `scripts/cites.py` holds the citation library; `scripts/build.py` builds the catalogue.
 - `scripts/verify.py` checks that all 194 quotes occur in their sources.
 - `scripts/selfcheck.py` re-opens the sources for 15 random zones and checks each numeric value against its cited quote. Result: 15/15.
 - `scripts/distinct.py`, `scripts/fetchall.py` and `scripts/overlays.py` pull the SITG data.
-- `laws/` holds the extra silgeneve texts: LZIAM, LForêts, LPRLac, LPRRhône, LPRArve, LPRVers, LEaux-GE, LPMNS, and the current LCI, which is identical to `rules/lci.txt` and `dl/lci.htm`.
+- `laws/` holds the extra silgeneve texts: LZIAM, LForêts, LPRLac, LPRRhône, LPRArve, LPRVers, LEaux-GE, LPMNS, and the current LCI (`lci_current.txt`).
 - `regs/` holds the communal regulations (PDF + text).
 - `raw/` holds the SITG extracts.
 
