@@ -609,7 +609,10 @@ export function registerPlatformRoutes(app: Express) {
     const images: AgentImage[] = parsed.data.images.map((i) => ({ base64: i.imageBase64, mediaType: i.mediaType }));
 
     // The same listing again: answer with the earlier request instead of new runs.
-    const prior = listingId && !parsed.data.force ? priorListingRequest({ listingId, listingText: parsed.data.listingText, imageCount: images.length }) : null;
+    const prior =
+      listingId && !parsed.data.force
+        ? priorListingRequest({ listingId, listingText: parsed.data.listingText, imageCount: images.length })
+        : null;
     if (prior) {
       res.status(202).json({ ...publicView(prior), resubmitted: true });
       return;

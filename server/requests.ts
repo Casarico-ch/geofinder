@@ -93,7 +93,7 @@ export function getRequest(id: string): PlatformRequest | undefined {
 // GEOFINDER_RESUBMIT_DAYS is answered with the earlier request, running or
 // finished; `force: true` on /v1/address searches it again. A request that
 // errored, or a lock run (topCheck), never stands in for a new one.
-export const RESUBMIT_DAYS = Number(process.env.GEOFINDER_RESUBMIT_DAYS ?? 30);
+const RESUBMIT_DAYS = Number(process.env.GEOFINDER_RESUBMIT_DAYS ?? 30);
 export interface ListingKey {
   listingId: string;
   listingText?: string;
