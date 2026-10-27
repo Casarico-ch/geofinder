@@ -69,6 +69,7 @@ import {
   listRequests,
   listRequestsWithLooseJobs,
   onListingSettled,
+  priorListingRequest,
   saveRequest,
   watchListingRequest,
 } from "./requests";
@@ -163,6 +164,8 @@ const listingSchema = z.object({
   // Run on these models instead of the default (GEOFINDER_MODELS) for this request only.
   models: z.array(z.enum(MODELS)).min(1).max(MODELS.length).optional(),
   municipality: z.string().max(200).optional(),
+  // Search a listing again although it was sent before (requests.ts priorListingRequest).
+  force: z.boolean().optional(),
 });
 
 function requireApiKey(req: Request, res: Response, next: NextFunction) {
@@ -604,6 +607,13 @@ export function registerPlatformRoutes(app: Express) {
       return;
     }
     const images: AgentImage[] = parsed.data.images.map((i) => ({ base64: i.imageBase64, mediaType: i.mediaType }));
+
+    // The same listing again: answer with the earlier request instead of new runs.
+    const prior = listingId && !parsed.data.force ? priorListingRequest({ listingId, listingText: parsed.data.listingText, imageCount: images.length }) : null;
+    if (prior) {
+      res.status(202).json({ ...publicView(prior), resubmitted: true });
+      return;
+    }
 
     try {
       const record = await startListingRequest(
