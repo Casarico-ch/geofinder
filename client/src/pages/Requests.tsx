@@ -10,7 +10,20 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Loader2, Pause, RefreshCw, Swords, Trash2, Check, X, Minus } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ExternalLink,
+  Loader2,
+  Pause,
+  RefreshCw,
+  Swords,
+  Trash2,
+  Check,
+  X,
+  Minus,
+} from "lucide-react";
 
 // Mirrors server/popety.ts PropertyProfile and server/requests.ts PlatformRequest.
 interface BuildingInfo {
@@ -133,7 +146,14 @@ interface PlatformRequest {
     commune?: string;
     plot?: string;
     egrid?: string | null;
-    plots?: { address?: string; commune?: string; plot?: string; egrid?: string | null; latitude?: number; longitude?: number }[];
+    plots?: {
+      address?: string;
+      commune?: string;
+      plot?: string;
+      egrid?: string | null;
+      latitude?: number;
+      longitude?: number;
+    }[];
     listingText?: string;
     municipality?: string;
     imageCount?: number;
@@ -182,8 +202,7 @@ const RATIO_LABEL: Record<string, string> = {
   volumeRatio: "Volume ratio (IM)",
 };
 
-const num = (n: number | null | undefined, unit = "") =>
-  n == null ? "—" : `${n.toLocaleString("de-CH")}${unit}`;
+const num = (n: number | null | undefined, unit = "") => (n == null ? "—" : `${n.toLocaleString("de-CH")}${unit}`);
 
 function StatusIcon({ status }: { status: JobStatus }) {
   if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />;
@@ -233,7 +252,14 @@ function ParcelMap({ map, outlines, label }: { map: MapWindow; outlines: [number
           return (
             <g key={i}>
               <polygon points={points} fill="#e8364f" fillOpacity={0.18} />
-              <polygon points={points} fill="none" stroke="#fff" strokeOpacity={0.85} strokeWidth={9} strokeLinejoin="round" />
+              <polygon
+                points={points}
+                fill="none"
+                stroke="#fff"
+                strokeOpacity={0.85}
+                strokeWidth={9}
+                strokeLinejoin="round"
+              />
               <polygon points={points} fill="none" stroke="#e0243f" strokeWidth={5} strokeLinejoin="round" />
             </g>
           );
@@ -267,7 +293,9 @@ function ProfileView({ p }: { p: Profile }) {
         </p>
       </div>
 
-      {p.map && <ParcelMap map={p.map} outlines={[p.map.parcelPixels]} label={`Parcel ${p.parcelNumber} on a swisstopo map`} />}
+      {p.map && (
+        <ParcelMap map={p.map} outlines={[p.map.parcelPixels]} label={`Parcel ${p.parcelNumber} on a swisstopo map`} />
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {Object.entries(p.scores ?? {}).map(([k, v]) => {
@@ -305,7 +333,11 @@ function ProfileView({ p }: { p: Profile }) {
               <Row k="Views" v={`Lake ${main.views.lake_view ?? "—"} · mountains ${main.views.mountain_view ?? "—"}`} />
             )}
             {others.map((b) => (
-              <Row key={b.id} k="Other structure" v={`Building ${b.id}, ${num(b.footprintM2, " m²")} footprint${b.egid ? "" : ", no EGID"}`} />
+              <Row
+                key={b.id}
+                k="Other structure"
+                v={`Building ${b.id}, ${num(b.footprintM2, " m²")} footprint${b.egid ? "" : ", no EGID"}`}
+              />
             ))}
           </dl>
         </div>
@@ -315,7 +347,10 @@ function ProfileView({ p }: { p: Profile }) {
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Zoning</h4>
         <dl>
           <Row k="Cantonal zone" v={z.cantonalZone ?? "—"} />
-          <Row k="Municipal plan" v={`${z.municipalPlan ?? "—"}${z.planAdopted ? ` (adopted ${z.planAdopted})` : ""}`} />
+          <Row
+            k="Municipal plan"
+            v={`${z.municipalPlan ?? "—"}${z.planAdopted ? ` (adopted ${z.planAdopted})` : ""}`}
+          />
           <Row k="Federal zone" v={z.federalZone ?? "—"} />
           <Row k="Allowed use" v={z.allowedUse ?? "—"} />
           <Row
@@ -325,13 +360,21 @@ function ProfileView({ p }: { p: Profile }) {
                 {num(z.maxHeightM, " m")} <Estimate source={z.sources?.maxHeightM} />
                 {z.maxFacadeHeightM != null && (
                   <>
-                    {" "}(facade {z.maxFacadeHeightM} m <Estimate source={z.sources?.maxFacadeHeightM} />)
+                    {" "}
+                    (facade {z.maxFacadeHeightM} m <Estimate source={z.sources?.maxFacadeHeightM} />)
                   </>
                 )}
               </>
             }
           />
-          <Row k="Max building length" v={<>{num(z.maxLengthM, " m")} <Estimate source={z.sources?.maxLengthM} /></>} />
+          <Row
+            k="Max building length"
+            v={
+              <>
+                {num(z.maxLengthM, " m")} <Estimate source={z.sources?.maxLengthM} />
+              </>
+            }
+          />
         </dl>
       </div>
 
@@ -344,13 +387,23 @@ function ProfileView({ p }: { p: Profile }) {
 function Estimate({ source }: { source?: LimitSource }) {
   if (source !== "spatial_analysis") return null;
   return (
-    <Badge variant="outline" className="border-transparent bg-amber-500/10 text-amber-700 font-normal" title="Popety's estimate from what is built nearby, not a legal limit">
+    <Badge
+      variant="outline"
+      className="border-transparent bg-amber-500/10 text-amber-700 font-normal"
+      title="Popety's estimate from what is built nearby, not a legal limit"
+    >
       estimate
     </Badge>
   );
 }
 
-function RatioTable({ ratios, title = "Built today vs. allowed" }: { ratios: Profile["builtVsAllowed"]; title?: string }) {
+function RatioTable({
+  ratios,
+  title = "Built today vs. allowed",
+}: {
+  ratios: Profile["builtVsAllowed"];
+  title?: string;
+}) {
   return (
     <div>
       <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{title}</h4>
@@ -372,7 +425,10 @@ function RatioTable({ ratios, title = "Built today vs. allowed" }: { ratios: Pro
                 {num(r.max)} <Estimate source={r.maxSource} />
               </TableCell>
               <TableCell>
-                <div className="h-1.5 rounded-full bg-muted overflow-hidden" title={r.usedPct != null ? `${r.usedPct}%` : ""}>
+                <div
+                  className="h-1.5 rounded-full bg-muted overflow-hidden"
+                  title={r.usedPct != null ? `${r.usedPct}%` : ""}
+                >
                   <div className="h-full bg-primary" style={{ width: `${Math.min(100, r.usedPct ?? 0)}%` }} />
                 </div>
               </TableCell>
@@ -396,13 +452,29 @@ function CombinedView({ c, profiles }: { c: Combined; profiles: Profile[] }) {
           {c.municipalities.length ? ` · ${c.municipalities.join(", ")}` : ""}
         </p>
       </div>
-      {c.map && <ParcelMap map={c.map} outlines={c.map.parcelsPixels} label={`${c.plotCount} plots on a swisstopo map`} />}
+      {c.map && (
+        <ParcelMap map={c.map} outlines={c.map.parcelsPixels} label={`${c.plotCount} plots on a swisstopo map`} />
+      )}
       <dl>
-        <Row k="Zone" v={c.sameZone ? c.zones[0] ?? "—" : `Different zones: ${c.zones.join(" / ")}`} />
+        <Row k="Zone" v={c.sameZone ? (c.zones[0] ?? "—") : `Different zones: ${c.zones.join(" / ")}`} />
         <Row k="Buildings" v={num(c.buildingCount)} />
         <Row k="Floor area built" v={num(c.floorArea.currentM2, " m²")} />
-        <Row k="Floor area allowed" v={<>{num(c.floorArea.allowedM2, " m²")} {c.floorArea.estimate && <Estimate source="spatial_analysis" />}</>} />
-        <Row k="Floor area left to build" v={<>{num(c.floorArea.remainingM2, " m²")} {c.floorArea.estimate && <Estimate source="spatial_analysis" />}</>} />
+        <Row
+          k="Floor area allowed"
+          v={
+            <>
+              {num(c.floorArea.allowedM2, " m²")} {c.floorArea.estimate && <Estimate source="spatial_analysis" />}
+            </>
+          }
+        />
+        <Row
+          k="Floor area left to build"
+          v={
+            <>
+              {num(c.floorArea.remainingM2, " m²")} {c.floorArea.estimate && <Estimate source="spatial_analysis" />}
+            </>
+          }
+        />
       </dl>
       <RatioTable ratios={c.builtVsAllowed} title="Built today vs. allowed, all plots" />
       {!c.sameZone && (
@@ -444,7 +516,9 @@ function ModelColumn({ r }: { r: ModelResult }) {
         </Link>
       </div>
       {r.status === "running" && <p className="text-sm text-muted-foreground">Investigating…</p>}
-      {r.status === "error" && !r.answer && <p className="text-sm text-destructive">Failed — open the trace for the error</p>}
+      {r.status === "error" && !r.answer && (
+        <p className="text-sm text-destructive">Failed — open the trace for the error</p>
+      )}
       {r.answer && (
         <div className="text-sm">
           <p className="font-medium">{foundLabel(r.answer, "Area only").replace(/^not found$/, "Not found")}</p>
@@ -488,7 +562,10 @@ function ProofTable({ proof, hideCount }: { proof: AnswerProof; hideCount?: bool
                 <TableCell className="px-2 py-1.5 tabular-nums">{f.listing}</TableCell>
                 <TableCell className="px-2 py-1.5 tabular-nums">{f.building}</TableCell>
                 <TableCell className="px-2 py-1.5">
-                  <Badge variant="outline" className={`border-transparent font-normal capitalize ${VERDICT_TONE[f.verdict]}`}>
+                  <Badge
+                    variant="outline"
+                    className={`border-transparent font-normal capitalize ${VERDICT_TONE[f.verdict]}`}
+                  >
                     {f.verdict}
                   </Badge>
                 </TableCell>
@@ -502,7 +579,17 @@ function ProofTable({ proof, hideCount }: { proof: AnswerProof; hideCount?: bool
 }
 
 // Surest first: an exact address or plot beats a block, a block beats a neighbourhood…
-const CONFIDENCE_RANK = ["street", "building", "parcel", "block", "neighborhood", "city", "region", "country", "unknown"];
+const CONFIDENCE_RANK = [
+  "street",
+  "building",
+  "parcel",
+  "block",
+  "neighborhood",
+  "city",
+  "region",
+  "country",
+  "unknown",
+];
 const rankOf = (m: ModelResult) => {
   const i = CONFIDENCE_RANK.indexOf(m.answer?.confidence ?? "unknown");
   // street, building and parcel are all exact: they tie.
@@ -523,7 +610,11 @@ function bestOf(results: ModelResult[]): ModelResult | undefined {
 // Bernex" and "Chemin de la Croix 4 (and 4a)" are both "chemin de la croix 4".
 function placeKey(m: ModelResult): string | null {
   if (!m.answer?.found || rankOf(m) > 0) return null;
-  const fold = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const fold = (t: string) =>
+    t
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
   const street = fold((m.answer.address ?? "").split(",")[0]);
   const at = street.match(/^(.*?[a-z].*?)\s+(\d{1,4}[a-z]?)\b/);
   if (at) return `${at[1].replace(/[^a-z0-9]+/g, " ").trim()} ${at[2]}`;
@@ -579,8 +670,10 @@ function summaryOf(r: PlatformRequest): string {
     if (r.input.egrid) return `EGRID ${r.input.egrid}`;
     if (r.input.plots)
       return r.input.plots
-        .map((p) =>
-          p.address ?? (p.plot ? `${p.commune} ${p.plot}` : p.egrid ? `EGRID ${p.egrid}` : `${p.latitude}, ${p.longitude}`),
+        .map(
+          (p) =>
+            p.address ??
+            (p.plot ? `${p.commune} ${p.plot}` : p.egrid ? `EGRID ${p.egrid}` : `${p.latitude}, ${p.longitude}`),
         )
         .join(" + ");
     if (r.input.latitude != null) return r.profile?.address ?? `${r.input.latitude}, ${r.input.longitude}`;
@@ -597,7 +690,10 @@ function titleOf(r: PlatformRequest): string {
   if (r.kind === "address") return summaryOf(r);
   const body = (r.input.listingText ?? "").replace(/^Municipality \/ commune: [^\n]*\n*/, "");
   const titled = body.match(/^\s*Title:\s*(.+)$/im)?.[1];
-  const first = body.split("\n").map((l) => l.trim()).find(Boolean);
+  const first = body
+    .split("\n")
+    .map((l) => l.trim())
+    .find(Boolean);
   return (titled ?? first ?? r.input.municipality ?? "Listing").trim();
 }
 
@@ -650,7 +746,9 @@ function outcomeOf(r: PlatformRequest): Outcome {
       ? {
           label: "Property data",
           tone: "bg-emerald-500/10 text-emerald-700",
-          detail: r.geneva?.length ? `Geneva data · ${r.geneva.map((g) => `${g.parcel.commune} ${g.parcel.no_parcelle}`).join(", ")}` : undefined,
+          detail: r.geneva?.length
+            ? `Geneva data · ${r.geneva.map((g) => `${g.parcel.commune} ${g.parcel.no_parcelle}`).join(", ")}`
+            : undefined,
         }
       : { label: "Not found", tone: "bg-muted text-muted-foreground" };
   }
@@ -680,9 +778,7 @@ const fmtDate = (iso: string) =>
 // Run the selected requests again: same photos, text and models, each as a new row.
 function RunAgain({ rows, onDone }: { rows: PlatformRequest[]; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
-  const runnable = rows.filter(
-    (r) => r.kind === "listing" && r.status !== "running" && (r.results ?? []).length > 0,
-  );
+  const runnable = rows.filter((r) => r.kind === "listing" && r.status !== "running" && (r.results ?? []).length > 0);
   const run = async () => {
     setBusy(true);
     let started = 0;
@@ -697,7 +793,11 @@ function RunAgain({ rows, onDone }: { rows: PlatformRequest[]; onDone: () => voi
         if (!res.ok) throw new Error(body?.error ?? "Could not run it again");
         started++;
       }
-      toast.success(started === 1 ? "Started again — the new run is at the top" : `Started ${started} again — the new runs are at the top`);
+      toast.success(
+        started === 1
+          ? "Started again — the new run is at the top"
+          : `Started ${started} again — the new runs are at the top`,
+      );
       onDone();
     } catch (err) {
       toast.error(
@@ -734,7 +834,11 @@ function PauseRunning({ rows, onDone }: { rows: PlatformRequest[]; onDone: () =>
         const res = await fetch(`/api/geo/investigate/${id}/pause`, { method: "POST" });
         if (!res.ok) throw new Error();
       }
-      toast.success(jobIds.length === 1 ? "Pausing after its current step" : `Pausing ${jobIds.length} runs after their current step`);
+      toast.success(
+        jobIds.length === 1
+          ? "Pausing after its current step"
+          : `Pausing ${jobIds.length} runs after their current step`,
+      );
       onDone();
     } catch {
       toast.error("Could not pause. Try again.");
@@ -776,7 +880,11 @@ function Attempts({ r }: { r: PlatformRequest }) {
           <div key={a.n} className="space-y-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="text-sm font-semibold text-foreground">Run {a.n}</span>
-              {a.n > 1 && <Badge variant="outline" className="font-normal">Re-run</Badge>}
+              {a.n > 1 && (
+                <Badge variant="outline" className="font-normal">
+                  Re-run
+                </Badge>
+              )}
               <span className="tabular-nums">
                 {[a.startedAt && fmtDate(a.startedAt), `$${cost.toFixed(2)}${running ? " so far" : ""}`]
                   .filter(Boolean)
@@ -903,12 +1011,14 @@ const houseName = (h: ChallengeHouse) => [h.address, h.commune].filter(Boolean).
 
 // The headline: who won, in one sentence.
 function challengeHeadline(c: ChallengeView): { text: string; tone: string } {
-  if (c.status === "running" || c.status === "paused") return { text: "Comparing the houses…", tone: "text-muted-foreground" };
+  if (c.status === "running" || c.status === "paused")
+    return { text: "Comparing the houses…", tone: "text-muted-foreground" };
   if (c.status !== "done") return { text: "The comparison did not finish — open the trace.", tone: "text-destructive" };
   const w = c.houses.find((h) => h.label === c.winner);
   if (w?.suggested) return { text: `Your suggestion wins: ${houseName(w)}`, tone: "text-emerald-700" };
   if (w) return { text: `The search's answer holds: ${houseName(w)}`, tone: "text-foreground" };
-  if (c.winner === "other") return { text: `Neither — a neighbour fits better: ${c.winnerAddress ?? "see the trace"}`, tone: "text-amber-700" };
+  if (c.winner === "other")
+    return { text: `Neither — a neighbour fits better: ${c.winnerAddress ?? "see the trace"}`, tone: "text-amber-700" };
   return { text: "No house wins: the evidence does not settle it.", tone: "text-amber-700" };
 }
 
@@ -980,7 +1090,11 @@ function Challenger({ r }: { r: PlatformRequest }) {
   );
 }
 
-const FACT_FIT: Record<AnswerProof["facts"][number]["verdict"], "yes" | "no" | "unclear"> = { match: "yes", mismatch: "no", unknown: "unclear" };
+const FACT_FIT: Record<AnswerProof["facts"][number]["verdict"], "yes" | "no" | "unclear"> = {
+  match: "yes",
+  mismatch: "no",
+  unknown: "unclear",
+};
 
 function FitCell({ text, fit }: { text: string; fit: "yes" | "no" | "unclear" }) {
   return (
@@ -1002,8 +1116,11 @@ function FitCell({ text, fit }: { text: string; fit: "yes" | "no" | "unclear" })
 function ChallengeBlock({ c }: { c: ChallengeView }) {
   const head = challengeHeadline(c);
   // The register's own living area and rooms were shown on the first challenges: often decades old, no longer shown.
-  const facts = Array.from(new Set(c.houses.flatMap((h) => h.quick.facts.map((f) => f.fact)))).filter((f) => f !== "Register living area" && f !== "Rooms");
-  const listingOf = (fact: string) => c.houses.flatMap((h) => h.quick.facts).find((f) => f.fact === fact)?.listing ?? "";
+  const facts = Array.from(new Set(c.houses.flatMap((h) => h.quick.facts.map((f) => f.fact)))).filter(
+    (f) => f !== "Register living area" && f !== "Rooms",
+  );
+  const listingOf = (fact: string) =>
+    c.houses.flatMap((h) => h.quick.facts).find((f) => f.fact === fact)?.listing ?? "";
   // The run's own lines for what the register rows already show are left out.
   const compare = c.compare.filter((r) => !/^(living area|plot|homes|year built|rooms)\b/i.test(r.criterion.trim()));
   const [open, setOpen] = useState(false);
@@ -1012,70 +1129,89 @@ function ChallengeBlock({ c }: { c: ChallengeView }) {
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <StatusIcon status={c.status} />
         <span>Challenge with {c.query}</span>
-        <span className="tabular-nums">· ${c.costUsd.toFixed(2)} · {fmtDate(c.createdAt)}</span>
+        <span className="tabular-nums">
+          · ${c.costUsd.toFixed(2)} · {fmtDate(c.createdAt)}
+        </span>
         <div className="flex-1" />
         <Link href={`/i/${c.jobId}`} className="text-primary inline-flex items-center gap-1 hover:underline">
           Trace <ExternalLink className="h-3 w-3" />
         </Link>
       </div>
-      <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 text-left"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
         <span className={`text-base font-semibold ${head.tone}`}>{head.text}</span>
-        <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
-      <Table className="text-xs table-fixed">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="h-auto px-2 py-2 w-[24%] align-bottom">Criterion</TableHead>
-            {c.houses.map((h) => (
-              <TableHead key={h.label} className="h-auto px-2 py-2 align-bottom whitespace-normal">
-                <div className="flex flex-wrap items-center gap-1.5 text-foreground font-medium">
-                  {h.label} · {houseName(h)}
-                  {c.winner === h.label && (
-                    <Badge variant="outline" className="border-transparent bg-emerald-500/10 text-emerald-700">
-                      Wins
-                    </Badge>
-                  )}
-                </div>
-                <div className="font-normal">
-                  {h.suggested ? "Your suggestion" : `Found by ${h.namedBy.map((m) => MODEL_LABEL[m.replace(/ \(check\)$/, "")] ?? m).join(", ")}`}
-                </div>
-              </TableHead>
+        <Table className="text-xs table-fixed">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="h-auto px-2 py-2 w-[24%] align-bottom">Criterion</TableHead>
+              {c.houses.map((h) => (
+                <TableHead key={h.label} className="h-auto px-2 py-2 align-bottom whitespace-normal">
+                  <div className="flex flex-wrap items-center gap-1.5 text-foreground font-medium">
+                    {h.label} · {houseName(h)}
+                    {c.winner === h.label && (
+                      <Badge variant="outline" className="border-transparent bg-emerald-500/10 text-emerald-700">
+                        Wins
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="font-normal">
+                    {h.suggested
+                      ? "Your suggestion"
+                      : `Found by ${h.namedBy.map((m) => MODEL_LABEL[m.replace(/ \(check\)$/, "")] ?? m).join(", ")}`}
+                  </div>
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {facts.map((fact) => (
+              <TableRow key={fact} className="hover:bg-transparent align-top">
+                <TableCell className="px-2 py-1.5 whitespace-normal">
+                  {fact}
+                  <div className="text-muted-foreground">Listing: {listingOf(fact)}</div>
+                </TableCell>
+                {c.houses.map((h) => {
+                  const f = h.quick.facts.find((x) => x.fact === fact);
+                  return (
+                    <TableCell key={h.label} className="px-2 py-1.5 whitespace-normal">
+                      {f ? (
+                        <FitCell text={f.building} fit={FACT_FIT[f.verdict]} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
             ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {facts.map((fact) => (
-            <TableRow key={fact} className="hover:bg-transparent align-top">
-              <TableCell className="px-2 py-1.5 whitespace-normal">
-                {fact}
-                <div className="text-muted-foreground">Listing: {listingOf(fact)}</div>
-              </TableCell>
-              {c.houses.map((h) => {
-                const f = h.quick.facts.find((x) => x.fact === fact);
-                return (
-                  <TableCell key={h.label} className="px-2 py-1.5 whitespace-normal">
-                    {f ? <FitCell text={f.building} fit={FACT_FIT[f.verdict]} /> : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          ))}
-          {compare.map((row) => (
-            <TableRow key={row.criterion} className="hover:bg-transparent align-top">
-              <TableCell className="px-2 py-1.5 whitespace-normal">{row.criterion}</TableCell>
-              {c.houses.map((h) => {
-                const cell = row.cells[h.label];
-                return (
-                  <TableCell key={h.label} className="px-2 py-1.5 whitespace-normal">
-                    {cell ? <FitCell text={cell.text} fit={cell.fit} /> : <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+            {compare.map((row) => (
+              <TableRow key={row.criterion} className="hover:bg-transparent align-top">
+                <TableCell className="px-2 py-1.5 whitespace-normal">{row.criterion}</TableCell>
+                {c.houses.map((h) => {
+                  const cell = row.cells[h.label];
+                  return (
+                    <TableCell key={h.label} className="px-2 py-1.5 whitespace-normal">
+                      {cell ? (
+                        <FitCell text={cell.text} fit={cell.fit} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </div>
   );
@@ -1098,7 +1234,10 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
         <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
           <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select ${title}`} />
         </TableCell>
-        <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground max-w-28 truncate" title={r.input.listingId ?? r.id}>
+        <TableCell
+          className="hidden md:table-cell font-mono text-xs text-muted-foreground max-w-28 truncate"
+          title={r.input.listingId ?? r.id}
+        >
           {shortId(r)}
         </TableCell>
         <TableCell className="max-w-0 w-full">
@@ -1118,7 +1257,9 @@ function RequestRow({ r, selected, onToggle }: { r: PlatformRequest; selected: b
         </TableCell>
         <TableCell className="max-w-44">
           <Badge variant="outline" className={`gap-1 whitespace-nowrap border-transparent ${outcome.tone}`}>
-            {(outcome.label === "Searching" || outcome.label === "Re-running") && <Loader2 className="h-3 w-3 animate-spin" />}
+            {(outcome.label === "Searching" || outcome.label === "Re-running") && (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
             {outcome.label}
           </Badge>
           {outcome.detail && (
@@ -1232,7 +1373,8 @@ export default function Requests() {
               confirming ? (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground hidden sm:inline">
-                    Delete {chosen.length} {chosen.length === 1 ? "request" : "requests"} and their runs? This can't be undone.
+                    Delete {chosen.length} {chosen.length === 1 ? "request" : "requests"} and their runs? This can't be
+                    undone.
                   </span>
                   <Button size="sm" variant="destructive" disabled={deleting} onClick={() => void deleteChosen()}>
                     {deleting ? "Deleting…" : "Delete"}
@@ -1264,7 +1406,8 @@ export default function Requests() {
                 </div>
               )
             ) : (
-              requests && requests.length > 0 && <span className="text-xs text-muted-foreground">{requests.length}</span>
+              requests &&
+              requests.length > 0 && <span className="text-xs text-muted-foreground">{requests.length}</span>
             )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}

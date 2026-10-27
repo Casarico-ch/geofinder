@@ -16,7 +16,24 @@ import { claudeConfigured } from "./claude-pool";
 import { loadLessons } from "./lessons-store";
 import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } from "./lessons";
 import { missReasonNow } from "./miss";
-import { firstModels, foundPair, listingVerdict, nextSteps, startSearch, type Role, type Step, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
+import {
+  firstModels,
+  foundPair,
+  listingVerdict,
+  nextSteps,
+  startSearch,
+  type Role,
+  type Step,
+  type RoundSummary,
+  allRounds,
+  deleteRound,
+  getRound,
+  listRounds,
+  pauseRound,
+  resumeRound,
+  startRound,
+  summarize,
+} from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
 import { type AgentImage } from "./agent-prompt";
 import { loadListingPhotos } from "./agent-state";
@@ -25,7 +42,14 @@ import { reviewRound } from "./review";
 import { startChallenge, viewChallenge } from "./challenge";
 import { MODELS, costUsd, elapsedMs, getJob, listJobs, type ModelId } from "./jobs";
 import { profileByLandId } from "./popety-store";
-import { genevaAnswer, genevaEgridAt, genevaEgridAtAddress, genevaEgridsByPlot, genevaPlotOfEgrid, isGenevaEgrid } from "./geneva";
+import {
+  genevaAnswer,
+  genevaEgridAt,
+  genevaEgridAtAddress,
+  genevaEgridsByPlot,
+  genevaPlotOfEgrid,
+  isGenevaEgrid,
+} from "./geneva";
 import {
   PROFILE_COST_CHF,
   PopetyError,
@@ -196,13 +220,28 @@ function publicView(r: PlatformRequest) {
  * by /v1/address and the admin's "Run again".
  */
 async function startListingRequest(
-  input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string; topCheck?: number },
+  input: {
+    listingText?: string;
+    municipality?: string;
+    listingId?: string;
+    listingUrl?: string;
+    radarUrl?: string;
+    topCheck?: number;
+  },
   images: AgentImage[],
   models: ModelId[],
   source: PlatformRequest["source"] = "platform",
 ) {
   const { listingText, municipality, listingId, listingUrl, radarUrl, topCheck } = input;
-  const record = await createRequest("listing", { listingText, municipality, imageCount: images.length, listingId, listingUrl, radarUrl, ...(topCheck ? { topCheck } : {}) });
+  const record = await createRequest("listing", {
+    listingText,
+    municipality,
+    imageCount: images.length,
+    listingId,
+    listingUrl,
+    radarUrl,
+    ...(topCheck ? { topCheck } : {}),
+  });
   record.source = source;
   record.results = [];
   // A parking space or garage has no building to find (Daniel, 21.10: "skip
@@ -222,7 +261,12 @@ async function startListingRequest(
 /** One search of the request's listing (practice.ts startSearch); a follow-up is marked check: true. */
 async function addRun(req: PlatformRequest, images: AgentImage[], model: ModelId, step: Omit<Step, "model">) {
   const { listingText, municipality, listingId, listingUrl, radarUrl, topCheck } = req.input;
-  const { job, finished } = await startSearch({ listingText, municipality, listingId, listingUrl, radarUrl, topCheck }, images, model, step);
+  const { job, finished } = await startSearch(
+    { listingText, municipality, listingId, listingUrl, radarUrl, topCheck },
+    images,
+    model,
+    step,
+  );
   (req.results ??= []).push({
     model,
     jobId: job.id,
@@ -235,7 +279,8 @@ async function addRun(req: PlatformRequest, images: AgentImage[], model: ModelId
   finished.catch((err) => console.error(`[platform] investigation ${job.id} crashed:`, err));
 }
 
-const roleOf = (m: { check?: boolean; confirm?: boolean }): Role => (m.confirm ? "confirm" : m.check ? "recheck" : "search");
+const roleOf = (m: { check?: boolean; confirm?: boolean }): Role =>
+  m.confirm ? "confirm" : m.check ? "recheck" : "search";
 const SETTLED = ["done", "error", "cancelled"];
 
 /** Each time one of the request's runs settles: start what practice.ts nextSteps says comes next. */
@@ -243,7 +288,13 @@ async function afterSettled(req: PlatformRequest): Promise<boolean> {
   if (req.kind !== "listing") return false;
   const results = req.results ?? [];
   const steps = nextSteps(
-    results.map((m) => ({ role: roleOf(m), jobId: m.jobId, settled: SETTLED.includes(m.status), done: m.status === "done", answer: m.answer })),
+    results.map((m) => ({
+      role: roleOf(m),
+      jobId: m.jobId,
+      settled: SETTLED.includes(m.status),
+      done: m.status === "done",
+      answer: m.answer,
+    })),
   );
   if (!steps.length) return false;
   const src = results.length ? getJob(results[0].jobId) : undefined;
@@ -308,7 +359,10 @@ export function registerPlatformRoutes(app: Express) {
           error: p.kind === "ambiguous" ? "Several parcels match; be more precise." : notFoundMessage(p.input),
           candidates: p.match.kind === "ambiguous" ? p.match.candidates : undefined,
         }));
-        await fail(problems.some((p) => p.kind === "ambiguous") ? 300 : 404, "Not every plot could be found; nothing was charged.");
+        await fail(
+          problems.some((p) => p.kind === "ambiguous") ? 300 : 404,
+          "Not every plot could be found; nothing was charged.",
+        );
         return;
       }
 
@@ -354,14 +408,18 @@ export function registerPlatformRoutes(app: Express) {
     app.post(`${base}/rounds`, async (req: Request, res: Response) => {
       const parsed = roundSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
-        res.status(400).json({ error: `Expected { split?: "practice"|"test", limit?: 1-200, models?: [${MODELS.join(", ")}], noLand?: boolean }` });
+        res.status(400).json({
+          error: `Expected { split?: "practice"|"test", limit?: 1-200, models?: [${MODELS.join(", ")}], noLand?: boolean }`,
+        });
         return;
       }
       try {
         // No models given: each listing starts with what a real request for it gets (firstModels).
         const models = parsed.data.models ?? null;
         if (models?.some(isGemini) && !geminiConfigured()) {
-          res.status(503).json({ error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway." });
+          res.status(503).json({
+            error: "Gemini 3.8 Flash is one of the practice investigators: set GEMINI_API_KEY on GeoFinder in Railway.",
+          });
           return;
         }
         const round = await startRound(parsed.data.split, parsed.data.limit, models, { noLand: parsed.data.noLand });
@@ -399,7 +457,15 @@ export function registerPlatformRoutes(app: Express) {
         return;
       }
       // What each listing is, from the text its searches were given (address hidden).
-      type Info = { title: string | null; place: string | null; kind: string | null; rooms: string | null; price: string | null; radarUrl: string; sourceUrl: string | null };
+      type Info = {
+        title: string | null;
+        place: string | null;
+        kind: string | null;
+        rooms: string | null;
+        price: string | null;
+        radarUrl: string;
+        sourceUrl: string | null;
+      };
       const listings: Record<number, Info> = {};
       const radarBase = (process.env.RADAR_PUBLIC_URL || "https://app.casarico.ch").replace(/\/+$/, "");
       for (const r of round.results) {
@@ -430,9 +496,15 @@ export function registerPlatformRoutes(app: Express) {
       );
       const results = round.results.map((r) => ({ ...r, why: searching.has(r.propertyId) ? null : missReasonNow(r) }));
       // What Radar would show for each listing: a house only when two runs name it.
-      const verdicts = Object.fromEntries(Array.from(new Set(round.results.map((r) => r.propertyId)), (pid) => [pid, listingVerdict(round, pid)]));
+      const verdicts = Object.fromEntries(
+        Array.from(new Set(round.results.map((r) => r.propertyId)), (pid) => [pid, listingVerdict(round, pid)]),
+      );
       // Why each miss happened, grouped by cause, with a task to paste (review.ts).
-      const review = reviewRound(round, Object.fromEntries(Object.entries(listings).map(([id, i]) => [Number(id), i.place])), searching);
+      const review = reviewRound(
+        round,
+        Object.fromEntries(Object.entries(listings).map(([id, i]) => [Number(id), i.place])),
+        searching,
+      );
       res.json({ summary: await roundView(summarize(round), await listRounds()), results, listings, verdicts, review });
     });
     // The same listings again, under today's code, lessons and investigators
@@ -446,13 +518,21 @@ export function registerPlatformRoutes(app: Express) {
       try {
         // ?failed=1: only the listings Radar would not show as rightly found (listingVerdict).
         const failed = req.query.failed === "1";
-        const found = new Set(src.results.map((r) => r.propertyId).filter((p) => listingVerdict(src, p) === "confirmed_right"));
-        const ids = Array.from(new Set(src.results.map((r) => r.propertyId))).filter((p) => !failed || (!found.has(p) && src.results.some((r) => r.propertyId === p && r.outcome !== "running")));
+        const found = new Set(
+          src.results.map((r) => r.propertyId).filter((p) => listingVerdict(src, p) === "confirmed_right"),
+        );
+        const ids = Array.from(new Set(src.results.map((r) => r.propertyId))).filter(
+          (p) => !failed || (!found.has(p) && src.results.some((r) => r.propertyId === p && r.outcome !== "running")),
+        );
         if (!ids.length) {
           res.status(400).json({ error: "No failed listing to run again." });
           return;
         }
-        const round = await startRound(src.split, ids.length, null, { propertyIds: ids, rerunOf: src.id, noLand: src.noLand });
+        const round = await startRound(src.split, ids.length, null, {
+          propertyIds: ids,
+          rerunOf: src.id,
+          noLand: src.noLand,
+        });
         res.status(202).json(summarize(round));
       } catch (err) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
@@ -510,11 +590,15 @@ export function registerPlatformRoutes(app: Express) {
     }
     const parsed = listingSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: `Expected { images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl?, radarUrl?, models? } (models: ${MODELS.join(", ")})` });
+      res.status(400).json({
+        error: `Expected { images: [{ imageBase64, mediaType }], listingText?, municipality?, listingId?, listingUrl?, radarUrl?, models? } (models: ${MODELS.join(", ")})`,
+      });
       return;
     }
     const { municipality, listingId, listingUrl, radarUrl } = parsed.data;
-    const models = parsed.data.models ? Array.from(new Set(parsed.data.models)) : listingModels(parsed.data.listingText);
+    const models = parsed.data.models
+      ? Array.from(new Set(parsed.data.models))
+      : listingModels(parsed.data.listingText);
     if (models.some(isGemini) && !geminiConfigured()) {
       res.status(503).json({ error: "Gemini is not configured. Set GEMINI_API_KEY on the server." });
       return;
@@ -558,9 +642,15 @@ export function registerPlatformRoutes(app: Express) {
     // models: the lock run passes the listing's original first-search models, so
     // before and after differ in the depth only (Radar names its models per request).
     const parsed = z
-      .object({ jobIds: z.array(z.string()).min(1).max(20), topCheck: z.number().int().min(1).optional(), models: z.array(z.enum(MODELS)).min(1).max(6).optional() })
+      .object({
+        jobIds: z.array(z.string()).min(1).max(20),
+        topCheck: z.number().int().min(1).optional(),
+        models: z.array(z.enum(MODELS)).min(1).max(6).optional(),
+      })
       .safeParse(req.body);
-    const jobs = parsed.success ? parsed.data.jobIds.map((id) => getJob(id)).filter((j): j is NonNullable<typeof j> => !!j) : [];
+    const jobs = parsed.success
+      ? parsed.data.jobIds.map((id) => getJob(id)).filter((j): j is NonNullable<typeof j> => !!j)
+      : [];
     if (!parsed.success || jobs.length === 0) {
       res.status(400).json({ error: "Expected { jobIds } of existing investigations" });
       return;
@@ -603,7 +693,10 @@ export function registerPlatformRoutes(app: Express) {
   // that belong to no request come as job ids.
   app.post("/api/requests/delete", async (req: Request, res: Response) => {
     const parsed = z
-      .object({ requestIds: z.array(z.string()).max(500).default([]), jobIds: z.array(z.string()).max(2000).default([]) })
+      .object({
+        requestIds: z.array(z.string()).max(500).default([]),
+        jobIds: z.array(z.string()).max(2000).default([]),
+      })
       .safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Expected { requestIds?, jobIds? }" });
@@ -627,7 +720,10 @@ export function registerPlatformRoutes(app: Express) {
       costUsd: costUsd(j.tokens, j.model),
       elapsedMs: elapsedMs(j),
       steps: j.steps.length,
-      title: j.input.municipality ?? j.input.listingText?.replace(/^Municipality \/ commune: [^\n]*\n*/, "").slice(0, 80) ?? null,
+      title:
+        j.input.municipality ??
+        j.input.listingText?.replace(/^Municipality \/ commune: [^\n]*\n*/, "").slice(0, 80) ??
+        null,
     }));
     const popety = listRequests()
       .filter((r) => r.popetyCostChf > 0)

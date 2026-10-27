@@ -72,7 +72,8 @@ async function cleanRun(job: Job): Promise<number> {
 
 async function sweep(): Promise<void> {
   const cutoff = Date.now() - AFTER_MS;
-  let runs = 0, freed = 0;
+  let runs = 0,
+    freed = 0;
   for (const job of listJobs()) {
     if (job.status === "running" || job.status === "paused") continue;
     // Runs from before finishedAt was kept: their last update.

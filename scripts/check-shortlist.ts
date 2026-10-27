@@ -29,7 +29,10 @@ await check("an unknown footprint ranks last, so the order is consistent", () =>
   const at = sorted.findIndex((h) => h.id === 999);
   const exact = houses.filter((h) => h.fp === 80).length;
   assert.ok(at < exact, `target at ${at + 1}, ${exact} houses share its footprint`);
-  assert.ok(sorted.slice(-40).every((h) => h.fp === null), "unknown footprints are at the end");
+  assert.ok(
+    sorted.slice(-40).every((h) => h.fp === null),
+    "unknown footprints are at the end",
+  );
 });
 
 await check("no footprint estimate keeps the incoming order", () => {
@@ -40,7 +43,11 @@ await check("no footprint estimate keeps the incoming order", () => {
 await check("interleave keeps every house exactly once", () => {
   const a = Array.from({ length: 50 }, (_, i) => i);
   const b = [...a].reverse();
-  for (const take of [[2, 1], [1, 1], [1, 2]] as [number, number][]) {
+  for (const take of [
+    [2, 1],
+    [1, 1],
+    [1, 2],
+  ] as [number, number][]) {
     const out = interleave(a, b, take);
     assert.equal(out.length, 50);
     assert.equal(new Set(out).size, 50);
@@ -50,7 +57,11 @@ await check("interleave keeps every house exactly once", () => {
 await check("a wrong clue at most triples (sure), doubles (likely), 1.5× (guess) a house's place", () => {
   const n = 300;
   const footprint = Array.from({ length: n }, (_, i) => i);
-  for (const [take, bound] of [[[2, 1], 3], [[1, 1], 2], [[1, 2], 1.5]] as [[number, number], number][]) {
+  for (const [take, bound] of [
+    [[2, 1], 3],
+    [[1, 1], 2],
+    [[1, 2], 1.5],
+  ] as [[number, number], number][]) {
     for (const target of [0, 10, 40, 113]) {
       // The worst case: the clue puts the target dead last.
       const location = [...footprint.filter((x) => x !== target), target];
@@ -91,7 +102,11 @@ await check("confidence weighs the clues against each other", () => {
     slope: { faces: "W", confidence: "sure" },
     landmarks: [{ kind: "peak", name: "Matterhorn", direction: "N", confidence: "guess" }],
   })!;
-  const peak: ResolvedLandmark = { clue: clues.landmarks![0], points: [{ lat: 45.9763, lon: 7.6586, label: "Matterhorn" }], note: "" };
+  const peak: ResolvedLandmark = {
+    clue: clues.landmarks![0],
+    points: [{ lat: 45.9763, lon: 7.6586, label: "Matterhorn" }],
+    note: "",
+  };
   // Slope fits, the guessed peak direction does not: still a good score.
   const s = scoreHouse({ lat: 46.0239, lon: 7.756 }, clues, { downhill: 272, grade: 0.44 }, [peak])!;
   assert.ok(s.score > 0.7 && s.score < 1, String(s.score));

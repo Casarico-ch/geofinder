@@ -75,7 +75,8 @@ export async function findLandByAddress(address: string): Promise<LandMatch> {
     };
   }
   if (status === 404 || (status === 200 && !body.popetyio_land_id)) return { kind: "none" };
-  if (status !== 200) throw new PopetyError(status, `Popety ${status} on find-by-address: ${JSON.stringify(body).slice(0, 500)}`);
+  if (status !== 200)
+    throw new PopetyError(status, `Popety ${status} on find-by-address: ${JSON.stringify(body).slice(0, 500)}`);
   return { kind: "match", landId: body.popetyio_land_id, matchedAddress: body.matched_address ?? null };
 }
 
@@ -83,7 +84,8 @@ export async function findLandByAddress(address: string): Promise<LandMatch> {
 export async function findLandByCoordinates(lat: number, lon: number): Promise<LandMatch> {
   const { status, body } = await popetyRaw(`/v1/lands/find-by-coordinates/${lat}/${lon}`);
   if (status === 404 || (status === 200 && !body.popetyio_land_id)) return { kind: "none" };
-  if (status !== 200) throw new PopetyError(status, `Popety ${status} on find-by-coordinates: ${JSON.stringify(body).slice(0, 500)}`);
+  if (status !== 200)
+    throw new PopetyError(status, `Popety ${status} on find-by-coordinates: ${JSON.stringify(body).slice(0, 500)}`);
   return { kind: "match", landId: body.popetyio_land_id, matchedAddress: body.matched_address ?? null };
 }
 
@@ -91,7 +93,8 @@ export async function findLandByCoordinates(lat: number, lon: number): Promise<L
 export async function findLandByEgrid(egrid: string): Promise<LandMatch> {
   const { status, body } = await popetyRaw(`/v1/lands/find-by-egrid/${encodeURIComponent(egrid)}`);
   if (status === 404 || (status === 200 && !body.popetyio_land_id)) return { kind: "none" };
-  if (status !== 200) throw new PopetyError(status, `Popety ${status} on find-by-egrid: ${JSON.stringify(body).slice(0, 500)}`);
+  if (status !== 200)
+    throw new PopetyError(status, `Popety ${status} on find-by-egrid: ${JSON.stringify(body).slice(0, 500)}`);
   return { kind: "match", landId: body.popetyio_land_id, matchedAddress: body.matched_address ?? null };
 }
 
@@ -101,7 +104,8 @@ export async function findLandByPlot(commune: string, plot: string): Promise<Lan
     `/v1/lands/find-by-plot-number/${encodeURIComponent(commune)}/${encodeURIComponent(plot)}`,
   );
   if (status === 404 || (status === 200 && !body.popetyio_land_id)) return { kind: "none" };
-  if (status !== 200) throw new PopetyError(status, `Popety ${status} on find-by-plot-number: ${JSON.stringify(body).slice(0, 500)}`);
+  if (status !== 200)
+    throw new PopetyError(status, `Popety ${status} on find-by-plot-number: ${JSON.stringify(body).slice(0, 500)}`);
   return { kind: "match", landId: body.popetyio_land_id, matchedAddress: body.matched_address ?? null };
 }
 
@@ -158,10 +162,14 @@ function mapWindow(polygons: [number, number][][], width = 960, height = 1200) {
   const mPerDegLon = 111_320 * Math.cos((lat0 * Math.PI) / 180);
   const mPerDegLat = 110_540;
   // Fit the parcels with ~2.5x margin, never tighter than 120 m across.
-  const spanM = Math.max(120, 2.5 * Math.max(
-    (Math.max(...lons) - Math.min(...lons)) * mPerDegLon,
-    ((Math.max(...lats) - Math.min(...lats)) * mPerDegLat * width) / height,
-  ));
+  const spanM = Math.max(
+    120,
+    2.5 *
+      Math.max(
+        (Math.max(...lons) - Math.min(...lons)) * mPerDegLon,
+        ((Math.max(...lats) - Math.min(...lats)) * mPerDegLat * width) / height,
+      ),
+  );
   const halfW = spanM / 2 / mPerDegLon;
   const halfH = (spanM * height) / width / 2 / mPerDegLat;
   const bbox = { south: lat0 - halfH, west: lon0 - halfW, north: lat0 + halfH, east: lon0 + halfW };
@@ -204,8 +212,9 @@ export function toPropertyProfile(matchedAddress: string | null, land: any, buil
   // Floor area: the Ausnützungsziffer / IUS is the legal one where the rulebook gives it;
   // CUS is otherwise Popety's estimate (Geneva Zone 5: IUS 0.3 from LCI art. 59, CUS 0.37 estimated).
   const legal = (r: any) => source(r) === "regulation" || source(r) === "geoportal";
-  const floorMax = legal(regs.max_ius_az) || (!legal(regs.max_cus) && value(regs.max_ius_az) != null) ? regs.max_ius_az : regs.max_cus;
-  const floorCurrent = floorMax === regs.max_ius_az ? ui.ius_az ?? ui.cus ?? null : ui.cus ?? null;
+  const floorMax =
+    legal(regs.max_ius_az) || (!legal(regs.max_cus) && value(regs.max_ius_az) != null) ? regs.max_ius_az : regs.max_cus;
+  const floorCurrent = floorMax === regs.max_ius_az ? (ui.ius_az ?? ui.cus ?? null) : (ui.cus ?? null);
   const index = (current: number | null, maxRec: any) => ({
     current,
     max: value(maxRec) as number | null,
@@ -294,8 +303,13 @@ export function combineProfiles(profiles: PropertyProfile[]) {
       const max = weighted((p) => p.builtVsAllowed[k].max);
       // One estimated plot makes the site's maximum an estimate.
       const sources = profiles.map((p) => p.builtVsAllowed[k].maxSource);
-      const maxSource: LimitSource = sources.includes("spatial_analysis") ? "spatial_analysis" : sources.find((x) => x) ?? null;
-      return [k, { current, max, maxSource, usedPct: current != null && max ? Math.round((current / max) * 100) : null }];
+      const maxSource: LimitSource = sources.includes("spatial_analysis")
+        ? "spatial_analysis"
+        : (sources.find((x) => x) ?? null);
+      return [
+        k,
+        { current, max, maxSource, usedPct: current != null && max ? Math.round((current / max) * 100) : null },
+      ];
     }),
   ) as Record<RatioKey, { current: number | null; max: number | null; maxSource: LimitSource; usedPct: number | null }>;
   // Floor area in m² = floor area ratio × plot area.
@@ -307,7 +321,12 @@ export function combineProfiles(profiles: PropertyProfile[]) {
   return {
     plotCount: profiles.length,
     totalAreaM2: total,
-    plots: profiles.map((p) => ({ landId: p.landId, parcelNumber: p.parcelNumber, egrid: p.egrid, areaM2: p.parcelAreaM2 })),
+    plots: profiles.map((p) => ({
+      landId: p.landId,
+      parcelNumber: p.parcelNumber,
+      egrid: p.egrid,
+      areaM2: p.parcelAreaM2,
+    })),
     municipalities: Array.from(new Set(profiles.map((p) => p.municipality).filter(Boolean))) as string[],
     zones: Array.from(new Set(profiles.map((p) => p.zoning.cantonalZone).filter(Boolean))) as string[],
     sameZone: new Set(profiles.map((p) => p.zoning.cantonalZone)).size === 1,

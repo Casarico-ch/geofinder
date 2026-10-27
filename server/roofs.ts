@@ -52,8 +52,7 @@ async function fetchWithTimeout(url: string, ms = 40_000): Promise<Response> {
 export async function findDxfHref(lat: number, lon: number): Promise<string | null> {
   const d = 0.0004;
   const bbox = `${lon - d},${lat - d},${lon + d},${lat + d}`;
-  const url =
-    `https://data.geo.admin.ch/api/stac/v1/collections/ch.swisstopo.swissbuildings3d_2/items?bbox=${bbox}&limit=20`;
+  const url = `https://data.geo.admin.ch/api/stac/v1/collections/ch.swisstopo.swissbuildings3d_2/items?bbox=${bbox}&limit=20`;
   const j = (await (await fetchWithTimeout(url)).json()) as {
     features?: { id: string; assets: Record<string, { href: string }> }[];
   };
@@ -89,7 +88,9 @@ function parseDxf(text: string): Building[] {
       while (i < pairs.length && !(pairs[i][0] === 0 && pairs[i][1].trim() === "SEQEND")) {
         if (pairs[i][0] === 0 && pairs[i][1].trim() === "VERTEX") {
           i++;
-          let x: number | undefined, y: number | undefined, z = 0;
+          let x: number | undefined,
+            y: number | undefined,
+            z = 0;
           const idx: number[] = [];
           while (i < pairs.length && pairs[i][0] !== 0) {
             const c = pairs[i][0];
@@ -157,7 +158,9 @@ function renderCluster(cluster: Building[], size: number, azDeg: number): Buffer
   const cy = allv.reduce((s, v) => s + v[1], 0) / allv.length;
   const cz = Math.min(...allv.map((v) => v[2]));
   const proj = (v: number[]): number[] => {
-    const x = v[0] - cx, y = v[1] - cy, z = v[2] - cz;
+    const x = v[0] - cx,
+      y = v[1] - cy,
+      z = v[2] - cz;
     const xr = x * Math.cos(AZ) - y * Math.sin(AZ);
     const yr = x * Math.sin(AZ) + y * Math.cos(AZ);
     return [xr, yr * Math.sin(PITCH) - z * Math.cos(PITCH), yr * Math.cos(PITCH) + z * Math.sin(PITCH)];
@@ -248,7 +251,12 @@ export function encodePNG(w: number, h: number, rgb: Buffer): Buffer {
     raw[y * (w * 3 + 1)] = 0;
     rgb.copy(raw, y * (w * 3 + 1) + 1, y * w * 3, (y + 1) * w * 3);
   }
-  return Buffer.concat([sig, pngChunk("IHDR", ihdr), pngChunk("IDAT", zlib.deflateSync(raw)), pngChunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([
+    sig,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 // Two angles side by side into one sheet, so it's one image per candidate.
@@ -259,7 +267,7 @@ function renderSheet(cluster: Building[]): Buffer {
   const W = s * 2;
   const rgb = Buffer.alloc(W * s * 3);
   for (let y = 0; y < s; y++) {
-    a.copy(rgb, (y * W) * 3, y * s * 3, (y + 1) * s * 3);
+    a.copy(rgb, y * W * 3, y * s * 3, (y + 1) * s * 3);
     b.copy(rgb, (y * W + s) * 3, y * s * 3, (y + 1) * s * 3);
   }
   return encodePNG(W, s, rgb);

@@ -30,7 +30,18 @@ import { resumeInvestigation, runInvestigation } from "./agent";
 import { type AgentImage } from "./agent-prompt";
 import { saveListingPhotos } from "./agent-state";
 import { exactAddressOf, houseNumberOf, sameAddress, streetOf, type Candidate } from "./consensus";
-import { createJob, deleteJob, elapsedMs, costUsd, getJob, MODELS, requestPause, type Answer, type Job, type ModelId } from "./jobs";
+import {
+  createJob,
+  deleteJob,
+  elapsedMs,
+  costUsd,
+  getJob,
+  MODELS,
+  requestPause,
+  type Answer,
+  type Job,
+  type ModelId,
+} from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
 import { keptLessons, type Kpis } from "./lessons-store";
 import { buildingByEgid } from "./gwr";
@@ -107,7 +118,6 @@ export interface PracticeResult {
   verifyOf?: string; // the third judge (verify.ts): the run whose house it was handed
   missedBy?: string[]; // and the confirming search(es) that found nothing
   twinPick?: string; // named one of two attached twins; the other one
-
 }
 
 export interface PracticeRound {
@@ -151,7 +161,11 @@ const PRACTICE_PROOF = process.env.PRACTICE_PROOF === "on";
  * the top-150 look and twin picks instead).
  */
 export function runLimits(): { budgetUsd: number; maxMinutes: number; noProof?: true } {
-  return { budgetUsd: BUDGET_CHF * USD_PER_CHF, maxMinutes: MAX_MINUTES, ...(PRACTICE_PROOF ? {} : { noProof: true as const }) };
+  return {
+    budgetUsd: BUDGET_CHF * USD_PER_CHF,
+    maxMinutes: MAX_MINUTES,
+    ...(PRACTICE_PROOF ? {} : { noProof: true as const }),
+  };
 }
 
 // The confirming search and the tie-breaker stop sooner (Daniel, 09.10): a
@@ -163,7 +177,11 @@ const CONFIRM_CHF = Number(process.env.CONFIRM_BUDGET_CHF ?? 1.5);
 const CONFIRM_MINUTES = Number(process.env.CONFIRM_MAX_MINUTES ?? 10);
 const TIEBREAK_CHF = Number(process.env.TIEBREAK_BUDGET_CHF ?? 1.2);
 const TIEBREAK_MINUTES = Number(process.env.TIEBREAK_MAX_MINUTES ?? 8);
-function stepLimits(step: "search" | "confirm" | "tieBreak"): { budgetUsd: number; maxMinutes: number; noProof?: true } {
+function stepLimits(step: "search" | "confirm" | "tieBreak"): {
+  budgetUsd: number;
+  maxMinutes: number;
+  noProof?: true;
+} {
   const base = runLimits();
   if (step === "confirm") return { ...base, budgetUsd: CONFIRM_CHF * USD_PER_CHF, maxMinutes: CONFIRM_MINUTES };
   if (step === "tieBreak") return { ...base, budgetUsd: TIEBREAK_CHF * USD_PER_CHF, maxMinutes: TIEBREAK_MINUTES };
@@ -212,9 +230,13 @@ type Settled = { done: boolean; answer: Answer | null; confirm?: boolean };
 
 /** The two finished runs that name the same house, or null. `parcel`: count parcel confidence too, as Radar does. */
 function agreeingPair<T extends Settled>(runs: T[], opts: { parcel?: boolean } = {}): [T, T] | null {
-  const exact = runs.filter((r) => r.done).map((r) => [r, exactAddressOf(r.answer, opts)] as const).filter((x): x is readonly [T, Candidate] => !!x[1]);
+  const exact = runs
+    .filter((r) => r.done)
+    .map((r) => [r, exactAddressOf(r.answer, opts)] as const)
+    .filter((x): x is readonly [T, Candidate] => !!x[1]);
   for (let i = 0; i < exact.length; i++)
-    for (let j = i + 1; j < exact.length; j++) if (sameAddress(exact[i][1], exact[j][1])) return [exact[i][0], exact[j][0]];
+    for (let j = i + 1; j < exact.length; j++)
+      if (sameAddress(exact[i][1], exact[j][1])) return [exact[i][0], exact[j][0]];
   return null;
 }
 
@@ -335,7 +357,14 @@ export async function startSearch(
   const tie = named.length >= 2 ? await tieBreakSetup(listing.listingText, named) : null;
   // The third judge is handed the house one run found and what the confirming search covered.
   const finder = step.verifyOf ? getJob(step.verifyOf) : undefined;
-  const verify = !tie && finder ? verifySetup(listing.listingText, finder, (step.missedBy ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j)) : null;
+  const verify =
+    !tie && finder
+      ? verifySetup(
+          listing.listingText,
+          finder,
+          (step.missedBy ?? []).map((id) => getJob(id)).filter((j): j is Job => !!j),
+        )
+      : null;
   const listingText = tie ? tie.text : verify ? verify.text : listing.listingText;
   const limits = stepLimits(tie ? "tieBreak" : step.role === "confirm" ? "confirm" : "search");
   const job = await createJob(
@@ -372,7 +401,8 @@ const PHOTO_MAX_BYTES = 4 * 1024 * 1024;
 function radar(): { url: string; secret: string } {
   const url = process.env.RADAR_URL?.replace(/\/+$/, "");
   const secret = process.env.GEOFINDER_PRACTICE_SECRET?.trim();
-  if (!url || !secret) throw new Error("Set RADAR_URL and GEOFINDER_PRACTICE_SECRET on GeoFinder to run the test track.");
+  if (!url || !secret)
+    throw new Error("Set RADAR_URL and GEOFINDER_PRACTICE_SECRET on GeoFinder to run the test track.");
   return { url, secret };
 }
 
@@ -424,7 +454,10 @@ async function keyTrouble(c: PracticeCase, all: PracticeCase[]): Promise<string 
     return `a single house, keyed to a building with ${b.dwellings} homes`;
   const others = all.filter((o) => o.propertyId !== c.propertyId && o.truth.egid === c.truth.egid);
   const kinds = [f.kind, ...others.map((o) => listingFacts(o.listingText).kind)];
-  if (others.length && (kinds.filter((k) => k === "house").length > 1 || (kinds.includes("house") && kinds.includes("flat"))))
+  if (
+    others.length &&
+    (kinds.filter((k) => k === "house").length > 1 || (kinds.includes("house") && kinds.includes("flat")))
+  )
     return `${others.length + 1} different listings, houses and flats, share one building as their answer`;
   return null;
 }
@@ -454,11 +487,15 @@ function sampleCases(all: PracticeCase[], n: number): PracticeCase[] {
 }
 
 const sniff = (b: Uint8Array): AgentImage["mediaType"] | null =>
-  b[0] === 0xff && b[1] === 0xd8 ? "image/jpeg"
-  : b[0] === 0x89 && b[1] === 0x50 ? "image/png"
-  : b[0] === 0x47 && b[1] === 0x49 ? "image/gif"
-  : b[0] === 0x52 && b[8] === 0x57 && b[9] === 0x45 ? "image/webp"
-  : null;
+  b[0] === 0xff && b[1] === 0xd8
+    ? "image/jpeg"
+    : b[0] === 0x89 && b[1] === 0x50
+      ? "image/png"
+      : b[0] === 0x47 && b[1] === 0x49
+        ? "image/gif"
+        : b[0] === 0x52 && b[8] === 0x57 && b[9] === 0x45
+          ? "image/webp"
+          : null;
 
 async function loadPhotos(urls: string[]): Promise<AgentImage[]> {
   const out: AgentImage[] = [];
@@ -545,11 +582,16 @@ function refresh(round: PracticeRound): boolean {
     if (!r.jobId || (r.outcome !== "running" && r.outcome !== "error")) continue;
     const job = getJob(r.jobId);
     if (!job) continue;
-    Object.assign(r, score(job, r.truth), job.status === "running" || job.status === "paused" ? {} : truthRank(job, r.truth), {
-      minutes: Math.round((elapsedMs(job) / 60_000) * 10) / 10,
-      costUsd: Math.round(costUsd(job.tokens, job.model) * 100) / 100,
-      steps: job.steps.length,
-    });
+    Object.assign(
+      r,
+      score(job, r.truth),
+      job.status === "running" || job.status === "paused" ? {} : truthRank(job, r.truth),
+      {
+        minutes: Math.round((elapsedMs(job) / 60_000) * 10) / 10,
+        costUsd: Math.round(costUsd(job.tokens, job.model) * 100) / 100,
+        steps: job.steps.length,
+      },
+    );
     if (r.outcome === "running") open = true;
   }
   for (const r of round.results) if (r.outcome === "wrong" && !r.twinChecked && r.jobId) void checkTwin(round, r);
@@ -585,7 +627,14 @@ export async function startRound(
   // null: each listing gets the models a real request for it gets (firstModels).
   models: ModelId[] | null,
   // A lesson's test: the same listings as the round it is compared with, and its own lessons.
-  opts: { propertyIds?: number[]; pairs?: Pair[]; lessons?: string[]; trialOf?: string; rerunOf?: string; noLand?: boolean } = {},
+  opts: {
+    propertyIds?: number[];
+    pairs?: Pair[];
+    lessons?: string[];
+    trialOf?: string;
+    rerunOf?: string;
+    noLand?: boolean;
+  } = {},
 ): Promise<PracticeRound> {
   const all = await fetchCases(split, Infinity);
   const ids = opts.pairs ? Array.from(new Set(opts.pairs.map((p) => p.propertyId))) : opts.propertyIds;
@@ -632,7 +681,19 @@ export async function startRound(
     for (const model of models ?? firstModels(c.listingText)) {
       if (!round.models.includes(model)) round.models.push(model);
       if (!opts.pairs || opts.pairs.some((p) => p.propertyId === c.propertyId && p.model === model))
-        round.results.push({ propertyId: c.propertyId, jobId: null, model, truth: truthKeys(c.truth), outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: c.links?.source ?? null });
+        round.results.push({
+          propertyId: c.propertyId,
+          jobId: null,
+          model,
+          truth: truthKeys(c.truth),
+          outcome: "running",
+          answer: null,
+          lostAt: null,
+          minutes: null,
+          costUsd: null,
+          steps: null,
+          sourceUrl: c.links?.source ?? null,
+        });
     }
   rounds.set(round.id, round);
   await save(round);
@@ -663,7 +724,13 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
         const images = await loadPhotos(c.imageUrls);
         if (!images.length) throw new Error("no photo could be loaded");
         const { job, finished } = await startSearch(
-          { municipality: c.municipality ?? undefined, listingText: c.listingText, listingId: `practice-${round.id}-${c.propertyId}`, lessons: round.lessons ?? [], noProof: !!round.noProof },
+          {
+            municipality: c.municipality ?? undefined,
+            listingText: c.listingText,
+            listingId: `practice-${round.id}-${c.propertyId}`,
+            lessons: round.lessons ?? [],
+            noProof: !!round.noProof,
+          },
           images,
           r.model,
           { role: roleOf(r), tieBreakOf: r.tieBreakOf, verifyOf: r.verifyOf, missedBy: r.missedBy },
@@ -690,7 +757,8 @@ async function driveQueue(round: PracticeRound, cases: PracticeCase[], only?: Pr
   await save(round);
 }
 
-const roleOf = (r: Pick<PracticeResult, "recheck" | "confirm">): Role => (r.confirm ? "confirm" : r.recheck ? "recheck" : "search");
+const roleOf = (r: Pick<PracticeResult, "recheck" | "confirm">): Role =>
+  r.confirm ? "confirm" : r.recheck ? "recheck" : "search";
 
 /** A first answer that will be searched again is flagged doubtful, with why (the round's recheck stats). */
 function markDoubt(round: PracticeRound, r: PracticeResult, answer: Answer | null): void {
@@ -710,7 +778,23 @@ function stepsFor(round: PracticeRound, propertyId: number): PracticeResult[] {
   const first = runs[0];
   return steps.map((s) => {
     if (!round.models.includes(s.model)) round.models.push(s.model);
-    const again: PracticeResult = { propertyId, jobId: null, model: s.model, truth: first.truth, outcome: "running", answer: null, lostAt: null, minutes: null, costUsd: null, steps: null, sourceUrl: first.sourceUrl, ...(s.role === "recheck" ? { recheck: true } : {}), ...(s.role === "confirm" ? { confirm: true } : {}), ...(s.tieBreakOf ? { tieBreakOf: s.tieBreakOf } : {}), ...(s.verifyOf ? { verifyOf: s.verifyOf, missedBy: s.missedBy ?? [] } : {}) };
+    const again: PracticeResult = {
+      propertyId,
+      jobId: null,
+      model: s.model,
+      truth: first.truth,
+      outcome: "running",
+      answer: null,
+      lostAt: null,
+      minutes: null,
+      costUsd: null,
+      steps: null,
+      sourceUrl: first.sourceUrl,
+      ...(s.role === "recheck" ? { recheck: true } : {}),
+      ...(s.role === "confirm" ? { confirm: true } : {}),
+      ...(s.tieBreakOf ? { tieBreakOf: s.tieBreakOf } : {}),
+      ...(s.verifyOf ? { verifyOf: s.verifyOf, missedBy: s.missedBy ?? [] } : {}),
+    };
     round.results.push(again);
     return again;
   });
@@ -777,7 +861,8 @@ export function summarize(round: PracticeRound): RoundSummary {
   refresh(round);
   const n = (o: Outcome) => round.results.filter((r) => r.outcome === o).length;
   const done = round.results.filter((r) => r.minutes != null && r.outcome !== "running");
-  const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null);
+  const avg = (xs: number[]) =>
+    xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
   const lost: Record<string, number> = {};
   for (const r of round.results) if (r.lostAt) lost[r.lostAt] = (lost[r.lostAt] ?? 0) + 1;
   return {
@@ -814,7 +899,12 @@ export function summarize(round: PracticeRound): RoundSummary {
 
 // Per recheck: fixed = the first answer was not right and the recheck is;
 // caught = a wrong answer became "not sure"; broke = a right one got lost.
-interface RecheckStats { done: number; fixed: number; caught: number; broke: number }
+interface RecheckStats {
+  done: number;
+  fixed: number;
+  caught: number;
+  broke: number;
+}
 function recheckStats(round: PracticeRound): RoundSummary["rechecks"] {
   const per = new Map<string, RecheckStats & { model: string; costUsd: number }>();
   for (const again of round.results) {
@@ -825,10 +915,13 @@ function recheckStats(round: PracticeRound): RoundSummary["rechecks"] {
     per.set(again.model, m);
     m.costUsd = Math.round((m.costUsd + (again.costUsd ?? 0)) * 100) / 100;
     const k: keyof RecheckStats | null =
-      first.outcome !== "right" && again.outcome === "right" ? "fixed"
-      : first.outcome === "wrong" && again.outcome !== "wrong" ? "caught"
-      : first.outcome === "right" && again.outcome !== "right" ? "broke"
-      : null;
+      first.outcome !== "right" && again.outcome === "right"
+        ? "fixed"
+        : first.outcome === "wrong" && again.outcome !== "wrong"
+          ? "caught"
+          : first.outcome === "right" && again.outcome !== "right"
+            ? "broke"
+            : null;
     m.done++;
     if (k) m[k]++;
   }
@@ -840,7 +933,9 @@ function recheckStats(round: PracticeRound): RoundSummary["rechecks"] {
 function listingTotals(round: PracticeRound): RecheckStats {
   const out: RecheckStats = { done: 0, fixed: 0, caught: 0, broke: 0 };
   for (const first of round.results.filter((x) => x.doubt)) {
-    const agains = round.results.filter((x) => x.recheck && x.propertyId === first.propertyId && x.outcome !== "running" && x.outcome !== "error");
+    const agains = round.results.filter(
+      (x) => x.recheck && x.propertyId === first.propertyId && x.outcome !== "running" && x.outcome !== "error",
+    );
     if (!agains.length) continue;
     out.done++;
     if (first.outcome !== "right" && agains.some((a) => a.outcome === "right")) out.fixed++;
@@ -879,7 +974,9 @@ function foundStats(round: PracticeRound): Pick<RoundSummary, "listings" | "foun
 function agreement(round: PracticeRound): { agreed: number; agreedRight: number; agreedWrong: number } {
   const out = { agreed: 0, agreedRight: 0, agreedWrong: 0 };
   const byListing = new Map<number, PracticeResult[]>();
-  for (const r of round.results) if (r.outcome === "right" || r.outcome === "wrong") byListing.set(r.propertyId, [...(byListing.get(r.propertyId) ?? []), r]);
+  for (const r of round.results)
+    if (r.outcome === "right" || r.outcome === "wrong")
+      byListing.set(r.propertyId, [...(byListing.get(r.propertyId) ?? []), r]);
   for (const runs of Array.from(byListing.values())) {
     const groups = new Map<string, PracticeResult[]>();
     for (const r of runs) {
@@ -889,7 +986,9 @@ function agreement(round: PracticeRound): { agreed: number; agreedRight: number;
       const k = `${st.toLowerCase()} ${no}`;
       groups.set(k, [...(groups.get(k) ?? []), r]);
     }
-    const best = Array.from(groups.values()).filter((g) => g.length >= 2).sort((a, b) => b.length - a.length)[0];
+    const best = Array.from(groups.values())
+      .filter((g) => g.length >= 2)
+      .sort((a, b) => b.length - a.length)[0];
     if (!best) continue;
     out.agreed++;
     if (best[0].outcome === "right") out.agreedRight++;
@@ -942,9 +1041,7 @@ async function continueRound(round: PracticeRound): Promise<void> {
   const waiting = round.results.filter((r) => !r.jobId && r.outcome === "running");
   if (!waiting.length || driving.has(round.id)) return;
   const want = new Set(waiting.map((r) => r.propertyId));
-  const cases = (await fetchCases(round.split, Infinity)).filter((c) =>
-    want.has(c.propertyId),
-  );
+  const cases = (await fetchCases(round.split, Infinity)).filter((c) => want.has(c.propertyId));
   const found = new Set(cases.map((c) => c.propertyId));
   for (const r of waiting)
     if (!found.has(r.propertyId)) Object.assign(r, { outcome: "error", error: "radar no longer offers this listing" });
@@ -1022,7 +1119,8 @@ export async function settleRound(round: PracticeRound): Promise<boolean> {
   // and no second search ever ran): queue them now.
   const more: PracticeResult[] = [];
   for (const id of Array.from(new Set(round.results.map((r) => r.propertyId)))) {
-    for (const r of round.results) if (r.propertyId === id) markDoubt(round, r, r.jobId ? (getJob(r.jobId)?.answer ?? null) : null);
+    for (const r of round.results)
+      if (r.propertyId === id) markDoubt(round, r, r.jobId ? (getJob(r.jobId)?.answer ?? null) : null);
     more.push(...stepsFor(round, id));
   }
   if (more.length) {
@@ -1052,7 +1150,10 @@ export interface Pair {
 /** The round's score on the goal, over all its runs or only the given pairs. */
 export function kpisOf(round: PracticeRound, pairs?: Pair[]): Kpis {
   const only = pairs
-    ? { ...round, results: round.results.filter((r) => pairs.some((p) => p.propertyId === r.propertyId && p.model === r.model)) }
+    ? {
+        ...round,
+        results: round.results.filter((r) => pairs.some((p) => p.propertyId === r.propertyId && p.model === r.model)),
+      }
     : round;
   const s = summarize(only);
   return {

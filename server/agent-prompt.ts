@@ -73,10 +73,7 @@ Then follow the SEARCH PLAN and METHOD: shortlist the commune it names (floors +
 // produced them — otherwise a prompt edit + redeploy leaves the history in the
 // dark about what was actually in force. Short hex of sha256 is enough to tell
 // two prompt versions apart at a glance.
-export const PROMPT_VERSION = createHash("sha256")
-  .update(`${SYSTEM}\n---TASK---\n${TASK}`)
-  .digest("hex")
-  .slice(0, 12);
+export const PROMPT_VERSION = createHash("sha256").update(`${SYSTEM}\n---TASK---\n${TASK}`).digest("hex").slice(0, 12);
 
 export function initialContent(
   images: AgentImage[],

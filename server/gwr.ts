@@ -93,13 +93,17 @@ function ringsOf(geometry: any): number[][][] {
 }
 
 function bboxOf(rings: number[][][]): [number, number, number, number] {
-  let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
-  for (const r of rings) for (const [x, y] of r) {
-    if (x < a) a = x;
-    if (y < b) b = y;
-    if (x > c) c = x;
-    if (y > d) d = y;
-  }
+  let a = Infinity,
+    b = Infinity,
+    c = -Infinity,
+    d = -Infinity;
+  for (const r of rings)
+    for (const [x, y] of r) {
+      if (x < a) a = x;
+      if (y < b) b = y;
+      if (x > c) c = x;
+      if (y > d) d = y;
+    }
   return [a, b, c, d];
 }
 
@@ -120,7 +124,9 @@ export function resolveCommune(name: string): Promise<Commune | null> {
   if (!hit) {
     hit = doResolve(name).catch(() => null);
     communeCache.set(key, hit);
-    void hit.then((c) => { if (!c) communeCache.delete(key); });
+    void hit.then((c) => {
+      if (!c) communeCache.delete(key);
+    });
   }
   return hit;
 }
@@ -136,7 +142,9 @@ async function doResolve(name: string): Promise<Commune | null> {
   );
   const hits = (s.results ?? [])
     .map((r: any) => ({
-      label: String(r.attrs?.label ?? "").replace(/<[^>]+>/g, "").trim(),
+      label: String(r.attrs?.label ?? "")
+        .replace(/<[^>]+>/g, "")
+        .trim(),
       bfs: Number(r.attrs?.featureId),
       box: String(r.attrs?.geom_st_box2d ?? ""),
     }))
@@ -144,8 +152,7 @@ async function doResolve(name: string): Promise<Commune | null> {
   const exact = hits.filter((h: { label: string }) => normalizeCommune(h.label) === want);
   const pool = exact.length ? exact : hits.filter((h: { label: string }) => normalizeCommune(h.label).startsWith(want));
   if (pool.length === 0) return null;
-  const pick =
-    pool.find((h: { label: string }) => canton && h.label.endsWith(`(${canton})`)) ?? pool[0];
+  const pick = pool.find((h: { label: string }) => canton && h.label.endsWith(`(${canton})`)) ?? pool[0];
   return communeOutline(pick.bfs, pick.box);
 }
 
@@ -180,7 +187,8 @@ function pointInRings(lon: number, lat: number, rings: number[][][]): boolean {
   let inside = false;
   for (const ring of rings) {
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      const [xi, yi] = ring[i],
+        [xj, yj] = ring[j];
       if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
     }
   }
@@ -197,7 +205,8 @@ function distanceToCommune(lat: number, lon: number, c: Commune): number {
     for (let i = 0; i + 1 < ring.length; i++) {
       const [ax, ay] = m(ring[i][0], ring[i][1]);
       const [bx, by] = m(ring[i + 1][0], ring[i + 1][1]);
-      const dx = bx - ax, dy = by - ay;
+      const dx = bx - ax,
+        dy = by - ay;
       const l2 = dx * dx + dy * dy;
       const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
       best = Math.min(best, Math.hypot(px - (ax + t * dx), py - (ay + t * dy)));
@@ -214,8 +223,11 @@ export async function neighbourCommunes(
   radiusM = 5_000,
   max = 10,
 ): Promise<{ commune: Commune; distanceM: number }[]> {
-  const dLat = radiusM / M_LAT, dLon = radiusM / (M_LAT * Math.cos((anchor.lat * Math.PI) / 180));
-  const env = [anchor.lon - dLon, anchor.lat - dLat, anchor.lon + dLon, anchor.lat + dLat].map((v) => v.toFixed(5)).join(",");
+  const dLat = radiusM / M_LAT,
+    dLon = radiusM / (M_LAT * Math.cos((anchor.lat * Math.PI) / 180));
+  const env = [anchor.lon - dLon, anchor.lat - dLat, anchor.lon + dLon, anchor.lat + dLat]
+    .map((v) => v.toFixed(5))
+    .join(",");
   const year = new Date().getFullYear();
   let results: any[] = [];
   for (const y of [year, year - 1]) {
@@ -240,8 +252,19 @@ export async function neighbourCommunes(
 
 // gbaup codes: the register's construction periods.
 const PERIODS: Record<number, [number, number]> = {
-  8011: [0, 1918], 8012: [1919, 1945], 8013: [1946, 1960], 8014: [1961, 1970], 8015: [1971, 1980], 8016: [1981, 1985],
-  8017: [1986, 1990], 8018: [1991, 1995], 8019: [1996, 2000], 8020: [2001, 2005], 8021: [2006, 2010], 8022: [2011, 2015], 8023: [2016, 2100],
+  8011: [0, 1918],
+  8012: [1919, 1945],
+  8013: [1946, 1960],
+  8014: [1961, 1970],
+  8015: [1971, 1980],
+  8016: [1981, 1985],
+  8017: [1986, 1990],
+  8018: [1991, 1995],
+  8019: [1996, 2000],
+  8020: [2001, 2005],
+  8021: [2006, 2010],
+  8022: [2011, 2015],
+  8023: [2016, 2100],
 };
 
 function toBuilding(f: any): GwrBuilding | null {
@@ -323,8 +346,14 @@ async function identifyAll(env: number[]): Promise<any[]> {
   if (first.length < PAGE) return first;
   const [x0, y0, x1, y1] = env;
   if (x1 - x0 > 0.0005 || y1 - y0 > 0.0005) {
-    const xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
-    const quads = [[x0, y0, xm, ym], [xm, y0, x1, ym], [x0, ym, xm, y1], [xm, ym, x1, y1]];
+    const xm = (x0 + x1) / 2,
+      ym = (y0 + y1) / 2;
+    const quads = [
+      [x0, y0, xm, ym],
+      [xm, y0, x1, ym],
+      [x0, ym, xm, y1],
+      [xm, ym, x1, y1],
+    ];
     return (await Promise.all(quads.map(identifyAll))).flat();
   }
   console.warn(`[gwr] ${PAGE}+ features in a ~50 m tile at ${env.join(",")}: paged, may be incomplete`);
@@ -355,9 +384,10 @@ async function doFetchBuildings(c: Commune): Promise<GwrBuilding[]> {
   const step = 0.01;
   const [x0, y0, x1, y1] = c.bbox;
   const tiles: number[][] = [];
-  for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step) {
-    tiles.push([x, y, Math.min(x + step, x1), Math.min(y + step, y1)]);
-  }
+  for (let y = y0; y < y1; y += step)
+    for (let x = x0; x < x1; x += step) {
+      tiles.push([x, y, Math.min(x + step, x1), Math.min(y + step, y1)]);
+    }
   const byEgid = new Map<string, GwrBuilding>();
   let next = 0;
   const worker = async () => {
@@ -375,7 +405,9 @@ async function doFetchBuildings(c: Commune): Promise<GwrBuilding[]> {
 
 // The built-up centre of a commune: the mean of its existing residential buildings.
 export function builtCentre(buildings: GwrBuilding[]): { lat: number; lon: number } | null {
-  const res = buildings.filter((b) => b.status === 1004 && b.category != null && b.category >= 1020 && b.category < 1060);
+  const res = buildings.filter(
+    (b) => b.status === 1004 && b.category != null && b.category >= 1020 && b.category < 1060,
+  );
   const use = res.length ? res : buildings;
   if (!use.length) return null;
   return {
@@ -445,6 +477,7 @@ export async function buildingAt(lat: number, lon: number): Promise<GwrBuilding 
       `&tolerance=10&sr=4326&geometryFormat=geojson&returnGeometry=true&mapExtent=${lon - d},${lat - d},${lon + d},${lat + d}&imageDisplay=800,600,96`,
   );
   const all = (j.results ?? []).map(toBuilding).filter((b: GwrBuilding | null): b is GwrBuilding => !!b);
-  const dist = (b: GwrBuilding) => Math.hypot((b.lon - lon) * 111_320 * Math.cos((lat * Math.PI) / 180), (b.lat - lat) * 111_320);
+  const dist = (b: GwrBuilding) =>
+    Math.hypot((b.lon - lon) * 111_320 * Math.cos((lat * Math.PI) / 180), (b.lat - lat) * 111_320);
   return all.sort((a: GwrBuilding, b: GwrBuilding) => dist(a) - dist(b))[0] ?? null;
 }

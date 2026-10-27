@@ -70,13 +70,25 @@ export async function tieBreakSetup(
   const street = streets.size === 1 ? Array.from(streets)[0] || null : null;
   const commune = entries.find((e) => e)?.commune ?? named[0].job.answer?.commune ?? null;
   const near = entries.find((e) => e) ?? null;
-  const onStreet = street && commune ? await streetHomes(commune, street, near && { lat: near.lat, lon: near.lon }).catch(() => []) : [];
+  const onStreet =
+    street && commune
+      ? await streetHomes(commune, street, near && { lat: near.lat, lon: near.lon }).catch(() => [])
+      : [];
   let order = Object.keys(candidates).length;
   for (const h of onStreet) {
     if (candidates[h.egid]) continue;
     candidates[h.egid] = {
-      egid: h.egid, order: ++order, commune: h.commune, address: h.address, lat: h.lat, lon: h.lon,
-      floors: h.floors, dwellings: h.dwellings, footprintM2: h.footprintM2, viewed: false, verdict: "unchecked",
+      egid: h.egid,
+      order: ++order,
+      commune: h.commune,
+      address: h.address,
+      lat: h.lat,
+      lon: h.lon,
+      floors: h.floors,
+      dwellings: h.dwellings,
+      footprintM2: h.footprintM2,
+      viewed: false,
+      verdict: "unchecked",
     };
   }
   const egids = entries.filter((e): e is LedgerEntry => !!e).map((e) => e.egid);
@@ -90,7 +102,9 @@ export async function tieBreakSetup(
     `${named.length} investigators searched this listing on their own and named ${named.length} DIFFERENT houses:`,
     ...named.map((x, i) => describe(labels[i], x.c, entries[i])),
     ...(others.length
-      ? [`They are all on the same street. Its other ${others.length} homes are on your checklist too: ${others.map((h) => h.address).join("; ")}.`]
+      ? [
+          `They are all on the same street. Its other ${others.length} homes are on your checklist too: ${others.map((h) => h.address).join("; ")}.`,
+        ]
       : []),
     `Your job is to decide which house the listing shows. Do NOT search the commune again: compare these.`,
     `1. inspect_candidate ${list} (by EGID, or by lat/lon if one is not on your checklist): each one's register facts and plot against the listing's numbers, its 40 m aerial and its real 3D roof.`,
@@ -103,17 +117,24 @@ export async function tieBreakSetup(
   return { text, seed: { shortlisted: [], candidates }, egids };
 }
 
-async function streetHomes(commune: string, street: string, near: { lat: number; lon: number } | null): Promise<GwrBuilding[]> {
+async function streetHomes(
+  commune: string,
+  street: string,
+  near: { lat: number; lon: number } | null,
+): Promise<GwrBuilding[]> {
   const c = await resolveCommune(commune);
   if (!c) return [];
   const all = await fetchCommuneBuildings(c);
   const num = (a: string | null) => Number((a ?? "").match(/\d+/)?.[0] ?? 0);
-  const dist = (h: GwrBuilding) => (near ? Math.hypot((h.lon - near.lon) * 78_000, (h.lat - near.lat) * 111_320) : num(h.address));
-  return all
-    // Homes only: "2.1" is a shed or garage numbered after its house.
-    .filter((h) => h.address && streetOf(h.address) === street && !/\d+\.\d+/.test(h.address) && h.dwellings !== 0)
-    // A long street: the homes nearest A and B.
-    .sort((x, y) => dist(x) - dist(y))
-    .slice(0, STREET_MAX)
-    .sort((x, y) => num(x.address) - num(y.address));
+  const dist = (h: GwrBuilding) =>
+    near ? Math.hypot((h.lon - near.lon) * 78_000, (h.lat - near.lat) * 111_320) : num(h.address);
+  return (
+    all
+      // Homes only: "2.1" is a shed or garage numbered after its house.
+      .filter((h) => h.address && streetOf(h.address) === street && !/\d+\.\d+/.test(h.address) && h.dwellings !== 0)
+      // A long street: the homes nearest A and B.
+      .sort((x, y) => dist(x) - dist(y))
+      .slice(0, STREET_MAX)
+      .sort((x, y) => num(x.address) - num(y.address))
+  );
 }

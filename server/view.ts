@@ -15,8 +15,10 @@ import { DIRECTIONS, type Direction } from "./locate";
 
 const PROFILE = "https://api3.geo.admin.ch/rest/services/profile.json";
 const DEG: Record<Direction, number> = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
-const FAR_M = 25_000, FAR_POINTS = 250; // every 100 m
-const NEAR_M = 1_500, NEAR_POINTS = 76; // every 20 m
+const FAR_M = 25_000,
+  FAR_POINTS = 250; // every 100 m
+const NEAR_M = 1_500,
+  NEAR_POINTS = 76; // every 20 m
 const EYE_M = 6; // a first-floor window
 
 function lv95(lat: number, lon: number): [number, number] {
@@ -50,7 +52,10 @@ const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.r
 
 /** One direction, in words: skyline, view down, a slope blocking it, a flat stretch in view. */
 async function oneDirection(from: [number, number], dir: Direction): Promise<string> {
-  const [near, far] = await Promise.all([profile(from, DEG[dir], NEAR_M, NEAR_POINTS), profile(from, DEG[dir], FAR_M, FAR_POINTS)]);
+  const [near, far] = await Promise.all([
+    profile(from, DEG[dir], NEAR_M, NEAR_POINTS),
+    profile(from, DEG[dir], FAR_M, FAR_POINTS),
+  ]);
   if (!near.length || !far.length) return `${dir}: no terrain data`;
   const eye = near[0].z + EYE_M;
   const all = [...near.filter((p) => p.d > 0), ...far.filter((p) => p.d > NEAR_M)];
@@ -69,7 +74,8 @@ async function oneDirection(from: [number, number], dir: Direction): Promise<str
   );
   // A view down: the lowest ground in front, within 1.5 km.
   const low = near.reduce((m, p) => (p.z < m.z ? p : m), near[0]);
-  if (near[0].z - low.z >= 20) parts.push(`the ground falls ${Math.round(near[0].z - low.z)} m within ${km(low.d)} (a view down)`);
+  if (near[0].z - low.z >= 20)
+    parts.push(`the ground falls ${Math.round(near[0].z - low.z)} m within ${km(low.d)} (a view down)`);
   else if (low.z >= near[0].z - 5 && !blockedClose) parts.push("level ground in front");
   // A dead-flat stretch below the house that is in sight: a lake (or a valley floor).
   let run: Point[] = [];
@@ -86,8 +92,12 @@ async function oneDirection(from: [number, number], dir: Direction): Promise<str
       run = p.z < near[0].z - 15 && seen ? [p] : [];
     }
   }
-  if (!flat && run.length >= 2 && run[run.length - 1].d - run[0].d >= 800) flat = { from: run[0].d, to: run[run.length - 1].d, z: run[0].z };
-  if (flat) parts.push(`a dead-flat surface in view at ${Math.round(flat.z)} m from ${km(flat.from)} to ${km(flat.to)} (a lake, or a valley floor)`);
+  if (!flat && run.length >= 2 && run[run.length - 1].d - run[0].d >= 800)
+    flat = { from: run[0].d, to: run[run.length - 1].d, z: run[0].z };
+  if (flat)
+    parts.push(
+      `a dead-flat surface in view at ${Math.round(flat.z)} m from ${km(flat.from)} to ${km(flat.to)} (a lake, or a valley floor)`,
+    );
   return `${dir}: ${parts.join("; ")}`;
 }
 
@@ -95,7 +105,9 @@ async function oneDirection(from: [number, number], dir: Direction): Promise<str
 export async function viewFrom(lat: number, lon: number, dirs: Direction[] = [...DIRECTIONS]): Promise<string> {
   const from = lv95(lat, lon);
   const lines = await Promise.all(
-    dirs.map((d) => oneDirection(from, d).catch((err) => `${d}: failed (${err instanceof Error ? err.message : String(err)})`)),
+    dirs.map((d) =>
+      oneDirection(from, d).catch((err) => `${d}: failed (${err instanceof Error ? err.message : String(err)})`),
+    ),
   );
   return lines.join("\n");
 }

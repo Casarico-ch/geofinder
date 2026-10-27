@@ -15,7 +15,16 @@ const features = Array.from({ length: 1800 }, (_, i) => {
   return {
     type: "Feature",
     geometry: { type: "Point", coordinates: [lon, lat] },
-    properties: { egid: 100000 + i, ggdenr: BFS, ggdename: "Testdorf", gastw: 2, ganzwhg: 1, garea: 90, gkat: 1020, gstat: 1004 },
+    properties: {
+      egid: 100000 + i,
+      ggdenr: BFS,
+      ggdename: "Testdorf",
+      gastw: 2,
+      ganzwhg: 1,
+      garea: 90,
+      gkat: 1020,
+      gstat: 1004,
+    },
   };
 });
 

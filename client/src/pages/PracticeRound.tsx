@@ -17,7 +17,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Copy, ExternalLink, Lightbulb, Pause, Play, RotateCcw, Trash2 } from "lucide-react";
 
@@ -33,7 +40,11 @@ interface ReviewGroup {
 
 function ReviewPanel({ groups, listings }: { groups: ReviewGroup[]; listings: Record<number, ListingInfo> }) {
   if (!groups.length)
-    return <p className="text-sm text-muted-foreground">Nothing to review yet: every finished listing was confirmed right, or the round is still running.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        Nothing to review yet: every finished listing was confirmed right, or the round is still running.
+      </p>
+    );
   const copy = async (g: ReviewGroup) => {
     try {
       await navigator.clipboard.writeText(g.task);
@@ -45,7 +56,8 @@ function ReviewPanel({ groups, listings }: { groups: ReviewGroup[]; listings: Re
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        Every listing not confirmed right, by cause. A cause marked Code needs a change in the code, not in the prompt: copy its task into a coding session.
+        Every listing not confirmed right, by cause. A cause marked Code needs a change in the code, not in the prompt:
+        copy its task into a coding session.
       </p>
       {groups.map((g) => (
         <Card key={g.cause} className="p-4 space-y-2">
@@ -64,7 +76,12 @@ function ReviewPanel({ groups, listings }: { groups: ReviewGroup[]; listings: Re
           <ul className="space-y-1">
             {g.items.map((i) => (
               <li key={i.propertyId} className="text-xs">
-                <a className="inline-flex items-center gap-1 font-medium hover:underline" href={listings[i.propertyId]?.radarUrl} target="_blank" rel="noreferrer">
+                <a
+                  className="inline-flex items-center gap-1 font-medium hover:underline"
+                  href={listings[i.propertyId]?.radarUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {listings[i.propertyId]?.place ?? `#${i.propertyId}`}
                   <ExternalLink className="h-3 w-3" />
                 </a>{" "}
@@ -85,7 +102,9 @@ function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?
   return (
     <Card className="p-4 space-y-1">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-2xl font-semibold ${tone === "bad" ? "text-destructive" : tone === "good" ? "text-emerald-700" : ""}`}>
+      <p
+        className={`text-2xl font-semibold ${tone === "bad" ? "text-destructive" : tone === "good" ? "text-emerald-700" : ""}`}
+      >
         {value}
       </p>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -104,7 +123,9 @@ export default function PracticeRound() {
   const [listingInfo, setListingInfo] = useState<Record<number, ListingInfo>>({});
   // What Radar would show per listing: a house only when two runs name it (server: practice.ts listingVerdict).
   const [review, setReview] = useState<ReviewGroup[]>([]);
-  const [verdicts, setVerdicts] = useState<Record<number, "running" | "confirmed_right" | "confirmed_wrong" | "not_confirmed">>({});
+  const [verdicts, setVerdicts] = useState<
+    Record<number, "running" | "confirmed_right" | "confirmed_wrong" | "not_confirmed">
+  >({});
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -146,7 +167,6 @@ export default function PracticeRound() {
     }
   };
 
-
   // Listing-level view: did anyone find it, did everyone, did anyone go wrong.
   const listings = useMemo(() => {
     if (!results) return null;
@@ -159,7 +179,8 @@ export default function PracticeRound() {
       foundByAny: finished.filter((pid) => of(pid).some((r) => r.outcome === "right")).length,
       withWrong: finished.filter((pid) => of(pid).some((r) => r.outcome === "wrong")).length,
       // What Radar would show as found: two runs named the same house (practice.ts foundPair).
-      found: finished.filter((pid) => verdicts[pid] === "confirmed_right" || verdicts[pid] === "confirmed_wrong").length,
+      found: finished.filter((pid) => verdicts[pid] === "confirmed_right" || verdicts[pid] === "confirmed_wrong")
+        .length,
       // As Radar shows it: a house only when two runs named it.
       confirmedRight: finished.filter((pid) => verdicts[pid] === "confirmed_right").length,
       confirmedWrong: finished.filter((pid) => verdicts[pid] === "confirmed_wrong").length,
@@ -243,18 +264,33 @@ export default function PracticeRound() {
           <LearningBadge l={round.learning} />
           <div className="flex-1" />
           {round.paused ? (
-            <Button variant="outline" size="sm" disabled={!!busy} onClick={() => call("round", `/api/practice/rounds/${id}/resume`, "POST", "Round resumed")}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!busy}
+              onClick={() => call("round", `/api/practice/rounds/${id}/resume`, "POST", "Round resumed")}
+            >
               <Play className="mr-1.5 h-3.5 w-3.5" />
               Resume
             </Button>
           ) : isBusy(round) ? (
-            <Button variant="outline" size="sm" disabled={!!busy} onClick={() => call("round", `/api/practice/rounds/${id}/pause`, "POST", "Round paused")}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!busy}
+              onClick={() => call("round", `/api/practice/rounds/${id}/pause`, "POST", "Round paused")}
+            >
               <Pause className="mr-1.5 h-3.5 w-3.5" />
               Pause
             </Button>
           ) : null}
           {!round.trialOf && round.finishedAt && ["off", "done", "failed"].includes(round.learning?.state ?? "") && (
-            <Button variant="outline" size="sm" disabled={!!busy} onClick={() => call("round", `/api/practice/rounds/${id}/learn`, "POST", "Looking for lessons")}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!busy}
+              onClick={() => call("round", `/api/practice/rounds/${id}/learn`, "POST", "Looking for lessons")}
+            >
               <Lightbulb className="mr-1.5 h-3.5 w-3.5" />
               Find lessons
             </Button>
@@ -286,13 +322,22 @@ export default function PracticeRound() {
             hint={`${listings.found} of ${listings.total} found`}
             tone={!listings.finished ? undefined : listings.confirmedWrong ? "bad" : "good"}
           />
-          <Kpi label="Confirmed wrong" value={String(listings.confirmedWrong)} hint="two searches named the same wrong house" tone={listings.confirmedWrong ? "bad" : undefined} />
+          <Kpi
+            label="Confirmed wrong"
+            value={String(listings.confirmedWrong)}
+            hint="two searches named the same wrong house"
+            tone={listings.confirmedWrong ? "bad" : undefined}
+          />
           <Kpi
             label="Avg time per listing"
             value={listings.finished ? `${Math.round((listings.minutes / listings.finished) * 10) / 10} min` : "—"}
             hint="every search of the listing together"
           />
-          <Kpi label="Cost per listing" value={listings.finished ? usd(listings.cost / listings.finished) : "—"} hint="every search of the listing together" />
+          <Kpi
+            label="Cost per listing"
+            value={listings.finished ? usd(listings.cost / listings.finished) : "—"}
+            hint="every search of the listing together"
+          />
           <Kpi
             label="Total costs"
             value={usd(round.totalCostUsd)}
@@ -330,8 +375,8 @@ export default function PracticeRound() {
           <DialogHeader>
             <DialogTitle>Delete this practice round?</DialogTitle>
             <DialogDescription>
-              Its {round.total} runs stop and are removed with their scores, and so are its lessons that were not kept and
-              their tests. Kept lessons stay in use. This cannot be undone.
+              Its {round.total} runs stop and are removed with their scores, and so are its lessons that were not kept
+              and their tests. Kept lessons stay in use. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

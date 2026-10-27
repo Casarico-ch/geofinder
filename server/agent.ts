@@ -101,10 +101,14 @@ function convergeReminder(step: number, max: number, search?: SearchState, nearT
     const open = search ? mustCheck(search).length : 0;
     const todo = search ? pendingCommunes(search, 3) : [];
     if (search && (open > 0 || todo.length > 0)) {
-      return `[system-reminder] ${step} steps in. Coverage: ${coverageText(search)}.` +
-        (open > 0 ? ` ${open} of ${topCheckText(search)} still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.` : "") +
+      return (
+        `[system-reminder] ${step} steps in. Coverage: ${coverageText(search)}.` +
+        (open > 0
+          ? ` ${open} of ${topCheckText(search)} still have no verdict — view them (view_candidates) and mark them (mark_candidates) before anything else.`
+          : "") +
         (todo.length > 0 ? ` Not yet shortlisted, in plan order: ${todo.join(", ")}.` : "") +
-        ` If a candidate already matches EVERY hard signal, confirm it and submit_answer.`;
+        ` If a candidate already matches EVERY hard signal, confirm it and submit_answer.`
+      );
     }
     return `[system-reminder] ${step} steps in. Stop and assess your strongest candidate: does it match EVERY hard signal in the listing (area/footprint, era, floors, orientation, background landmarks, amenity distances)? If the signals CONVERGE, that is confirmation — submit_answer now and do not reopen the search (re-searching after convergence is how the right property gets discarded). If they do NOT converge, name the single check that would resolve it and do only that — or conclude honestly (found=false + candidates). Do not keep scanning the same way, and do not commit just because a candidate is the "best" of a weak field.`;
   }
@@ -127,16 +131,16 @@ function coerceSignature(input: Record<string, unknown>): Signature {
     .map((c) => (typeof c === "string" ? c.trim() : String(c ?? "").trim()))
     .filter(Boolean)
     .slice(0, 30);
-  const svg = typeof input.schematic_svg === "string" && input.schematic_svg.trim()
-    ? clip(input.schematic_svg, 20_000)
-    : undefined;
+  const svg =
+    typeof input.schematic_svg === "string" && input.schematic_svg.trim()
+      ? clip(input.schematic_svg, 20_000)
+      : undefined;
   return { clues, schematicSvg: svg, location: coerceLocation(input.location) };
 }
 
 function coerceAnswer(input: Record<string, unknown>): Answer {
   const conf = asText(input.confidence, "unknown") as Confidence;
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
   const candsRaw = Array.isArray(input.candidates) ? input.candidates : [];
   return {
@@ -210,7 +214,6 @@ async function stampPrompt(job: Job): Promise<void> {
   await setPromptVersion(job, PROMPT_VERSION);
 }
 
-
 // Why a found=false is premature, or null when the plan's work is done.
 function prematureGiveUp(search: SearchState | undefined): string | null {
   if (!search || search.submitGated) return null;
@@ -219,7 +222,9 @@ function prematureGiveUp(search: SearchState | undefined): string | null {
   if (open === 0 && todo.length === 0) return null;
   return (
     `Not recorded — the search plan is not finished. Coverage: ${coverageText(search)}.` +
-    (open > 0 ? ` ${open} of ${topCheckText(search)} have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).` : "") +
+    (open > 0
+      ? ` ${open} of ${topCheckText(search)} have never been given a verdict: view them (view_candidates) and mark them (mark_candidates).`
+      : "") +
     (todo.length > 0 ? ` Planned communes not yet shortlisted: ${todo.join(", ")}.` : "") +
     ` Continue the plan; submit found=false only once it is done (or if you can name a concrete reason the rest cannot hold the property).`
   );
@@ -262,11 +267,7 @@ export async function resumeInvestigation(job: Job): Promise<void> {
 // The investigation loop, shared by fresh and resumed runs. `startTurn` is the
 // number of model turns already completed, so the step budget and the
 // convergence nudges stay consistent across a restart.
-async function runLoop(
-  job: Job,
-  messages: Anthropic.Messages.MessageParam[],
-  startTurn: number,
-): Promise<void> {
+async function runLoop(job: Job, messages: Anthropic.Messages.MessageParam[], startTurn: number): Promise<void> {
   // Which Claude login the run is on (claude-pool.ts; null = the API key) and
   // the picture uploads made through each one — pictures belong to an account.
   let login: string | null = job.account ?? null;
@@ -307,7 +308,8 @@ async function runLoop(
           answer: coerceAnswer({
             found: false,
             confidence: "unknown",
-            reasoning: `Did not converge within the ${maxMinutes}-minute limit.` +
+            reasoning:
+              `Did not converge within the ${maxMinutes}-minute limit.` +
               (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
           }),
         });
@@ -323,7 +325,8 @@ async function runLoop(
           answer: coerceAnswer({
             found: false,
             confidence: "unknown",
-            reasoning: `Stopped at its $${budget.toFixed(2)} budget after ${i} steps.` +
+            reasoning:
+              `Stopped at its $${budget.toFixed(2)} budget after ${i} steps.` +
               (job.search ? ` Coverage: ${coverageText(job.search)}.` : ""),
           }),
         });
@@ -333,7 +336,11 @@ async function runLoop(
         await addStep(job, { kind: "note", title: "Stopped by the user" });
         await finishJob(job, {
           status: "cancelled",
-          answer: coerceAnswer({ found: false, confidence: "unknown", reasoning: `Stopped by the user after ${i} steps.` }),
+          answer: coerceAnswer({
+            found: false,
+            confidence: "unknown",
+            reasoning: `Stopped by the user after ${i} steps.`,
+          }),
         });
         return;
       }
@@ -371,34 +378,42 @@ async function runLoop(
       });
       // Fast mode is an API-key feature; subscription logins run at standard speed.
       let fast = FAST_MODE && FAST_MODELS.has(model) && !fastUnavailable && !poolOn();
-      const turn = await onLogin(login ?? undefined, async (client, label) => {
-        const files = await filesFor(client, label);
-        await files.upload(messages);
-        if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
-        const params = request(files);
-        try {
-          return fast
-            ? ((await client.beta.messages.create({
-                ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
-                speed: "fast",
-                betas: ["fast-mode-2026-02-01", BINDING_BETA], // betas replace the client's own beta header
-              })) as unknown as Anthropic.Messages.Message)
-            : await client.messages.create(params);
-        } catch (err) {
-          // Fast mode has its own rate limit: when it is exhausted (or refused),
-          // finish the run at standard speed instead of failing it.
-          if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError)) throw err;
-          fastUnavailable = true;
-          fast = false;
-          await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
-          return await client.messages.create(params);
-        }
-      }, model);
+      const turn = await onLogin(
+        login ?? undefined,
+        async (client, label) => {
+          const files = await filesFor(client, label);
+          await files.upload(messages);
+          if (pruneOldImages(messages, files.isInline)) await saveState(job, i, messages);
+          const params = request(files);
+          try {
+            return fast
+              ? ((await client.beta.messages.create({
+                  ...(params as unknown as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming),
+                  speed: "fast",
+                  betas: ["fast-mode-2026-02-01", BINDING_BETA], // betas replace the client's own beta header
+                })) as unknown as Anthropic.Messages.Message)
+              : await client.messages.create(params);
+          } catch (err) {
+            // Fast mode has its own rate limit: when it is exhausted (or refused),
+            // finish the run at standard speed instead of failing it.
+            if (!fast || !(err instanceof Anthropic.RateLimitError || err instanceof Anthropic.BadRequestError))
+              throw err;
+            fastUnavailable = true;
+            fast = false;
+            await addStep(job, { kind: "note", title: "Fast mode unavailable — continuing at standard speed" });
+            return await client.messages.create(params);
+          }
+        },
+        model,
+      );
       const resp = turn.value;
       waitedMs += turn.waitedMs;
       if (turn.label !== login) {
         if (login && turn.label && turn.label !== GEMINI_LABEL)
-          await addStep(job, { kind: "note", title: `Claude login ${login} is unavailable (limit reached or refused) — continuing on ${turn.label}` });
+          await addStep(job, {
+            kind: "note",
+            title: `Claude login ${login} is unavailable (limit reached or refused) — continuing on ${turn.label}`,
+          });
         login = turn.label;
         await setAccount(job, login);
       }
@@ -423,9 +438,7 @@ async function runLoop(
 
       messages.push({ role: "assistant", content: resp.content });
 
-      const toolUses = resp.content.filter(
-        (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
-      );
+      const toolUses = resp.content.filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
       if (toolUses.length === 0 && stalls < MAX_STALLS) {
         // A turn with no tool call is not an answer: Gemini 3.1 Pro sometimes
         // ends a turn by echoing a tool's output, or by looping on one token
@@ -480,7 +493,10 @@ async function runLoop(
           // with the answer still unviewed is how run c5bc3cfd was lost. Near
           // the step/time limit it always goes through.
           // A tie-breaker compares two houses; its "neither" is an answer, not giving up.
-          const gate = !answer.found && !nearLimit(i + 1) && !isPlain(job) && !job.input.tieBreak ? prematureGiveUp(job.search) : null;
+          const gate =
+            !answer.found && !nearLimit(i + 1) && !isPlain(job) && !job.input.tieBreak
+              ? prematureGiveUp(job.search)
+              : null;
           if (gate && job.search) {
             job.search.submitGated = true;
             await saveSearch(job, job.search);
@@ -491,15 +507,25 @@ async function runLoop(
           // The tie-breaker may name another house only once it rejected every named one (tiebreak.ts).
           if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence) && !nearLimit(i + 1)) {
             const search = searchOf(job);
-            const picked = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
-            const named = (job.input.tieBreakEgids ?? []).map((e) => search.candidates[e]).filter((c): c is LedgerEntry => !!c);
+            const picked = claimedEntry(search, {
+              lat: answer.latitude,
+              lon: answer.longitude,
+              address: answer.address,
+            });
+            const named = (job.input.tieBreakEgids ?? [])
+              .map((e) => search.candidates[e])
+              .filter((c): c is LedgerEntry => !!c);
             const other = !picked || !named.some((c) => c.egid === picked.egid);
             const open = named.filter((c) => c.verdict !== "rejected");
             if (other && open.length && (search.thirdGates ?? 0) < 2) {
               search.thirdGates = (search.thirdGates ?? 0) + 1;
               await saveSearch(job, search);
               const msg = `Not recorded — you named another house while ${open.map((c) => c.address ?? `EGID ${c.egid}`).join(" and ")} ${open.length > 1 ? "are" : "is"} not rejected. Inspect ${open.length > 1 ? "them" : "it"} and mark each match or rejected with the visible difference; another house counts only once every named one is rejected.`;
-              await addStep(job, { kind: "note", title: "Answer sent back — named houses not all rejected", detail: msg });
+              await addStep(job, {
+                kind: "note",
+                title: "Answer sent back — named houses not all rejected",
+                detail: msg,
+              });
               results.push({ type: "tool_result", tool_use_id: tu.id, content: msg, is_error: true });
               continue;
             }
@@ -508,11 +534,23 @@ async function runLoop(
           // the listing (Daniel, 09.10): it is recorded as a candidate, not found.
           if (job.input.tieBreak && answer.found && EXACT.has(answer.confidence)) {
             const search = searchOf(job);
-            const picked = claimedEntry(search, { lat: answer.latitude, lon: answer.longitude, address: answer.address });
+            const picked = claimedEntry(search, {
+              lat: answer.latitude,
+              lon: answer.longitude,
+              address: answer.address,
+            });
             const why = picked ? await registerContradiction(job, picked).catch(() => null) : null;
             if (why) {
-              Object.assign(answer, { found: false, confidence: "block", reasoning: `${answer.reasoning}\n\nNot confirmed: the register contradicts the listing — ${why}.` });
-              await addStep(job, { kind: "note", title: "Pick not confirmed — the register contradicts it", detail: why });
+              Object.assign(answer, {
+                found: false,
+                confidence: "block",
+                reasoning: `${answer.reasoning}\n\nNot confirmed: the register contradicts the listing — ${why}.`,
+              });
+              await addStep(job, {
+                kind: "note",
+                title: "Pick not confirmed — the register contradicts it",
+                detail: why,
+              });
             }
           }
           // An exact address is recorded only once it is proven (proveAnswer).
@@ -521,11 +559,20 @@ async function runLoop(
           let final = answer;
           // Practice: an answer short of an exact house is first tried as a
           // twin pick, then sent back while the top of the ranked list is unseen.
-          if (job.input.noProof && !(answer.found && EXACT.has(answer.confidence)) && !isPlain(job) && !job.input.tieBreak) {
+          if (
+            job.input.noProof &&
+            !(answer.found && EXACT.has(answer.confidence)) &&
+            !isPlain(job) &&
+            !job.input.tieBreak
+          ) {
             const pick = await twinPick(job, answer).catch(() => null);
             if (pick) {
               final = pick;
-              await addStep(job, { kind: "note", title: "Twin pick", detail: `${pick.address} and ${pick.twinPick!.other} are attached twins at one street number; the plot closest to the listing was named.` });
+              await addStep(job, {
+                kind: "note",
+                title: "Twin pick",
+                detail: `${pick.address} and ${pick.twinPick!.other} are attached twins at one street number; the plot closest to the listing was named.`,
+              });
             } else {
               const search = searchOf(job);
               const gap = unseenTop(search);
@@ -653,7 +700,8 @@ const EXACT: ReadonlySet<Confidence> = new Set<Confidence>(["street", "building"
 // not stop short of an exact answer before it has viewed or judged them.
 const TOP_LOOK = 150;
 // Big communes (Daniel, 09.10): past 2000 homes the top 300 must be seen.
-const TOP_LOOK_BIG = 300, BIG_LIST = 2000;
+const TOP_LOOK_BIG = 300,
+  BIG_LIST = 2000;
 function unseenTop(search: SearchState): string | null {
   const calls = (search.calls ?? []).filter((c) => c.order?.length);
   if (!calls.length) return null;
@@ -683,10 +731,12 @@ async function registerContradiction(job: Job, e: LedgerEntry): Promise<string |
   const l = listingFacts(job.input.listingText);
   const b = await buildingByEgid(e.egid).catch(() => null);
   const out: string[] = [];
-  if (l.kind === "house" && b?.dwellings != null && b.dwellings > 3) out.push(`${b.dwellings} homes in the building for a single house`);
+  if (l.kind === "house" && b?.dwellings != null && b.dwellings > 3)
+    out.push(`${b.dwellings} homes in the building for a single house`);
   if (l.kind === "house" && l.livingM2 && b?.livingM2 && Math.abs(b.livingM2 - l.livingM2) / l.livingM2 > 0.35)
     out.push(`a living area of ${b.livingM2} m² for ${l.livingM2} m² listed`);
-  if (l.kind === "house" && l.rooms && b?.rooms && Math.abs(l.rooms - b.rooms) > 2.5) out.push(`${b.rooms} rooms for ${l.rooms} listed`);
+  if (l.kind === "house" && l.rooms && b?.rooms && Math.abs(l.rooms - b.rooms) > 2.5)
+    out.push(`${b.rooms} rooms for ${l.rooms} listed`);
   const plot = e.plotGroup?.length ? e.plotGroup.reduce((t, p) => t + p.areaM2, 0) : e.plot?.areaM2;
   if (l.kind === "house" && l.landM2 && !l.sharedLand && plot && Math.abs(plot - l.landM2) / l.landM2 > 0.15)
     out.push(`a plot of ${Math.round(plot)} m² for ${l.landM2} m² listed`);
@@ -705,8 +755,11 @@ async function twinPick(job: Job, a: Answer): Promise<Answer | null> {
   if (!land || !search) return null;
   const named = [a.address, ...a.candidates.map((c) => c.address)].filter((x): x is string => !!x);
   const byAddress = (addr: string) => {
-    const st = streetOf(addr), no = houseNumberOf(addr);
-    return Object.values(search.candidates).find((c) => c.address && streetOf(c.address) === st && houseNumberOf(c.address) === no);
+    const st = streetOf(addr),
+      no = houseNumberOf(addr);
+    return Object.values(search.candidates).find(
+      (c) => c.address && streetOf(c.address) === st && houseNumberOf(c.address) === no,
+    );
   };
   const entries = Array.from(new Set(named.map(byAddress).filter((c): c is NonNullable<typeof c> => !!c && !!c.plot)));
   if (entries.length !== 2) return null;
@@ -732,7 +785,7 @@ async function twinPick(job: Job, a: Answer): Promise<Answer | null> {
 function sanityProblem(job: Job, a: Answer, egid: string | number | undefined): string | null {
   const first = (a.address ?? "").split(",")[0];
   if (!/[A-Za-zÀ-ÿ]{3}/.test(first) || !/\d/.test(first))
-    return "Not recorded — an answer must be a street address with a house number (\"Steinweg 21, Aesch\"). Give the building's address, or submit found=false with your ranked candidates.";
+    return 'Not recorded — an answer must be a street address with a house number ("Steinweg 21, Aesch"). Give the building\'s address, or submit found=false with your ranked candidates.';
   const facts = listingFacts(job.input.listingText);
   // A flat's "land" is its garden share of a co-owned plot, never the plot
   // (Saladin 9a, Chêne-Bougeries, 16.10: 308 m² of private garden on a 1,489 m²

@@ -7,7 +7,14 @@ import { LEARNING_HELP, LearningBadge, isBusy, when, type Lesson, type Round } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -96,13 +103,16 @@ export default function Practice() {
           <div className="space-y-1">
             <h2 className="text-base font-semibold">Start a practice round</h2>
             <p className="text-sm text-muted-foreground">
-              Every search model looks for houses (never flats; with a land area, or only houses without one) picked at random across Switzerland whose building Radar already knows,
-              with the address hidden. Each model gets CHF 2 and 15 minutes per listing; a run that reaches either without an
-              answer counts as a failure. The goal: 100% accuracy, then faster and cheaper.
+              Every search model looks for houses (never flats; with a land area, or only houses without one) picked at
+              random across Switzerland whose building Radar already knows, with the address hidden. Each model gets CHF
+              2 and 15 minutes per listing; a run that reaches either without an answer counts as a failure. The goal:
+              100% accuracy, then faster and cheaper.
             </p>
             <p className="text-sm text-muted-foreground">{LEARNING_HELP}</p>
             <p className="text-sm">
-              {inUse ? `${inUse} kept lesson${inUse === 1 ? "" : "s"} in use by every search.` : "No kept lesson in use yet."}
+              {inUse
+                ? `${inUse} kept lesson${inUse === 1 ? "" : "s"} in use by every search.`
+                : "No kept lesson in use yet."}
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -171,55 +181,57 @@ export default function Practice() {
                 </TableRow>
               )}
               {shown?.map((r) => (
-                  <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`/practice/${r.id}`)}>
-                    <TableCell className="whitespace-nowrap">
-                      <ChevronRight className="inline h-4 w-4 mr-1 text-muted-foreground" />
-                      {when(r.createdAt)}{" "}
-                      {r.noLand && <Badge variant="outline">No land area</Badge>}{" "}
-                      {r.paused ? (
-                        <Badge variant="outline">Paused</Badge>
-                      ) : r.running > 0 ? (
-                        <Badge variant="secondary">{r.running} running</Badge>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-right">{r.listings}</TableCell>
-                    <TableCell className="text-right">{r.found}</TableCell>
-                    <TableCell className="text-right">{r.successRate != null ? `${r.successRate}%` : "—"}</TableCell>
-                    <TableCell className={`text-right ${r.foundWrong ? "text-destructive font-medium" : ""}`}>{r.foundWrong}</TableCell>
-                    <TableCell className="text-right">{r.avgMinutes ?? "—"}</TableCell>
-                    <TableCell className="text-right">{r.avgCostUsd != null ? `$${r.avgCostUsd.toFixed(2)}` : "—"}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span>${r.totalCostUsd.toFixed(2)}</span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Searches ${r.costUsd.toFixed(2)} · lesson tests ${r.testsCostUsd.toFixed(2)}
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <LearningBadge l={r.learning} />
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                      {r.paused ? (
-                        <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "resume")}>
-                          <Play className="mr-1.5 h-3.5 w-3.5" />
-                          Resume
-                        </Button>
-                      ) : isBusy(r) ? (
-                        <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "pause")}>
-                          <Pause className="mr-1.5 h-3.5 w-3.5" />
-                          Pause
-                        </Button>
-                      ) : null}
-                      <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => setToDelete(r)}>
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                        Delete
+                <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`/practice/${r.id}`)}>
+                  <TableCell className="whitespace-nowrap">
+                    <ChevronRight className="inline h-4 w-4 mr-1 text-muted-foreground" />
+                    {when(r.createdAt)} {r.noLand && <Badge variant="outline">No land area</Badge>}{" "}
+                    {r.paused ? (
+                      <Badge variant="outline">Paused</Badge>
+                    ) : r.running > 0 ? (
+                      <Badge variant="secondary">{r.running} running</Badge>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="text-right">{r.listings}</TableCell>
+                  <TableCell className="text-right">{r.found}</TableCell>
+                  <TableCell className="text-right">{r.successRate != null ? `${r.successRate}%` : "—"}</TableCell>
+                  <TableCell className={`text-right ${r.foundWrong ? "text-destructive font-medium" : ""}`}>
+                    {r.foundWrong}
+                  </TableCell>
+                  <TableCell className="text-right">{r.avgMinutes ?? "—"}</TableCell>
+                  <TableCell className="text-right">
+                    {r.avgCostUsd != null ? `$${r.avgCostUsd.toFixed(2)}` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>${r.totalCostUsd.toFixed(2)}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Searches ${r.costUsd.toFixed(2)} · lesson tests ${r.testsCostUsd.toFixed(2)}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <LearningBadge l={r.learning} />
+                  </TableCell>
+                  <TableCell className="text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    {r.paused ? (
+                      <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "resume")}>
+                        <Play className="mr-1.5 h-3.5 w-3.5" />
+                        Resume
                       </Button>
-                    </TableCell>
-                  </TableRow>
-
+                    ) : isBusy(r) ? (
+                      <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => roundAct(r, "pause")}>
+                        <Pause className="mr-1.5 h-3.5 w-3.5" />
+                        Pause
+                      </Button>
+                    ) : null}
+                    <Button variant="ghost" size="sm" disabled={busy === r.id} onClick={() => setToDelete(r)}>
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
             </TableBody>
           </Table>
@@ -231,8 +243,8 @@ export default function Practice() {
           <DialogHeader>
             <DialogTitle>Delete this practice round?</DialogTitle>
             <DialogDescription>
-              Its {toDelete?.total} runs stop and are removed with their scores, and so are its lessons that were not kept
-              and their tests. Kept lessons stay in use. This cannot be undone.
+              Its {toDelete?.total} runs stop and are removed with their scores, and so are its lessons that were not
+              kept and their tests. Kept lessons stay in use. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

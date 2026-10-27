@@ -263,9 +263,7 @@ export interface Job {
 function withParcels(answer: Answer | null): Answer | null {
   if (!answer || (Array.isArray(answer.parcels) && answer.parcels.length)) return answer;
   const m = answer.parcel?.trim().match(/^(.+?)\s+([A-Z]{0,4}\d[\w./-]*(?:\s*[+,&]\s*[A-Z]{0,4}\d[\w./-]*)*)$/);
-  const parcels = m
-    ? m[2].split(/\s*[+,&]\s*/).map((plot) => ({ commune: answer.commune ?? m[1], plot }))
-    : [];
+  const parcels = m ? m[2].split(/\s*[+,&]\s*/).map((plot) => ({ commune: answer.commune ?? m[1], plot })) : [];
   // A found answer that named exact plots but no address pinned the plots
   // themselves, which is what "parcel" confidence now records.
   const confidence =

@@ -21,7 +21,10 @@ import { claimedEntry, coverageText, type LedgerEntry, type SearchState } from "
 const REOPEN = 8;
 
 const modelLabel = (m: KnownModel) =>
-  m.replace(/^claude-/, "").replace(/-(\d)-(\d)$/, " $1.$2").replace(/^./, (c) => c.toUpperCase());
+  m
+    .replace(/^claude-/, "")
+    .replace(/-(\d)-(\d)$/, " $1.$2")
+    .replace(/^./, (c) => c.toUpperCase());
 
 /**
  * The checklist a cross-check starts from: the search's own, with its verdicts
@@ -36,7 +39,11 @@ export function seedForCheck(
   candidate: Candidate,
 ): { seed: Pick<SearchState, "shortlisted" | "candidates">; claim: LedgerEntry | null; reopened: LedgerEntry[] } {
   const seed = { shortlisted: [...(search?.shortlisted ?? [])], candidates: structuredClone(search?.candidates ?? {}) };
-  const claim = claimedEntry(seed as SearchState, { lat: candidate.latitude, lon: candidate.longitude, address: candidate.address });
+  const claim = claimedEntry(seed as SearchState, {
+    lat: candidate.latitude,
+    lon: candidate.longitude,
+    address: candidate.address,
+  });
   const near = (c: LedgerEntry) =>
     claim ? Math.hypot((c.lon - claim.lon) * 78_000, (c.lat - claim.lat) * 111_320) : c.order;
   const reopened = Object.values(seed.candidates)
@@ -72,9 +79,12 @@ export function verifySetup(
   if (!candidate) return null;
   const { seed, claim, reopened } = seedForCheck(named.search, candidate);
   const pin =
-    candidate.latitude != null && candidate.longitude != null ? ` (around ${candidate.latitude}, ${candidate.longitude})` : "";
+    candidate.latitude != null && candidate.longitude != null
+      ? ` (around ${candidate.latitude}, ${candidate.longitude})`
+      : "";
   const alt = reopened.map(
-    (c) => `- ${c.egid} | ${c.address ?? "?"}${c.strongFit ? " | STRONG FIT" : ""} | earlier: ${c.verdict}${c.reason ? ` — "${c.reason}"` : ""}`,
+    (c) =>
+      `- ${c.egid} | ${c.address ?? "?"}${c.strongFit ? " | STRONG FIT" : ""} | earlier: ${c.verdict}${c.reason ? ` — "${c.reason}"` : ""}`,
   );
   const text = [
     listingText ?? "",
@@ -85,7 +95,7 @@ export function verifySetup(
     "You are the third judge. Decide whether the named house is the one — not by searching the commune again: you start from the finder's checklist. Its verdicts are kept, except the named house" +
       (alt.length ? " and these alternatives it set aside, which are open again:" : ", which is open again."),
     ...alt,
-    "1. inspect_candidate the named house. Every ✗ in its fact sheet (homes, living area, plot area) counts against it; then compare its roof, its aerial and its neighbours with the photos. One clear mismatch rejects it — never explain one away (\"the register may be wrong\").",
+    '1. inspect_candidate the named house. Every ✗ in its fact sheet (homes, living area, plot area) counts against it; then compare its roof, its aerial and its neighbours with the photos. One clear mismatch rejects it — never explain one away ("the register may be wrong").',
     "2. inspect_candidate every re-opened alternative and settle it: rejected with the difference you see, or match. If one fits better than the named house, that one is the answer.",
     "3. Weigh what the second search says: where it looked and why it rejected what it saw. A house it never viewed is not weakened by its miss; a house it rejected for a visible reason is.",
     "4. The named house is confirmed only if it survives step 1 and every alternative is rejected with a visible difference — the code checks this before it records a street/building answer. Then submit it as the answer. Otherwise report found=false at block confidence with your ranked candidates and the mismatch you found.",

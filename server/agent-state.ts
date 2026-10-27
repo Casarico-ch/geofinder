@@ -18,11 +18,7 @@ interface ResumeState {
   messages: Anthropic.Messages.MessageParam[];
 }
 
-export async function saveState(
-  job: Job,
-  turn: number,
-  messages: Anthropic.Messages.MessageParam[],
-): Promise<void> {
+export async function saveState(job: Job, turn: number, messages: Anthropic.Messages.MessageParam[]): Promise<void> {
   try {
     const abs = path.join(job.runDir, STATE_FILE);
     const tmp = `${abs}.tmp`;

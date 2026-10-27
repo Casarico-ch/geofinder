@@ -17,14 +17,11 @@ export default function MagicFeedback() {
       new MagicFeedbackWidget((kind, message) => {
         if (kind === "success") toast.success(message);
         else toast.error(message);
-      })
+      }),
   );
   useEffect(() => widget.attach(), [widget]);
   const state = useSyncExternalStore(widget.subscribe, widget.getState);
-  const keepNotes = useCallback(
-    (notes: Parameters<typeof widget.setNotes>[0]) => widget.setNotes(notes),
-    [widget]
-  );
+  const keepNotes = useCallback((notes: Parameters<typeof widget.setNotes>[0]) => widget.setNotes(notes), [widget]);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -42,28 +39,17 @@ export default function MagicFeedback() {
         role="status"
         className={cn(
           "fixed bottom-5 right-5 z-[2147483000] gap-1 px-4 py-2.5 text-sm font-medium shadow-lg",
-          resumedLine ? "max-w-80 rounded-2xl" : "rounded-full"
+          resumedLine ? "max-w-80 rounded-2xl" : "rounded-full",
         )}
       >
         <div className="flex items-center gap-2.5">
           <span
-            className={cn(
-              "size-2 rounded-full",
-              reading ? "bg-muted-foreground" : "animate-pulse bg-destructive"
-            )}
+            className={cn("size-2 rounded-full", reading ? "bg-muted-foreground" : "animate-pulse bg-destructive")}
           />
           <span>{reading ? "Reading that back…" : "Listening…"}</span>
-          {!reading && (
-            <span className="tabular-nums text-muted-foreground">
-              {formatClock(now - state.startedAt)}
-            </span>
-          )}
+          {!reading && <span className="tabular-nums text-muted-foreground">{formatClock(now - state.startedAt)}</span>}
         </div>
-        {resumedLine && (
-          <p className="m-0 text-xs font-normal text-muted-foreground">
-            {RESUMED_LINE}
-          </p>
-        )}
+        {resumedLine && <p className="m-0 text-xs font-normal text-muted-foreground">{RESUMED_LINE}</p>}
       </Card>
     );
   }
@@ -76,7 +62,7 @@ export default function MagicFeedback() {
         onChange={keepNotes}
         questions={state.reply.questions}
         onDiscard={() => widget.discard()}
-        onSend={notes => void widget.send(notes)}
+        onSend={(notes) => void widget.send(notes)}
       />
     );
   }

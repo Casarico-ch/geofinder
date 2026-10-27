@@ -19,17 +19,38 @@ async function check(name: string, fn: () => void | Promise<void>) {
 }
 
 const answer = (a: Partial<Answer>): Answer =>
-  ({ found: true, confidence: "street", address: "Seestrasse 12, 8810 Horgen", parcel: null, latitude: 47.26, longitude: 8.6, reasoning: "Roof and plot match.", ...a }) as Answer;
-const run = (role: ListingRun["role"], a: Answer | null, settled = true): ListingRun => ({ role, jobId: `j${Math.random()}`, settled, done: settled && !!a, answer: a });
+  ({
+    found: true,
+    confidence: "street",
+    address: "Seestrasse 12, 8810 Horgen",
+    parcel: null,
+    latitude: 47.26,
+    longitude: 8.6,
+    reasoning: "Roof and plot match.",
+    ...a,
+  }) as Answer;
+const run = (role: ListingRun["role"], a: Answer | null, settled = true): ListingRun => ({
+  role,
+  jobId: `j${Math.random()}`,
+  settled,
+  done: settled && !!a,
+  answer: a,
+});
 
 await check("a sure first answer needs a confirming search", () => {
   const steps = nextSteps([run("search", answer({}))]);
-  assert.deepEqual(steps.map((s) => s.role), ["confirm"]);
+  assert.deepEqual(
+    steps.map((s) => s.role),
+    ["confirm"],
+  );
 });
 
 await check("a doubtful first answer is searched again before anything else", () => {
   const steps = nextSteps([run("search", answer({ reasoning: "Probably this one." }))]);
-  assert.deepEqual(steps.map((s) => s.role), ["recheck"]);
+  assert.deepEqual(
+    steps.map((s) => s.role),
+    ["recheck"],
+  );
 });
 
 await check("a recheck happens once, and never after a confirm started", () => {
@@ -50,7 +71,10 @@ await check("a plot named twice at parcel confidence counts as found", () => {
 });
 
 await check("a confirm naming another house brings the tie-breaker", () => {
-  const steps = nextSteps([run("search", answer({})), run("confirm", answer({ address: "Bergweg 3, 8810 Horgen", latitude: 47.3, longitude: 8.7 }))]);
+  const steps = nextSteps([
+    run("search", answer({})),
+    run("confirm", answer({ address: "Bergweg 3, 8810 Horgen", latitude: 47.3, longitude: 8.7 })),
+  ]);
   assert.equal(steps[0]?.role, "confirm");
   assert.equal(steps[0]?.tieBreakOf?.length, 2);
 });
@@ -62,7 +86,10 @@ await check("a lesson test runs no confirm", () => {
 await check("a confirm that crashed runs again, once", () => {
   const crashed = { ...run("confirm", null), settled: true, done: false };
   const again = nextSteps([run("search", answer({})), crashed]);
-  assert.deepEqual(again.map((s) => s.role), ["confirm"]);
+  assert.deepEqual(
+    again.map((s) => s.role),
+    ["confirm"],
+  );
   assert.equal(again[0].verifyOf, undefined);
   assert.equal(nextSteps([run("search", answer({})), crashed, { ...crashed, jobId: "j-crash-2" }]).length, 0);
 });
@@ -80,7 +107,10 @@ await check("a confirm that found nothing brings the third judge, handed the hou
 await check("the third judge is the last word", () => {
   const first = run("search", answer({}));
   const missed = run("confirm", answer({ found: false, confidence: "block", address: null }));
-  assert.equal(nextSteps([first, missed, run("confirm", answer({ found: false, confidence: "block", address: null }))]).length, 0);
+  assert.equal(
+    nextSteps([first, missed, run("confirm", answer({ found: false, confidence: "block", address: null }))]).length,
+    0,
+  );
   const judged = [first, missed, run("confirm", answer({ address: "Seestr. 12, Horgen" }))];
   assert.ok(foundPair(judged));
   assert.equal(nextSteps(judged).length, 0);
@@ -88,10 +118,34 @@ await check("the third judge is the last word", () => {
 
 await check("the ranked-list depth: 150 by default, the first N and every strong fit per run", () => {
   const entry = (egid: string, order: number, strongFit = false): LedgerEntry =>
-    ({ egid, order, commune: "Vernier", address: null, lat: 46.2, lon: 6.1, floors: null, dwellings: null, footprintM2: null, viewed: false, verdict: "unchecked", strongFit }) as LedgerEntry;
+    ({
+      egid,
+      order,
+      commune: "Vernier",
+      address: null,
+      lat: 46.2,
+      lon: 6.1,
+      floors: null,
+      dwellings: null,
+      footprintM2: null,
+      viewed: false,
+      verdict: "unchecked",
+      strongFit,
+    }) as LedgerEntry;
   const s = {
-    stated: "Vernier", primary: "Vernier", confidence: "high", evidence: [], ring: [], shortlisted: ["Vernier"],
-    candidates: { "1": entry("1", 0), "2": entry("2", 1), "3": entry("3", 2), "4": entry("4", 3, true), "5": entry("5", 4) },
+    stated: "Vernier",
+    primary: "Vernier",
+    confidence: "high",
+    evidence: [],
+    ring: [],
+    shortlisted: ["Vernier"],
+    candidates: {
+      "1": entry("1", 0),
+      "2": entry("2", 1),
+      "3": entry("3", 2),
+      "4": entry("4", 3, true),
+      "5": entry("5", 4),
+    },
   } as unknown as SearchState;
   assert.equal(mustCheck(s).length, 5); // the default 150 covers all five
   assert.match(topCheckText(s, "Vernier"), /first 150 of Vernier's ranked list and every STRONG FIT/);
@@ -99,7 +153,10 @@ await check("the ranked-list depth: 150 by default, the first N and every strong
   assert.equal(mustCheck(all).length, 5);
   assert.match(topCheckText(all, "Vernier"), /^every Vernier candidate$/);
   const locked = { ...s, topCheck: 2 } as SearchState;
-  assert.deepEqual(mustCheck(locked).map((c) => c.egid), ["1", "2", "4"]); // the first 2 and the strong fit
+  assert.deepEqual(
+    mustCheck(locked).map((c) => c.egid),
+    ["1", "2", "4"],
+  ); // the first 2 and the strong fit
   assert.match(topCheckText(locked), /first 2 of each commune's ranked list and every STRONG FIT/);
 });
 

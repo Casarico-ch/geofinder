@@ -44,7 +44,11 @@ async function startServer() {
     app.use((req, res, next) => {
       if (req.path.startsWith("/v1/")) return next();
       const [, encoded] = (req.header("authorization") ?? "").split(" ");
-      const password = Buffer.from(encoded ?? "", "base64").toString().split(":").slice(1).join(":");
+      const password = Buffer.from(encoded ?? "", "base64")
+        .toString()
+        .split(":")
+        .slice(1)
+        .join(":");
       if (password === adminPassword) return next();
       res.set("WWW-Authenticate", 'Basic realm="GeoFinder admin"').status(401).send("Password required");
     });

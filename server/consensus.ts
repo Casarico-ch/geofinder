@@ -59,10 +59,7 @@ function plotNumbersOf(parcel: string | null | undefined): string[] {
 }
 
 function fold(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 /** "Seestrasse 12a, 8002 Zürich" → "12a". Postcodes are not house numbers. */
@@ -92,7 +89,10 @@ export function streetOf(address: string): string {
   if (at > 0 && /[a-z]/.test(s.slice(0, at))) s = s.slice(0, at);
   s = s.replace(/\d{1,4}\s?[a-z]?(?=$|[\s\-/])/g, " ");
   for (const [re, to] of STREET_WORDS) s = s.replace(re, to);
-  return s.replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/[^a-z ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function metresBetween(a: Candidate, b: Candidate): number | null {
@@ -101,7 +101,8 @@ function metresBetween(a: Candidate, b: Candidate): number | null {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(b.latitude - a.latitude);
   const dLon = toRad(b.longitude - a.longitude);
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 

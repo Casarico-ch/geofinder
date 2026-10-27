@@ -1,11 +1,7 @@
 // The agent's tools: the schemas the model sees and the handler for each call
 // (bash, files, the candidate checklist, close looks, map views).
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  runBash,
-  writeSandboxFile,
-  readSandboxFile,
-} from "./sandbox";
+import { runBash, writeSandboxFile, readSandboxFile } from "./sandbox";
 import { renderCandidateRoofs, readRoofPng } from "./roofs";
 import { buildingByEgid, sameRegisterPlot } from "./gwr";
 import { annotateFit, factRows, fitText, listingFacts, plotAt, plotGroupFor, strongFit } from "./proof";
@@ -83,7 +79,8 @@ export const TOOLS = [
         },
         schematic_svg: {
           type: ["string", "null"],
-          description: "Optional: a small top-down SVG sketch of the target (house, row, garden outline, positions of tree/path/pool/dependency, which sides have roads).",
+          description:
+            "Optional: a small top-down SVG sketch of the target (house, row, garden outline, positions of tree/path/pool/dependency, which sides have roads).",
         },
         location: {
           type: "object",
@@ -92,7 +89,8 @@ export const TOOLS = [
           properties: {
             slope: {
               type: "object",
-              description: "The direction the ground falls away from the house (its view side), as on a map — read it from the photos (the view, shadows, the terrain). A listing's 'plein sud' / 'versant sud' / 'Südhang' usually means sunny, not where the slope falls (a chalet sold as 'versant sud' can stand on a slope that falls west), so text alone is a guess. Use 'flat' for level ground.",
+              description:
+                "The direction the ground falls away from the house (its view side), as on a map — read it from the photos (the view, shadows, the terrain). A listing's 'plein sud' / 'versant sud' / 'Südhang' usually means sunny, not where the slope falls (a chalet sold as 'versant sud' can stand on a slope that falls west), so text alone is a guess. Use 'flat' for level ground.",
               properties: {
                 faces: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "flat"] },
                 confidence: { type: "string", enum: ["sure", "likely", "guess"] },
@@ -101,12 +99,16 @@ export const TOOLS = [
             },
             landmarks: {
               type: "array",
-              description: "Distinctive things visible from the house: a church or chapel, a named peak, a lake, a village. Direction is where it lies SEEN FROM THE HOUSE (map compass: work it out from the sun, shadows, the slope or known geography). Omit name for an unnamed local church. ALSO every place the listing's DESCRIPTION names near the house — a sports centre, a school, the station, a shop, the lake shore ('à proximité du centre sportif du Grand-Donzel', '5 Gehminuten zum Bahnhof'): kind 'other' (or 'place' for a village or quarter), its proper name, distance_m from what the text says (a walking minute ≈ 80 m, 'proximité' ≈ 300 m) and no direction unless the text gives one.",
+              description:
+                "Distinctive things visible from the house: a church or chapel, a named peak, a lake, a village. Direction is where it lies SEEN FROM THE HOUSE (map compass: work it out from the sun, shadows, the slope or known geography). Omit name for an unnamed local church. ALSO every place the listing's DESCRIPTION names near the house — a sports centre, a school, the station, a shop, the lake shore ('à proximité du centre sportif du Grand-Donzel', '5 Gehminuten zum Bahnhof'): kind 'other' (or 'place' for a village or quarter), its proper name, distance_m from what the text says (a walking minute ≈ 80 m, 'proximité' ≈ 300 m) and no direction unless the text gives one.",
               items: {
                 type: "object",
                 properties: {
                   kind: { type: "string", enum: ["church", "peak", "lake", "place", "other"] },
-                  name: { type: "string", description: "its proper name if you know it, e.g. 'Matterhorn', 'Lac Léman'" },
+                  name: {
+                    type: "string",
+                    description: "its proper name if you know it, e.g. 'Matterhorn', 'Lac Léman'",
+                  },
                   direction: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] },
                   distance_m: { type: "number", description: "rough distance from the house, if the photos allow it" },
                   confidence: { type: "string", enum: ["sure", "likely", "guess"] },
@@ -121,13 +123,27 @@ export const TOOLS = [
               items: {
                 type: "object",
                 properties: {
-                  side: { type: "string", enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "left", "right", "behind", "front"] },
+                  side: {
+                    type: "string",
+                    enum: ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "left", "right", "behind", "front"],
+                  },
                   distance_m: { type: "number", description: "the gap between the two buildings, roughly" },
-                  size: { type: "string", enum: ["smaller", "similar", "bigger"], description: "its footprint against the house's" },
+                  size: {
+                    type: "string",
+                    enum: ["smaller", "similar", "bigger"],
+                    description: "its footprint against the house's",
+                  },
                   height: { type: "string", enum: ["lower", "similar", "taller"] },
                   roof: { type: "string", enum: ["flat", "pitched"] },
-                  ridge: { type: "string", enum: ["parallel", "perpendicular"], description: "its ridge against the house's ridge, both pitched" },
-                  none: { type: "boolean", description: "true: NO building on that side within ~40 m (field, road, lake, garden)" },
+                  ridge: {
+                    type: "string",
+                    enum: ["parallel", "perpendicular"],
+                    description: "its ridge against the house's ridge, both pitched",
+                  },
+                  none: {
+                    type: "boolean",
+                    description: "true: NO building on that side within ~40 m (field, road, lake, garden)",
+                  },
                   confidence: { type: "string", enum: ["sure", "likely", "guess"] },
                 },
                 required: ["confidence"],
@@ -147,10 +163,24 @@ export const TOOLS = [
       type: "object",
       properties: {
         commune: { type: "string", description: "the commune, e.g. 'Denges' or 'Saint-Sulpice (VD)'" },
-        floors: { type: "number", description: "your estimate of the levels the register counts: a semi-basement + 2 storeys + attic is 4. Orders only." },
-        footprintM2: { type: "number", description: "your estimate of THIS building's ground footprint in m² — for a flat, semi-detached or terraced house the register's entry is often just its own part of the block, not the whole block. NOT the listing's living area. Orders only." },
-        dwellings: { type: "number", description: "homes in the building if the listing says (\"PPE de deux logements\" = 2). Orders only." },
-        attached: { type: "boolean", description: "Geneva only: true for an attached/row house, false if free-standing; omit if unsure" },
+        floors: {
+          type: "number",
+          description:
+            "your estimate of the levels the register counts: a semi-basement + 2 storeys + attic is 4. Orders only.",
+        },
+        footprintM2: {
+          type: "number",
+          description:
+            "your estimate of THIS building's ground footprint in m² — for a flat, semi-detached or terraced house the register's entry is often just its own part of the block, not the whole block. NOT the listing's living area. Orders only.",
+        },
+        dwellings: {
+          type: "number",
+          description: 'homes in the building if the listing says ("PPE de deux logements" = 2). Orders only.',
+        },
+        attached: {
+          type: "boolean",
+          description: "Geneva only: true for an attached/row house, false if free-standing; omit if unsure",
+        },
         maxResults: { type: "number" },
       },
       required: ["commune"],
@@ -163,11 +193,16 @@ export const TOOLS = [
     input_schema: {
       type: "object",
       properties: {
-        egids: { type: "array", items: { type: "string" }, description: "specific candidates to show (max 16); omit for the next unviewed ones" },
+        egids: {
+          type: "array",
+          items: { type: "string" },
+          description: "specific candidates to show (max 16); omit for the next unviewed ones",
+        },
         commune: { type: "string", description: "with no egids: take the next unviewed candidates of this commune" },
         marks: {
           type: "array",
-          description: "your verdicts on the PREVIOUS sheet, recorded before the next one is drawn (same shape as mark_candidates)",
+          description:
+            "your verdicts on the PREVIOUS sheet, recorded before the next one is drawn (same shape as mark_candidates)",
           items: {
             type: "object",
             properties: {
@@ -460,13 +495,17 @@ export async function dispatchTool(
   if (name === "view_candidates") {
     const search = searchOf(job);
     // Verdicts on the previous sheet can ride along: one turn per sheet.
-    const marked = Array.isArray(input.marks) && input.marks.length ? await recordMarks(job, search, input.marks) : null;
-    const asked = Array.isArray(input.egids) ? input.egids.map((e) => String(e).trim()).filter(Boolean).slice(0, 16) : [];
+    const marked =
+      Array.isArray(input.marks) && input.marks.length ? await recordMarks(job, search, input.marks) : null;
+    const asked = Array.isArray(input.egids)
+      ? input.egids
+          .map((e) => String(e).trim())
+          .filter(Boolean)
+          .slice(0, 16)
+      : [];
     const commune = typeof input.commune === "string" && input.commune.trim() ? input.commune.trim() : undefined;
     const unknown = asked.filter((e) => !search.candidates[e]);
-    let list = asked.length
-      ? asked.map((e) => search.candidates[e]).filter(Boolean)
-      : nextToView(search, 16, commune);
+    let list = asked.length ? asked.map((e) => search.candidates[e]).filter(Boolean) : nextToView(search, 16, commune);
     if (!list.length && commune && !asked.length) {
       // Accept "Denges" for "Denges" / "Saint-Sulpice" for "Saint-Sulpice (VD)".
       const key = commune.toLowerCase();
@@ -474,13 +513,17 @@ export async function dispatchTool(
       if (match) list = nextToView(search, 16, match);
     }
     if (!list.length) {
-      if (marked) return `Recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""}. Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
+      if (marked)
+        return `Recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""}. Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
       return unknown.length
         ? `error: ${unknown.join(", ")} not on your checklist — shortlist their commune first (shortlist_buildings).`
         : `Nothing left to view${commune ? ` in ${commune}` : ""}. Coverage: ${coverageText(search)}.`;
     }
     try {
-      const sheetNo = String(job.steps.filter((st) => st.title.startsWith("contact sheet")).length + 1).padStart(2, "0");
+      const sheetNo = String(job.steps.filter((st) => st.title.startsWith("contact sheet")).length + 1).padStart(
+        2,
+        "0",
+      );
       const sheet = await renderContactSheet(
         job.runDir,
         `sheet_${sheetNo}.png`,
@@ -508,9 +551,13 @@ export async function dispatchTool(
           type: "text",
           text:
             `North-up aerials (SWISSIMAGE), ~90 m across, the red cross on each tile is the candidate building. Legend:\n${legend}` +
-            (sheet.failed.length ? `\n(tiles ${sheet.failed.join(", ")} failed to load — view them again or zoom yourself)` : "") +
+            (sheet.failed.length
+              ? `\n(tiles ${sheet.failed.join(", ")} failed to load — view them again or zoom yourself)`
+              : "") +
             (unknown.length ? `\n(not on your checklist, skipped: ${unknown.join(", ")})` : "") +
-            (marked ? `\n(recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""})` : "") +
+            (marked
+              ? `\n(recorded ${marked.done.length} verdict(s)${marked.refused.length ? `; refused: ${marked.refused.join("; ")}` : ""})`
+              : "") +
             `\nRecord a verdict for each — pass them as marks on your next view_candidates call (or mark_candidates). ${left} candidates not yet viewed.`,
         },
         { type: "image", source: { type: "base64", media_type: "image/png", data: sheet.png.toString("base64") } },
@@ -542,7 +589,11 @@ export async function dispatchTool(
       .map((d) => String(d).trim().toUpperCase())
       .filter((d): d is Direction => (DIRECTIONS as readonly string[]).includes(d));
     const view = await viewFrom(lat, lon, dirs.length ? dirs : undefined);
-    await addStep(job, { kind: "read", title: `view from ${c?.address ?? `${lat.toFixed(5)},${lon.toFixed(5)}`}`, detail: view });
+    await addStep(job, {
+      kind: "read",
+      title: `view from ${c?.address ?? `${lat.toFixed(5)},${lon.toFixed(5)}`}`,
+      detail: view,
+    });
     return `View from ${c?.address ?? "that point"} (eye 6 m above ground):\n${view}\nCompare it with what the photos show through the windows and from the terrace.`;
   }
 
@@ -595,9 +646,14 @@ export function rejectionProblem(
   reason: string,
 ): string | null {
   if (verdict !== "rejected") return null;
-  const words = reason.trim().split(/\s+/).filter((w) => /[a-z0-9]/i.test(w));
-  if (words.length < 3) return `"${reason.trim() || "no reason"}" is not a reason — name what you saw that rules it out`;
-  if (c.strongFit && !c.closeLook) return "STRONG FIT: every register fact fits the listing — inspect_candidate it before rejecting";
+  const words = reason
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /[a-z0-9]/i.test(w));
+  if (words.length < 3)
+    return `"${reason.trim() || "no reason"}" is not a reason — name what you saw that rules it out`;
+  if (c.strongFit && !c.closeLook)
+    return "STRONG FIT: every register fact fits the listing — inspect_candidate it before rejecting";
   return null;
 }
 
@@ -608,7 +664,8 @@ function outlineText(sh: { areaM2: number; axisDeg: number; hull: number[][]; he
   const rad = (sh.axisDeg * Math.PI) / 180;
   const along = sh.hull.map(([x, y]) => x * Math.sin(rad) + y * Math.cos(rad));
   const across = sh.hull.map(([x, y]) => x * Math.cos(rad) - y * Math.sin(rad));
-  const L = Math.max(...along) - Math.min(...along), W = Math.max(...across) - Math.min(...across);
+  const L = Math.max(...along) - Math.min(...along),
+    W = Math.max(...across) - Math.min(...across);
   const names = ["N–S", "NNE–SSW", "NE–SW", "ENE–WSW", "E–W", "ESE–WNW", "SE–NW", "SSE–NNW"];
   const axis = names[Math.round(sh.axisDeg / 22.5) % 8];
   return `${L.toFixed(1)} × ${W.toFixed(1)} m, long side ${axis}, about ${Math.round(sh.areaM2)} m² from above, ${sh.heightM.toFixed(1)} m high`;
@@ -623,23 +680,37 @@ async function inspectCandidate(
   if (!c && typeof input.lat === "number" && typeof input.lon === "number") {
     c = (await addFromRegister(search, input.lat, input.lon)) ?? undefined;
   }
-  if (!c) return `error: ${asText(input.egid, "that point")} is not on your checklist and no register building of a shortlisted commune was found there — pass an EGID from your checklist, or lat/lon on the building (shortlist its commune first if it is in another one).`;
+  if (!c)
+    return `error: ${asText(input.egid, "that point")} is not on your checklist and no register building of a shortlisted commune was found there — pass an EGID from your checklist, or lat/lon on the building (shortlist its commune first if it is in another one).`;
   const facts = listingFacts(job.input.listingText);
   const plot = c.plot ?? (await plotAt(c.lat, c.lon)) ?? undefined;
   const flats = await flatsFor(facts, c.egid);
   // Several plots can make one property: a smaller plot is tried with its neighbours.
   const group =
-    c.plotGroup ?? (plot && facts.landM2 != null && !facts.sharedLand ? ((await plotGroupFor(plot, facts.landM2)) ?? undefined) : undefined);
+    c.plotGroup ??
+    (plot && facts.landM2 != null && !facts.sharedLand
+      ? ((await plotGroupFor(plot, facts.landM2)) ?? undefined)
+      : undefined);
   const plotGroup = group && group.length > 1 ? group : undefined;
-  const rows = factRows(facts, { floors: c.floors, dwellings: c.dwellings, footprintM2: c.footprintM2, plots: plotGroup ?? (plot ? [plot] : []), flats });
+  const rows = factRows(facts, {
+    floors: c.floors,
+    dwellings: c.dwellings,
+    footprintM2: c.footprintM2,
+    plots: plotGroup ?? (plot ? [plot] : []),
+    flats,
+  });
   Object.assign(c, { plot, plotGroup, strongFit: strongFit(rows), fit: fitText(rows), closeLook: true });
   await saveSearch(job, search);
-  const outline = await shapeAt(c.lat, c.lon).then((sh) => (sh ? outlineText(sh) : null)).catch(() => null);
+  const outline = await shapeAt(c.lat, c.lon)
+    .then((sh) => (sh ? outlineText(sh) : null))
+    .catch(() => null);
   // The register's plot field against the plot under the address point: they
   // disagreed for 18 of 292 practice houses, and where the listing gave a land
   // area the address point's plot matched it 9 times out of 10, the register's
   // never (Ovronnaz, Chevalley 27/29: the field names the other half's plot).
-  const registerPlot = await buildingByEgid(c.egid).then((b) => b?.registerPlot ?? null).catch(() => null);
+  const registerPlot = await buildingByEgid(c.egid)
+    .then((b) => b?.registerPlot ?? null)
+    .catch(() => null);
   const plotClash =
     plot && registerPlot && !sameRegisterPlot(registerPlot, plot.number)
       ? `The register's own plot field says ${registerPlot}, but the plot under this building's official address point is ${plot.number}. Trust ${plot.number} and the address point: the register's field is often an old plot from before a split, or the plot of the other half of an attached pair. The house number ${c.address ?? ""} belongs to the building at the address point (the red cross).`
@@ -652,7 +723,9 @@ async function inspectCandidate(
       `Register: floors ${c.floors ?? "?"}, dwellings ${c.dwellings ?? "?"}, footprint ${c.footprintM2 ?? "?"} m².`,
       `Plot: ${plot ? `${plot.number}${plot.egrid ? ` (${plot.egrid})` : ""}, ${plot.areaM2} m²` : "not found"}.`,
       ...(plotClash ? [plotClash] : []),
-      outline ? `Outline (swissBUILDINGS3D, from above): ${outline} — compare it with a floor plan in the photos, if there is one.` : "Outline: not in swissBUILDINGS3D.",
+      outline
+        ? `Outline (swissBUILDINGS3D, from above): ${outline} — compare it with a floor plan in the photos, if there is one.`
+        : "Outline: not in swissBUILDINGS3D.",
       rows.length
         ? `Against the listing:\n${rows.map((r) => `- ${r.fact}: listing ${r.listing}, building ${r.building} → ${r.verdict}`).join("\n")}`
         : "The listing states no homes / living area / land area to check against.",
@@ -661,18 +734,26 @@ async function inspectCandidate(
   );
   blocks.push(sheet);
   try {
-    const aerial = await renderContactSheet(job.runDir, `close_${sheetNo}.png`, [{ label: "", lat: c.lat, lon: c.lon }], {
-      spanM: 40,
-      tile: 640,
-      cols: 1,
-    });
+    const aerial = await renderContactSheet(
+      job.runDir,
+      `close_${sheetNo}.png`,
+      [{ label: "", lat: c.lat, lon: c.lon }],
+      {
+        spanM: 40,
+        tile: 640,
+        cols: 1,
+      },
+    );
     await addStep(job, {
       kind: "read",
       title: `close look ${sheetNo}: ${c.address ?? c.egid}`,
       detail: rows.map((r) => `${r.fact}: ${r.listing} vs ${r.building} → ${r.verdict}`).join("\n"),
       image: `/runs/${job.id}/${aerial.relPath}`,
     });
-    blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: aerial.png.toString("base64") } });
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: "image/png", data: aerial.png.toString("base64") },
+    });
   } catch (err) {
     blocks.push(text(`(aerial failed: ${err instanceof Error ? err.message : String(err)})`));
   }
@@ -680,7 +761,10 @@ async function inspectCandidate(
     const [roof] = await renderCandidateRoofs(job.runDir, [{ label: `roof_${c.egid}`, lat: c.lat, lon: c.lon }]);
     if (roof?.relPath) {
       blocks.push(text(`Real roof (${roof.faces} faces):`));
-      blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: await readRoofPng(job.runDir, roof.relPath) } });
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: await readRoofPng(job.runDir, roof.relPath) },
+      });
     } else if (roof) blocks.push(text(`Roof: ${roof.note}`));
   } catch (err) {
     blocks.push(text(`(roof render failed: ${err instanceof Error ? err.message : String(err)})`));
@@ -695,7 +779,8 @@ async function recordMarks(
   search: SearchState,
   marks: unknown,
 ): Promise<{ done: string[]; refused: string[] }> {
-  const done: string[] = [], refused: string[] = [];
+  const done: string[] = [],
+    refused: string[] = [];
   for (const m of Array.isArray(marks) ? marks : []) {
     const o = (m ?? {}) as Record<string, unknown>;
     const egid = asText(o.egid).trim();

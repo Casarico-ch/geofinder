@@ -39,22 +39,65 @@ export interface ReviewGroup {
 }
 
 const ABOUT: Record<Cause, { title: string; code: boolean; fix: string }> = {
-  agreed_wrong: { title: "Two searches agreed on the wrong house", code: true, fix: "the confirm / tie-break rules (practice.ts wantsConfirm, tiebreak.ts) or the ranking that led both astray" },
-  wrong_commune: { title: "The right commune was never searched", code: true, fix: "the commune choice (search plan, assessCommune)" },
-  ranked_low: { title: "The right house was ranked too low", code: true, fix: "the ranking (shortlist.ts rankByListing): a listing fact it does not use yet" },
-  not_reached: { title: "Ranked high enough, never looked at", code: true, fix: "the search flow: the top-of-list look (agent.ts unseenTop) or the time spent elsewhere" },
-  rejected: { title: "Looked at the right house and rejected it", code: false, fix: "how candidates are compared with the photos (prompt, inspect_candidate, view_from)" },
-  neighbour: { title: "Confused with a neighbour", code: true, fix: "the tie-breaker's comparison of look-alike neighbours (tiebreak.ts)" },
-  no_agreement: { title: "Found, but no second search agreed", code: false, fix: "the confirming search: why it named another house or none" },
-  limits: { title: "Ran out of time or money, or crashed", code: true, fix: "the time and cost limits (practice.ts stepLimits) or the error" },
+  agreed_wrong: {
+    title: "Two searches agreed on the wrong house",
+    code: true,
+    fix: "the confirm / tie-break rules (practice.ts wantsConfirm, tiebreak.ts) or the ranking that led both astray",
+  },
+  wrong_commune: {
+    title: "The right commune was never searched",
+    code: true,
+    fix: "the commune choice (search plan, assessCommune)",
+  },
+  ranked_low: {
+    title: "The right house was ranked too low",
+    code: true,
+    fix: "the ranking (shortlist.ts rankByListing): a listing fact it does not use yet",
+  },
+  not_reached: {
+    title: "Ranked high enough, never looked at",
+    code: true,
+    fix: "the search flow: the top-of-list look (agent.ts unseenTop) or the time spent elsewhere",
+  },
+  rejected: {
+    title: "Looked at the right house and rejected it",
+    code: false,
+    fix: "how candidates are compared with the photos (prompt, inspect_candidate, view_from)",
+  },
+  neighbour: {
+    title: "Confused with a neighbour",
+    code: true,
+    fix: "the tie-breaker's comparison of look-alike neighbours (tiebreak.ts)",
+  },
+  no_agreement: {
+    title: "Found, but no second search agreed",
+    code: false,
+    fix: "the confirming search: why it named another house or none",
+  },
+  limits: {
+    title: "Ran out of time or money, or crashed",
+    code: true,
+    fix: "the time and cost limits (practice.ts stepLimits) or the error",
+  },
 };
 
-const ORDER: Cause[] = ["agreed_wrong", "wrong_commune", "ranked_low", "not_reached", "neighbour", "rejected", "no_agreement", "limits"];
+const ORDER: Cause[] = [
+  "agreed_wrong",
+  "wrong_commune",
+  "ranked_low",
+  "not_reached",
+  "neighbour",
+  "rejected",
+  "no_agreement",
+  "limits",
+];
 
 const LOOKED = 150; // the top of the list a run must see (agent.ts TOP_LOOK)
 
 function ranks(runs: PracticeResult[]): string {
-  const best = runs.filter((r) => r.rankOf != null).map((r) => (r.rank != null ? `#${r.rank}/${r.rankOf}` : `off the list/${r.rankOf}`));
+  const best = runs
+    .filter((r) => r.rankOf != null)
+    .map((r) => (r.rank != null ? `#${r.rank}/${r.rankOf}` : `off the list/${r.rankOf}`));
   return best.length ? `right house ranked ${Array.from(new Set(best)).join(", ")}` : "right house never on a list";
 }
 
@@ -68,8 +111,12 @@ function reviewListing(round: PracticeRound, propertyId: number): ReviewItem | n
   const verdict = listingVerdict(round, propertyId);
   if (verdict === "confirmed_right" || verdict === "running") return null;
   const runs = round.results.filter((r) => r.propertyId === propertyId);
-  const line = (cause: Cause, extra = "") =>
-    ({ propertyId, cause, code: ABOUT[cause].code, evidence: [named(runs), ranks(runs), extra].filter(Boolean).join("; ") });
+  const line = (cause: Cause, extra = "") => ({
+    propertyId,
+    cause,
+    code: ABOUT[cause].code,
+    evidence: [named(runs), ranks(runs), extra].filter(Boolean).join("; "),
+  });
   if (verdict === "confirmed_wrong") return line("agreed_wrong");
   if (runs.some((r) => r.twin)) return line("neighbour", "one answer is the right house's attached twin");
   if (runs.some((r) => r.outcome === "right")) return line("no_agreement");
@@ -91,7 +138,11 @@ function reviewListing(round: PracticeRound, propertyId: number): ReviewItem | n
 /** Every miss of a round, grouped by cause, worst first, with the task text to paste. */
 // `withheld`: listings another practice run is still searching — a rejection
 // reason names the right house's facts, so it waits until they are done.
-export function reviewRound(round: PracticeRound, places: Record<number, string | null> = {}, withheld: Set<number> = new Set()): ReviewGroup[] {
+export function reviewRound(
+  round: PracticeRound,
+  places: Record<number, string | null> = {},
+  withheld: Set<number> = new Set(),
+): ReviewGroup[] {
   const ids = Array.from(new Set(round.results.map((r) => r.propertyId))).filter((id) => !withheld.has(id));
   const items = ids.map((id) => reviewListing(round, id)).filter((x): x is ReviewItem => !!x);
   return ORDER.map((cause) => {
@@ -100,7 +151,9 @@ export function reviewRound(round: PracticeRound, places: Record<number, string 
     const task = [
       `GeoFinder practice round ${round.id}: ${about.title.toLowerCase()} (${mine.length} listing${mine.length === 1 ? "" : "s"}).`,
       `Likely fix: ${about.fix}.`,
-      ...mine.map((i) => `- Radar ${i.propertyId}${places[i.propertyId] ? ` (${places[i.propertyId]})` : ""}: ${i.evidence}`),
+      ...mine.map(
+        (i) => `- Radar ${i.propertyId}${places[i.propertyId] ? ` (${places[i.propertyId]})` : ""}: ${i.evidence}`,
+      ),
       "Find the cause in the runs' traces, fix it, and re-run these listings in practice to show it helps.",
     ].join("\n");
     return { cause, title: about.title, code: about.code, fix: about.fix, items: mine, task };

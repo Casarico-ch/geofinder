@@ -98,7 +98,12 @@ function zoneShares(s: string | undefined) {
 
 function heightText(h: any): string {
   if (!h || typeof h !== "object") return h ? String(h) : "—";
-  const parts = [h.absolute_max_m != null && `max ${h.absolute_max_m} m`, h.street_formula, h.boundary_formula, h.text].filter(Boolean);
+  const parts = [
+    h.absolute_max_m != null && `max ${h.absolute_max_m} m`,
+    h.street_formula,
+    h.boundary_formula,
+    h.text,
+  ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "—";
 }
 
@@ -111,10 +116,21 @@ function densityText(d: any): string {
           .filter(([k, v]) => k !== "cite" && typeof v !== "object")
           .map(([k, v]) => `${k} ${v as string | number}`)
           .join(", ")
-      : right != null ? String(right) : "";
-  const der = Array.isArray(d.by_derogation) && d.by_derogation.length ? ` · by derogation up to ${d.by_derogation.map((x: any) => x.max).filter(Boolean).join(" / ")}` : "";
-  const min = d.minimum != null ? ` · minimum ${typeof d.minimum === "object" ? d.minimum.value ?? JSON.stringify(d.minimum) : d.minimum}` : "";
-  return (r ? `by right ${r}` : d.text ?? "no statutory figure") + der + min;
+      : right != null
+        ? String(right)
+        : "";
+  const der =
+    Array.isArray(d.by_derogation) && d.by_derogation.length
+      ? ` · by derogation up to ${d.by_derogation
+          .map((x: any) => x.max)
+          .filter(Boolean)
+          .join(" / ")}`
+      : "";
+  const min =
+    d.minimum != null
+      ? ` · minimum ${typeof d.minimum === "object" ? (d.minimum.value ?? JSON.stringify(d.minimum)) : d.minimum}`
+      : "";
+  return (r ? `by right ${r}` : (d.text ?? "no statutory figure")) + der + min;
 }
 
 // Restriction columns worth a line when set (value > 0 or text).
@@ -175,8 +191,16 @@ function Scores({ s }: { s: Values }) {
   return (
     <Section title="Scores (ours, from official data)">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <ScoreBar label="Location" value={s.score_location} how={`Road distance to everyday services: ${s.location_distances ?? "—"}`} />
-        <ScoreBar label="Plot shape" value={s.score_shape} how={`Usable width ${num(s.plot_width_m, " m")}, compactness ${s.plot_compactness ?? "—"}`} />
+        <ScoreBar
+          label="Location"
+          value={s.score_location}
+          how={`Road distance to everyday services: ${s.location_distances ?? "—"}`}
+        />
+        <ScoreBar
+          label="Plot shape"
+          value={s.score_shape}
+          how={`Usable width ${num(s.plot_width_m, " m")}, compactness ${s.plot_compactness ?? "—"}`}
+        />
         <ScoreBar
           label="Existing buildings"
           value={s.score_existing}
@@ -206,7 +230,10 @@ function Scores({ s }: { s: Values }) {
       )}
       {isSet(s.permit_rate_pct) && (
         <dl className="mt-1">
-          <Row k="Density stated by this plot's permit" v={`${s.permit_rate_pct}% · ${s.permit_rate_ref} · ${s.permit_rate_text}`} />
+          <Row
+            k="Density stated by this plot's permit"
+            v={`${s.permit_rate_pct}% · ${s.permit_rate_ref} · ${s.permit_rate_text}`}
+          />
         </dl>
       )}
       {s.allowed_gfa_m2 ? (
@@ -219,23 +246,29 @@ function Scores({ s }: { s: Values }) {
                   {s.under_exploited_label} · {sure ? "sure" : "likely"}
                 </Badge>
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  built {num(s.built_gfa_lo_m2)}–{num(s.built_gfa_hi_m2, " m²")} (best estimate {num(s.built_gfa_m2, " m²")}) of {num(s.allowed_gfa_m2, " m²")} allowed
+                  built {num(s.built_gfa_lo_m2)}–{num(s.built_gfa_hi_m2, " m²")} (best estimate{" "}
+                  {num(s.built_gfa_m2, " m²")}) of {num(s.allowed_gfa_m2, " m²")} allowed
                 </span>
               </span>
             }
           />
-          <Row k="Room left by right" v={`${num(s.development_room_lo_m2)}–${num(s.development_room_hi_m2, " m²")} (best estimate ${num(s.development_room_m2, " m²")})`} />
+          <Row
+            k="Room left by right"
+            v={`${num(s.development_room_lo_m2)}–${num(s.development_room_hi_m2, " m²")} (best estimate ${num(s.development_room_m2, " m²")})`}
+          />
           <Row k="Allowance from" v={s.allowed_gfa_source} />
           {s.development_note && <Row k="By exception" v={s.development_note} />}
         </dl>
       ) : (
         <p className="mt-2 text-xs text-muted-foreground">
-          Built vs allowed: not computed, this zone sets no floor-area ratio (its size limits come from shape rules or a plan).
+          Built vs allowed: not computed, this zone sets no floor-area ratio (its size limits come from shape rules or a
+          plan).
         </p>
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Ranges hold 95% of the time, checked against the canton's heated-floor-area register; "sure" when the whole range falls in one band.
-        Villas are never "sure": against the densities their own permits state, our villa estimates held only about 4 times in 5.
+        Ranges hold 95% of the time, checked against the canton's heated-floor-area register; "sure" when the whole
+        range falls in one band. Villas are never "sure": against the densities their own permits state, our villa
+        estimates held only about 4 times in 5.
       </p>
     </Section>
   );
@@ -257,7 +290,8 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
           {a.parcel.commune} · parcel {a.parcel.no_parcelle}
         </p>
         <p className="text-xs text-muted-foreground tabular-nums">
-          EGRID {a.parcel.egrid} · {num(a.parcel.area_cadastre_m2, " m²")} · answered from Geneva's official data, no Popety call
+          EGRID {a.parcel.egrid} · {num(a.parcel.area_cadastre_m2, " m²")} · answered from Geneva's official data, no
+          Popety call
         </p>
       </div>
 
@@ -273,7 +307,9 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
           </span>
         )}
         {isSet(s.buildable_after_plq_m2) && s.buildable_after_plq_m2 !== s.buildable_m2 && (
-          <span className="text-sm text-muted-foreground tabular-nums">· {num(s.buildable_after_plq_m2, " m²")} once a PLQ is adopted</span>
+          <span className="text-sm text-muted-foreground tabular-nums">
+            · {num(s.buildable_after_plq_m2, " m²")} once a PLQ is adopted
+          </span>
         )}
       </div>
 
@@ -281,15 +317,19 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
         <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>
-            This plot lies in a special plan we could not resolve automatically for this plot: check the plan before relying on the
-            limits below.
+            This plot lies in a special plan we could not resolve automatically for this plot: check the plan before
+            relying on the limits below.
           </span>
         </div>
       )}
 
       <div className="space-y-1">
         <p className="text-sm leading-relaxed">{lang === "en" ? s.notice_en : s.notice_fr}</p>
-        <button type="button" className="text-xs text-primary hover:underline" onClick={() => setLang(lang === "en" ? "fr" : "en")}>
+        <button
+          type="button"
+          className="text-xs text-primary hover:underline"
+          onClick={() => setLang(lang === "en" ? "fr" : "en")}
+        >
           {lang === "en" ? "Version française" : "English version"}
         </button>
       </div>
@@ -313,8 +353,11 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
                 return (
                   <TableRow key={`${z.code}-${z.over}`} className="hover:bg-transparent align-top">
                     <TableCell>
-                      <span className="font-medium">{z.code}</span> <span className="text-muted-foreground">{rule?.label}</span>
-                      {z.over && <span className="text-xs text-muted-foreground"> · over {z.over} (applies until a PLQ)</span>}
+                      <span className="font-medium">{z.code}</span>{" "}
+                      <span className="text-muted-foreground">{rule?.label}</span>
+                      {z.over && (
+                        <span className="text-xs text-muted-foreground"> · over {z.over} (applies until a PLQ)</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{Math.round(Number(z.pct))}%</TableCell>
                     <TableCell className="text-xs">{heightText(rule?.height)}</TableCell>
@@ -345,7 +388,13 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
                     <div className="font-medium">{p.plan}</div>
                     <div className="text-xs text-muted-foreground">{p.plan_meta?.title}</div>
                     {p.plan_meta?.urls?.slice(0, 2).map((u) => (
-                      <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs text-primary inline-flex items-center gap-1 hover:underline">
+                      <a
+                        key={u}
+                        href={u}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary inline-flex items-center gap-1 hover:underline"
+                      >
                         {u.split("/").pop()} <ExternalLink className="h-3 w-3" />
                       </a>
                     ))}
@@ -357,12 +406,21 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
                   <TableCell className="text-xs">
                     {p.sector.startsWith("UNPLACED") || p.sector.startsWith("unidentified")
                       ? "unknown for this plot — see the plan"
-                      : NEW_BUILDINGS[p.new_buildings] ?? (p.new_buildings || "—")}
+                      : (NEW_BUILDINGS[p.new_buildings] ?? (p.new_buildings || "—"))}
                     {p.build_area_share ? ` · ${pct(p.build_area_share)} inside drawn areas` : ""}
-                    {p.maintained_bldg_share && Number(p.maintained_bldg_share) > 0 ? ` · ${pct(p.maintained_bldg_share)} covered by maintained buildings` : ""}
+                    {p.maintained_bldg_share && Number(p.maintained_bldg_share) > 0
+                      ? ` · ${pct(p.maintained_bldg_share)} covered by maintained buildings`
+                      : ""}
                   </TableCell>
                   <TableCell className="text-xs">
-                    <Badge variant="outline" className={p.confidence === "low" || !p.confidence ? "border-transparent bg-amber-500/10 text-amber-700" : ""}>
+                    <Badge
+                      variant="outline"
+                      className={
+                        p.confidence === "low" || !p.confidence
+                          ? "border-transparent bg-amber-500/10 text-amber-700"
+                          : ""
+                      }
+                    >
                       {p.confidence || "unplaced"}
                     </Badge>
                   </TableCell>
@@ -391,7 +449,10 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
           <dl>
             <Row k="Buildings" v={`${a.buildings_today.bldg_n} (EGID ${a.buildings_today.bldg_egids})`} />
             <Row k="Footprint" v={num(a.buildings_today.bldg_footprint_m2, " m²")} />
-            <Row k="Height / floors" v={`${num(a.buildings_today.bldg_height_max_m, " m")} · ${num(a.buildings_today.bldg_floors_max)} floors`} />
+            <Row
+              k="Height / floors"
+              v={`${num(a.buildings_today.bldg_height_max_m, " m")} · ${num(a.buildings_today.bldg_floors_max)} floors`}
+            />
             <Row k="Floor area (approx.)" v={num(a.buildings_today.bldg_gfa_approx_m2, " m²")} />
           </dl>
         </Section>
@@ -399,10 +460,20 @@ export function GenevaView({ a }: { a: GenevaAnswer }) {
 
       <Section title="Official sources">
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          <a href={a.official_links.oereb_extract_pdf} target="_blank" rel="noopener noreferrer" className="text-primary inline-flex items-center gap-1 hover:underline">
+          <a
+            href={a.official_links.oereb_extract_pdf}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary inline-flex items-center gap-1 hover:underline"
+          >
             Land-register extract (PDF) <ExternalLink className="h-3 w-3" />
           </a>
-          <a href={a.official_links.sitg_map} target="_blank" rel="noopener noreferrer" className="text-primary inline-flex items-center gap-1 hover:underline">
+          <a
+            href={a.official_links.sitg_map}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary inline-flex items-center gap-1 hover:underline"
+          >
             SITG map <ExternalLink className="h-3 w-3" />
           </a>
         </div>

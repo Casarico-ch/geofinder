@@ -351,7 +351,13 @@ export function registerApiRoutes(app: Express) {
       .sort((a, b) => Number(a.match(/\d+/)![0]) - Number(b.match(/\d+/)![0]))
       .map((f) => `/runs/${job.id}/${f}`);
     const { runDir: _runDir, steps, ...rest } = job;
-    res.json({ ...rest, photos, stepCount: steps.length, cost: costUsd(job.tokens, job.model), elapsedMs: elapsedMs(job) });
+    res.json({
+      ...rest,
+      photos,
+      stepCount: steps.length,
+      cost: costUsd(job.tokens, job.model),
+      elapsedMs: elapsedMs(job),
+    });
   });
 
   // The exact prompt text a run was governed by (saved at run start). This is

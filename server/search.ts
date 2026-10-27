@@ -12,13 +12,7 @@
 //   - the ledger: every shortlisted candidate, whether it was viewed and the
 //     verdict, so "exhausted the commune" is a fact the code can check.
 // =============================================================================
-import {
-  builtCentre,
-  fetchCommuneBuildings,
-  neighbourCommunes,
-  normalizeCommune,
-  resolveCommune,
-} from "./gwr";
+import { builtCentre, fetchCommuneBuildings, neighbourCommunes, normalizeCommune, resolveCommune } from "./gwr";
 
 type CommuneConfidence = "high" | "low" | "unknown";
 type Verdict = "unchecked" | "rejected" | "possible" | "match";
@@ -112,20 +106,28 @@ const PROXIMITY: RegExp[] = [
 // True when a captured place refers to the stated commune ("Saint-Sulpice" vs
 // "St-Sulpice VD"): same normalised name, or one contains the other's core word.
 function samePlace(a: string, b: string): boolean {
-  const x = normalizeCommune(a), y = normalizeCommune(b);
+  const x = normalizeCommune(a),
+    y = normalizeCommune(b);
   if (!x || !y) return false;
   if (x === y || x.startsWith(y) || y.startsWith(x)) return true;
   const core = (s: string) => s.split("-").filter((w) => w.length > 3 && w !== "saint" && w !== "sainte");
   return core(x).some((w) => core(y).includes(w));
 }
 
-function communeConfidence(stated: string | null, listingText: string | undefined): {
+function communeConfidence(
+  stated: string | null,
+  listingText: string | undefined,
+): {
   confidence: CommuneConfidence;
   evidence: string[];
 } {
-  if (!stated) return { confidence: "unknown", evidence: ["No commune is stated — infer it from the text and photos."] };
+  if (!stated)
+    return { confidence: "unknown", evidence: ["No commune is stated — infer it from the text and photos."] };
   // Only the listing's own prose, not the structured lines we prepend.
-  const text = (listingText ?? "").replace(/^(?:Municipality \/ commune|Town|Location stated by the listing[^:]*):.*$/gm, " ");
+  const text = (listingText ?? "").replace(
+    /^(?:Municipality \/ commune|Town|Location stated by the listing[^:]*):.*$/gm,
+    " ",
+  );
   const evidence: string[] = [];
   for (const re of PROXIMITY) {
     re.lastIndex = 0;
@@ -140,12 +142,18 @@ function communeConfidence(stated: string | null, listingText: string | undefine
       evidence: [`The listing places the property NEAR ${stated}, not in it: ${evidence.slice(0, 3).join(", ")}.`],
     };
   }
-  return { confidence: "high", evidence: [`The listing names ${stated} and nothing in the text places the property outside it.`] };
+  return {
+    confidence: "high",
+    evidence: [`The listing names ${stated} and nothing in the text places the property outside it.`],
+  };
 }
 
 // Confidence + neighbour ring. Network failures degrade to "no ring" — the
 // confidence itself is pure text and always available.
-export async function assessCommune(municipality: string | undefined, listingText: string | undefined): Promise<SearchState> {
+export async function assessCommune(
+  municipality: string | undefined,
+  listingText: string | undefined,
+): Promise<SearchState> {
   const stated = statedCommune(municipality, listingText);
   const { confidence, evidence } = communeConfidence(stated, listingText);
   const state: SearchState = {
@@ -167,7 +175,10 @@ export async function assessCommune(municipality: string | undefined, listingTex
     state.primary = c.name;
     const anchor = builtCentre(await fetchCommuneBuildings(c));
     if (anchor) {
-      state.ring = (await neighbourCommunes(c, anchor)).map((n) => ({ commune: n.commune.name, distanceM: n.distanceM }));
+      state.ring = (await neighbourCommunes(c, anchor)).map((n) => ({
+        commune: n.commune.name,
+        distanceM: n.distanceM,
+      }));
     }
   } catch (err) {
     console.error("[search] commune assessment failed:", err);
@@ -234,7 +245,12 @@ export function addCandidates(
     if (known) {
       // Re-shortlisted: keep the verdict, refresh what the facts say.
       if (c.fit !== undefined)
-        Object.assign(known, { strongFit: c.strongFit, fit: c.fit, plot: c.plot ?? known.plot, plotGroup: c.plotGroup ?? known.plotGroup });
+        Object.assign(known, {
+          strongFit: c.strongFit,
+          fit: c.fit,
+          plot: c.plot ?? known.plot,
+          plotGroup: c.plotGroup ?? known.plotGroup,
+        });
       continue;
     }
     s.candidates[key] = {
@@ -250,7 +266,9 @@ export function addCandidates(
       viewed: false,
       verdict: "unchecked",
       ...(c.loc ? { loc: c.loc } : {}),
-      ...(c.fit !== undefined ? { strongFit: c.strongFit, fit: c.fit, plot: c.plot, ...(c.plotGroup ? { plotGroup: c.plotGroup } : {}) } : {}),
+      ...(c.fit !== undefined
+        ? { strongFit: c.strongFit, fit: c.fit, plot: c.plot, ...(c.plotGroup ? { plotGroup: c.plotGroup } : {}) }
+        : {}),
     };
     added++;
   }
@@ -278,7 +296,8 @@ export function unchecked(s: SearchState, commune?: string): LedgerEntry[] {
 // judge runs where a listing used to end unconfirmed). 150 is the default
 // since; SHORTLIST_TOP_CHECK overrides it, 0 means every candidate.
 const TOP_CHECK_ENV = process.env.SHORTLIST_TOP_CHECK;
-const TOP_CHECK = TOP_CHECK_ENV == null || TOP_CHECK_ENV === "" ? 150 : Number(TOP_CHECK_ENV) > 0 ? Number(TOP_CHECK_ENV) : Infinity;
+const TOP_CHECK =
+  TOP_CHECK_ENV == null || TOP_CHECK_ENV === "" ? 150 : Number(TOP_CHECK_ENV) > 0 ? Number(TOP_CHECK_ENV) : Infinity;
 const depthOf = (s: Pick<SearchState, "topCheck">) => s.topCheck ?? TOP_CHECK;
 /**
  * The unchecked candidates the plan still owes a verdict: the first `topCheck`
@@ -310,7 +329,9 @@ export function topCheckText(s: Pick<SearchState, "topCheck">, commune?: string)
 
 // Next candidates to show: unviewed first, in shortlist order.
 export function nextToView(s: SearchState, n: number, commune?: string): LedgerEntry[] {
-  return unchecked(s, commune).filter((c) => !c.viewed).slice(0, n);
+  return unchecked(s, commune)
+    .filter((c) => !c.viewed)
+    .slice(0, n);
 }
 
 // Per-commune coverage, e.g. "Denges 40/120 checked".
@@ -378,7 +399,8 @@ export function claimedEntry(
   const named = want ? all.filter((c) => c.address && addressKey(c.address) === want) : [];
   if (named.length === 1) return named[0];
   if (at.lat != null && at.lon != null) {
-    let best: LedgerEntry | null = null, bestD = 25;
+    let best: LedgerEntry | null = null,
+      bestD = 25;
     for (const c of all) {
       const d = Math.hypot((c.lon - at.lon) * 111_320 * Math.cos((c.lat * Math.PI) / 180), (c.lat - at.lat) * 111_320);
       if (d <= bestD) [best, bestD] = [c, d];

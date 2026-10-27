@@ -79,7 +79,10 @@ export function listingFacts(text: string | undefined): ListingFacts {
     ),
     (m) => num(m[1].replace(/[',’ ]/g, "")),
   ).filter((n): n is number => n != null && n >= 100 && n !== landM2);
-  const type = `${line(/^Type:\s*(.+)$/im) ?? ""} ${line(/^Category:\s*(.+)$/im) ?? ""} ${line(/^Subtype:\s*(.+)$/im) ?? ""}`.toLowerCase().replace(/_/g, " "); // "semi_detached_house"
+  const type =
+    `${line(/^Type:\s*(.+)$/im) ?? ""} ${line(/^Category:\s*(.+)$/im) ?? ""} ${line(/^Subtype:\s*(.+)$/im) ?? ""}`
+      .toLowerCase()
+      .replace(/_/g, " "); // "semi_detached_house"
   const sharedLand = /\b(?:PPE|copropri[ée]t[ée]|Stockwerkeigentum|STWE|condominio)\b/i.test(t);
   const multi =
     /multi|immeuble|mehrfamilien|rendite|investment|apartment building|plurifamiliale/.test(type) ||
@@ -93,7 +96,10 @@ export function listingFacts(text: string | undefined): ListingFacts {
   const sub = `${line(/^Subtype:\s*(.+)$/im) ?? ""} ${line(/^Classified subtype:\s*(.+)$/im) ?? ""}`.toLowerCase();
   const flatSub = /maisonette|duplex|attique|attika|penthouse|loft|apartment|appartement|wohnung/.test(sub);
   const kind = building ? "building" : flatSub ? "flat" : house && !multi ? "house" : flat ? "flat" : null;
-  const detached = kind === "house" && /\bdetached\b|\bvilla\b|\bchalet\b|freistehend|individuelle/.test(type) && !/semi|terrace|row|mitoyen|reihen|doppel/.test(type);
+  const detached =
+    kind === "house" &&
+    /\bdetached\b|\bvilla\b|\bchalet\b|freistehend|individuelle/.test(type) &&
+    !/semi|terrace|row|mitoyen|reihen|doppel/.test(type);
   const year = num(line(/^Year built:\s*(\d{4})/im));
   const units = num(line(/^Units in (?:the )?building:\s*(\d+)/im));
   const postcode = num(line(/^Postcode:\s*(\d{4})\b/im));
@@ -102,7 +108,9 @@ export function listingFacts(text: string | undefined): ListingFacts {
     (year != null && year >= thisYear - 1) ||
     /^Condition:\s*new\b/im.test(t) ||
     // Phrases, not words: "un coup de neuf" (a fresh coat) is not a new build.
-    /\b(?:neubau|neubauprojekt|erstbezug|im bau|ab plan|bezug (?:ab|per|im)|bezugsbereit|construction neuve|nouvelle construction|projet résidentiel|en construction|sur plan|livraison prévue|new[- ]build|under construction|off[- ]plan|renderings?|visualisierungen?|nuova costruzione)\b/i.test(t);
+    /\b(?:neubau|neubauprojekt|erstbezug|im bau|ab plan|bezug (?:ab|per|im)|bezugsbereit|construction neuve|nouvelle construction|projet résidentiel|en construction|sur plan|livraison prévue|new[- ]build|under construction|off[- ]plan|renderings?|visualisierungen?|nuova costruzione)\b/i.test(
+      t,
+    );
   return {
     // A detached house on less than 150 m² of land is a data error (LAKE10,
     // Rüschlikon: "81 m²" for a detached 6.5-room house with a garden drew
@@ -143,10 +151,12 @@ export interface Plot {
 function ringArea(ring: number[][]): number {
   if (ring.length < 3) return 0;
   const lat0 = ring[0][1];
-  const kx = 111_320 * Math.cos((lat0 * Math.PI) / 180), ky = 111_320;
+  const kx = 111_320 * Math.cos((lat0 * Math.PI) / 180),
+    ky = 111_320;
   let s = 0;
   for (let i = 0; i < ring.length; i++) {
-    const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % ring.length];
+    const [x1, y1] = ring[i],
+      [x2, y2] = ring[(i + 1) % ring.length];
     s += x1 * kx * (y2 * ky) - x2 * kx * (y1 * ky);
   }
   return Math.abs(s) / 2;
@@ -154,7 +164,10 @@ function ringArea(ring: number[][]): number {
 
 export function polygonAreaM2(geometry: { type: string; coordinates: any }): number {
   const polys: number[][][][] = geometry.type === "MultiPolygon" ? geometry.coordinates : [geometry.coordinates];
-  return polys.reduce((sum, rings) => sum + ringArea(rings[0] ?? []) - rings.slice(1).reduce((h, r) => h + ringArea(r), 0), 0);
+  return polys.reduce(
+    (sum, rings) => sum + ringArea(rings[0] ?? []) - rings.slice(1).reduce((h, r) => h + ringArea(r), 0),
+    0,
+  );
 }
 
 async function getJson(url: string, ms = 20_000): Promise<any> {
@@ -185,11 +198,13 @@ function bboxOf(geometry: any): Plot["bbox"] {
   const walk = (c: any) => (typeof c?.[0] === "number" ? pts.push(c) : (c ?? []).forEach(walk));
   walk(geometry?.coordinates);
   if (!pts.length) return undefined;
-  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  const xs = pts.map((q) => q[0]),
+    ys = pts.map((q) => q[1]);
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 
-const samePlot = (a: Plot, b: Plot) => (a.egrid && b.egrid ? a.egrid === b.egrid : a.number === b.number && a.areaM2 === b.areaM2);
+const samePlot = (a: Plot, b: Plot) =>
+  a.egrid && b.egrid ? a.egrid === b.egrid : a.number === b.number && a.areaM2 === b.areaM2;
 
 /** The plots around one (its bounding box, widened by about 5 m): its neighbours. */
 export async function neighbourPlots(plot: Plot): Promise<Plot[]> {
@@ -248,7 +263,9 @@ function cached(key: string, load: () => Promise<Plot | null>): Promise<Plot | n
   if (!hit) {
     hit = load().catch(() => null);
     plotCache.set(key, hit);
-    void hit.then((p) => { if (!p) plotCache.delete(key); });
+    void hit.then((p) => {
+      if (!p) plotCache.delete(key);
+    });
   }
   return hit;
 }
@@ -302,11 +319,15 @@ export interface BuildingFacts {
 // a listed living area is net and counts an attic the register may not.
 // 0.35: a 140 m² house the register gives 106 m² × 3 floors (basement and attic
 // counted) is 0.44 and was refused (Vallamand, 05.10).
-const LIVING_MIN = 0.35, LIVING_MAX = 1.35;
-const PLOT_MATCH = 0.05, PLOT_CLOSE = 0.15, PLOT_DECISIVE = 0.02;
+const LIVING_MIN = 0.35,
+  LIVING_MAX = 1.35;
+const PLOT_MATCH = 0.05,
+  PLOT_CLOSE = 0.15,
+  PLOT_DECISIVE = 0.02;
 // A flat's register area is the same survey number the listing usually quotes;
 // near-identical entrances differ by a few m² (Ruopigenring 85: 96 m², 89: 99 m²).
-const FLAT_MATCH_M2 = 2, FLAT_CLOSE = 0.1;
+const FLAT_MATCH_M2 = 2,
+  FLAT_CLOSE = 0.1;
 
 /** Listing vs building, one row per fact both sides state. */
 export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
@@ -337,17 +358,22 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
     rows.push({
       fact: "Living area",
       listing: `${l.livingM2} m²`,
-      building: gross ? `${b.footprintM2} m² × ${b.floors} floors = ${gross} m²` : "footprint or floors not in the register",
+      building: gross
+        ? `${b.footprintM2} m² × ${b.floors} floors = ${gross} m²`
+        : "footprint or floors not in the register",
       verdict: ratio == null ? "unknown" : ratio >= LIVING_MIN && ratio <= LIVING_MAX ? "match" : "mismatch",
     });
   }
   // A whole building for sale states the building's living area, not a flat's.
-  if (l.livingM2 != null && l.dwellings !== 1 && l.kind !== "building" && b.flats) rows.push(flatRow(l, l.livingM2, b.flats));
+  if (l.livingM2 != null && l.dwellings !== 1 && l.kind !== "building" && b.flats)
+    rows.push(flatRow(l, l.livingM2, b.flats));
   if (l.landM2 != null && !l.sharedLand) {
     const plots = b.plots ?? [];
     const total = plots.reduce((s, p) => s + p.areaM2, 0);
     // The closest of the land sizes the listing gives (the stated one, or one from the description).
-    const off = plots.length ? Math.min(...[l.landM2, ...(l.landAltM2 ?? [])].map((a) => Math.abs(total - a) / a)) : null;
+    const off = plots.length
+      ? Math.min(...[l.landM2, ...(l.landAltM2 ?? [])].map((a) => Math.abs(total - a) / a))
+      : null;
     // Several plots that add up are a lead, never a match on their own (shortlist.ts).
     const several = plots.length > 1;
     rows.push({
@@ -356,7 +382,16 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
       building: plots.length
         ? `${plots.map((p) => p.number).join(" + ")}: ${Math.round(total)} m²${several && off != null && off <= PLOT_MATCH ? " (two plots: possible, not proof; confirm the house in the photos)" : ""}`
         : "plot not found",
-      verdict: off == null ? "unknown" : off <= PLOT_MATCH ? (several ? "unknown" : "match") : off <= PLOT_CLOSE ? "unknown" : "mismatch",
+      verdict:
+        off == null
+          ? "unknown"
+          : off <= PLOT_MATCH
+            ? several
+              ? "unknown"
+              : "match"
+            : off <= PLOT_CLOSE
+              ? "unknown"
+              : "mismatch",
       hard: off != null && off > PLOT_CLOSE,
       ...(off != null ? { off: Math.round(off * 1000) / 1000 } : {}),
     });
@@ -369,18 +404,31 @@ export function factRows(l: ListingFacts, b: BuildingFacts): FactRow[] {
 // six identical-looking entrances: only 81, 85 and 87 hold a 96 m² flat on the
 // 5th floor, so a view match alone could not tell them apart and 89 was claimed.
 function flatRow(l: ListingFacts, living: number, flats: Flat[]): FactRow {
-  const storey = (f: number | null) => (f == null ? "?" : f === 0 ? "ground floor" : f < 0 ? `basement ${-f}` : `floor ${f}`);
-  const roomsFit = (r: number | null) => l.rooms == null || r == null || r === Math.floor(l.rooms) || r === Math.ceil(l.rooms);
+  const storey = (f: number | null) =>
+    f == null ? "?" : f === 0 ? "ground floor" : f < 0 ? `basement ${-f}` : `floor ${f}`;
+  const roomsFit = (r: number | null) =>
+    l.rooms == null || r == null || r === Math.floor(l.rooms) || r === Math.ceil(l.rooms);
   const onFloor = flats.filter((f) => l.floor == null || f.floor == null || f.floor === l.floor);
   const off = (f: Flat) => (f.areaM2 == null ? Infinity : Math.abs(f.areaM2 - living));
   const exact = onFloor.filter((f) => roomsFit(f.rooms) && off(f) <= FLAT_MATCH_M2);
   const close = onFloor.filter((f) => roomsFit(f.rooms) && off(f) <= living * FLAT_CLOSE);
-  const listing = [`${living} m²`, l.rooms != null ? `${l.rooms} rooms` : "", l.floor != null ? storey(l.floor) : ""].filter(Boolean).join(", ");
+  const listing = [`${living} m²`, l.rooms != null ? `${l.rooms} rooms` : "", l.floor != null ? storey(l.floor) : ""]
+    .filter(Boolean)
+    .join(", ");
   const show = (fs: Flat[]) =>
-    fs.slice(0, 6).map((f) => `${storey(f.floor)} ${f.areaM2 ?? "?"} m² ${f.rooms ?? "?"} rooms`).join("; ");
+    fs
+      .slice(0, 6)
+      .map((f) => `${storey(f.floor)} ${f.areaM2 ?? "?"} m² ${f.rooms ?? "?"} rooms`)
+      .join("; ");
   const where = l.floor != null ? ` on ${storey(l.floor)}` : "";
   if (!flats.length) return { fact: "The flat", listing, building: "no flats in the register", verdict: "unknown" };
-  if (exact.length) return { fact: "The flat", listing, building: `${exact.length} of ${flats.length} flats fit: ${show(exact)}`, verdict: "match" };
+  if (exact.length)
+    return {
+      fact: "The flat",
+      listing,
+      building: `${exact.length} of ${flats.length} flats fit: ${show(exact)}`,
+      verdict: "match",
+    };
   return {
     fact: "The flat",
     listing,
@@ -404,7 +452,9 @@ function flatRow(l: ListingFacts, living: number, flats: Flat[]): FactRow {
 const WEAK_FACTS = new Set(["Homes in the building", "Living area"]);
 
 export function strongFit(rows: FactRow[]): boolean {
-  return rows.some((r) => r.verdict === "match" && !WEAK_FACTS.has(r.fact)) && !rows.some((r) => r.verdict === "mismatch");
+  return (
+    rows.some((r) => r.verdict === "match" && !WEAK_FACTS.has(r.fact)) && !rows.some((r) => r.verdict === "mismatch")
+  );
 }
 
 /** One line for the model: "fits: homes 1 ✓, living ✓, plot 1681 331 m² ✓". */
@@ -421,11 +471,22 @@ export function fitText(rows: FactRow[]): string {
  */
 export async function annotateFit<
   T extends { lat: number; lon: number; floors: number | null; dwellings?: number | null; footprintM2: number | null },
->(l: ListingFacts, cands: T[], maxPlots = 100): Promise<(T & { strongFit: boolean; fit: string; plot?: Plot; plotGroup?: Plot[] })[]> {
+>(
+  l: ListingFacts,
+  cands: T[],
+  maxPlots = 100,
+): Promise<(T & { strongFit: boolean; fit: string; plot?: Plot; plotGroup?: Plot[] })[]> {
   const out = cands.map((c) => {
     const rows = factRows(l, { floors: c.floors, dwellings: c.dwellings ?? null, footprintM2: c.footprintM2 });
     const open = !rows.some((r) => r.verdict === "mismatch"); // the register rules nothing out: its plot is worth a look
-    return { ...c, strongFit: strongFit(rows), fit: fitText(rows), open, plot: undefined as Plot | undefined, plotGroup: undefined as Plot[] | undefined };
+    return {
+      ...c,
+      strongFit: strongFit(rows),
+      fit: fitText(rows),
+      open,
+      plot: undefined as Plot | undefined,
+      plotGroup: undefined as Plot[] | undefined,
+    };
   });
   if (l.landM2 == null || l.sharedLand) return out;
   const wanted = out.filter((c) => c.open).slice(0, maxPlots);
@@ -437,8 +498,18 @@ export async function annotateFit<
       if (!plot) continue;
       // Several plots can make one property: a smaller plot is tried with its neighbours.
       const group = await plotGroupFor(plot, l.landM2!);
-      const rows = factRows(l, { floors: c.floors, dwellings: c.dwellings ?? null, footprintM2: c.footprintM2, plots: group ?? [plot] });
-      Object.assign(c, { plot, plotGroup: group && group.length > 1 ? group : undefined, strongFit: strongFit(rows), fit: fitText(rows) });
+      const rows = factRows(l, {
+        floors: c.floors,
+        dwellings: c.dwellings ?? null,
+        footprintM2: c.footprintM2,
+        plots: group ?? [plot],
+      });
+      Object.assign(c, {
+        plot,
+        plotGroup: group && group.length > 1 ? group : undefined,
+        strongFit: strongFit(rows),
+        fit: fitText(rows),
+      });
     }
   };
   await Promise.all(Array.from({ length: 6 }, worker));

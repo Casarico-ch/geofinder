@@ -17,14 +17,20 @@ export default function AdminHeader({ subtitle }: { subtitle: string }) {
         <Link href="/" className="flex items-center gap-2.5 group min-w-0">
           <MapPin className="h-5 w-5 text-primary shrink-0" />
           <div className="min-w-0">
-            <h1 className="hidden sm:block text-base font-semibold text-foreground group-hover:text-primary transition-colors">GeoFinder</h1>
+            <h1 className="hidden sm:block text-base font-semibold text-foreground group-hover:text-primary transition-colors">
+              GeoFinder
+            </h1>
             <p className="text-xs text-muted-foreground truncate hidden sm:block">{subtitle}</p>
           </div>
         </Link>
         <div className="flex-1" />
         {NAV.map((n) => (
           <Link key={n.href} href={n.href}>
-            <Button variant="ghost" size="sm" className={`px-2 sm:px-3 ${location === n.href || (n.href !== "/" && location.startsWith(`${n.href}/`)) ? "text-primary" : ""}`}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`px-2 sm:px-3 ${location === n.href || (n.href !== "/" && location.startsWith(`${n.href}/`)) ? "text-primary" : ""}`}
+            >
               {n.label}
             </Button>
           </Link>

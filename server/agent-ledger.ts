@@ -18,7 +18,15 @@ export async function addFromRegister(search: SearchState, lat: number, lon: num
   const key = String(Number(b.egid));
   if (!search.candidates[key]) {
     addCandidates(search, commune, [
-      { egid: Number(b.egid), lat: b.lat, lon: b.lon, floors: b.floors, footprintM2: b.footprintM2, dwellings: b.dwellings, address: b.address },
+      {
+        egid: Number(b.egid),
+        lat: b.lat,
+        lon: b.lon,
+        floors: b.floors,
+        footprintM2: b.footprintM2,
+        dwellings: b.dwellings,
+        address: b.address,
+      },
     ]);
   }
   return search.candidates[key];
@@ -47,6 +55,7 @@ export function nearOf(v: unknown): { lat: number; lon: number } | undefined {
   if (typeof v === "string") [lat, lon] = v.split(",").map((x) => Number(x.trim()));
   else if (v && typeof v === "object") ({ lat, lon } = v as { lat?: unknown; lon?: unknown });
   else return undefined;
-  const ok = (x: unknown, lo: number, hi: number): x is number => typeof x === "number" && Number.isFinite(x) && x >= lo && x <= hi;
+  const ok = (x: unknown, lo: number, hi: number): x is number =>
+    typeof x === "number" && Number.isFinite(x) && x >= lo && x <= hi;
   return ok(lat, 45, 48.5) && ok(lon, 5.5, 11) ? { lat, lon } : undefined;
 }

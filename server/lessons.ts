@@ -21,7 +21,21 @@ import { missReason } from "./miss";
 import { streetOf } from "./consensus";
 import { getJob } from "./jobs";
 import { loadLessons, keptLessons, newLessonId, saveLessons, type Kpis, type Lesson } from "./lessons-store";
-import { allRounds, deleteRound, getRound, kpisOf, markReviewed, pauseRound, resumeRound, saveRound, settleRound, startRound, truthCandidate, type Pair, type PracticeRound } from "./practice";
+import {
+  allRounds,
+  deleteRound,
+  getRound,
+  kpisOf,
+  markReviewed,
+  pauseRound,
+  resumeRound,
+  saveRound,
+  settleRound,
+  startRound,
+  truthCandidate,
+  type Pair,
+  type PracticeRound,
+} from "./practice";
 
 const AUTO = process.env.PRACTICE_AUTO_LESSONS === "1";
 const wanted = (r: PracticeRound | null | undefined) => !!r && (AUTO || !!r.learnRequested);
@@ -38,12 +52,14 @@ const PARALLEL_TESTS = Number(process.env.PRACTICE_PARALLEL_TESTS ?? 3);
 function judge(before: Kpis, after: Kpis): { keep: boolean; verdict: string } {
   const min = (k: Kpis) => k.avgMinutes ?? Infinity;
   const usd = (k: Kpis) => k.avgCostUsd ?? Infinity;
-  const nums = `right ${before.right}→${after.right}, wrong ${before.wrong}→${after.wrong}, ` +
+  const nums =
+    `right ${before.right}→${after.right}, wrong ${before.wrong}→${after.wrong}, ` +
     `${before.avgMinutes ?? "—"}→${after.avgMinutes ?? "—"} min, $${before.avgCostUsd ?? "—"}→$${after.avgCostUsd ?? "—"} per run`;
   if (after.wrong > before.wrong) return { keep: false, verdict: `Dropped: more wrong answers (${nums}).` };
   if (after.right < before.right) return { keep: false, verdict: `Dropped: found fewer houses (${nums}).` };
   if (after.wrong < before.wrong) return { keep: true, verdict: `Kept: fewer wrong answers (${nums}).` };
-  if (after.right > before.right) return { keep: true, verdict: `Kept: found more houses, none wrong added (${nums}).` };
+  if (after.right > before.right)
+    return { keep: true, verdict: `Kept: found more houses, none wrong added (${nums}).` };
   if (min(after) < min(before) && usd(after) <= usd(before))
     return { keep: true, verdict: `Kept: same accuracy, faster and cheaper (${nums}).` };
   return { keep: false, verdict: `Dropped: no better than without it (${nums}).` };
@@ -61,11 +77,16 @@ function runBrief(round: PracticeRound, i: number, why?: string | null): { text:
   const job = r.jobId ? getJob(r.jobId) : undefined;
   if (!job) return null;
   const truth = truthCandidate(job, r.truth);
-  const streets = [truth?.address, job.answer?.address].map((a) => (a ? streetOf(a) : null)).filter((x): x is string => !!x);
+  const streets = [truth?.address, job.answer?.address]
+    .map((a) => (a ? streetOf(a) : null))
+    .filter((x): x is string => !!x);
   const steps = job.steps
     .filter((s) => s.kind !== "reasoning")
     .slice(-40)
-    .map((s) => `  ${s.n}. [${s.kind}] ${clip(s.title, 120)}${s.kind === "note" && s.detail ? ` — ${clip(s.detail, 200)}` : ""}`)
+    .map(
+      (s) =>
+        `  ${s.n}. [${s.kind}] ${clip(s.title, 120)}${s.kind === "note" && s.detail ? ` — ${clip(s.detail, 200)}` : ""}`,
+    )
     .join("\n");
   const text = [
     `RUN ${i + 1} — model ${r.model}: ${r.outcome.toUpperCase()} after ${r.minutes ?? "?"} min, $${r.costUsd ?? "?"}, ${r.steps ?? "?"} steps.`,
@@ -190,7 +211,14 @@ async function decide(lesson: Lesson, trial: PracticeRound): Promise<void> {
   const before = lesson.before ?? (base ? kpisOf(base, lesson.pairs as Pair[] | undefined) : kpisOf(trial));
   const after = kpisOf(trial);
   const { keep, verdict } = judge(before, after);
-  Object.assign(lesson, { status: keep ? "kept" : "dropped", before, after, verdict, decidedAt: new Date().toISOString(), decidedBy: "test" });
+  Object.assign(lesson, {
+    status: keep ? "kept" : "dropped",
+    before,
+    after,
+    verdict,
+    decidedAt: new Date().toISOString(),
+    decidedBy: "test",
+  });
   await saveLessons();
   console.log(`[lessons] ${lesson.id}: ${verdict}`);
 }
@@ -252,7 +280,9 @@ export async function requestLessons(id: string): Promise<PracticeRound | null> 
  */
 export async function pauseLearning(id: string, pause: boolean): Promise<void> {
   for (const l of (await loadLessons()).filter((x) => x.fromRound === id && x.status === "testing" && x.trialRound))
-    await (pause ? pauseRound : resumeRound)(l.trialRound!).catch((err) => console.error(`[lessons] ${pause ? "pause" : "resume"} of ${l.trialRound} failed:`, err));
+    await (pause ? pauseRound : resumeRound)(l.trialRound!).catch((err) =>
+      console.error(`[lessons] ${pause ? "pause" : "resume"} of ${l.trialRound} failed:`, err),
+    );
 }
 
 /** Deleting a round takes its lessons' tests and the lessons not kept with it. */
@@ -312,7 +342,9 @@ async function beat(): Promise<void> {
     const slots = PARALLEL_TESTS - lessons.filter((l) => l.status === "testing").length;
     const paused = new Set(rounds.filter((x) => x.paused).map((x) => x.id));
     const asked = new Set(rounds.filter(wanted).map((x) => x.id));
-    for (const next of lessons.filter((l) => l.status === "proposed" && !paused.has(l.fromRound) && asked.has(l.fromRound)).slice(0, Math.max(0, slots)))
+    for (const next of lessons
+      .filter((l) => l.status === "proposed" && !paused.has(l.fromRound) && asked.has(l.fromRound))
+      .slice(0, Math.max(0, slots)))
       await testLesson(next).catch((err) => console.error(`[lessons] test of ${next.id} failed to start:`, err));
   } finally {
     busy = false;

@@ -50,8 +50,10 @@ const RADIUS = 90; // metres around a house that count as its neighbourhood
 function hull(points: number[][]): number[][] {
   const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   if (p.length < 3) return p;
-  const cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const lower: number[][] = [], upper: number[][] = [];
+  const cross = (o: number[], a: number[], b: number[]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: number[][] = [],
+    upper: number[][] = [];
   for (const q of p) {
     while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
     lower.push(q);
@@ -67,19 +69,23 @@ function shapeOf(b: Building): Shape | null {
   const all = b.faces.flat();
   if (all.length < 3) return null;
   const zs = all.map((v) => v[2]);
-  const zmin = Math.min(...zs), zmax = Math.max(...zs);
+  const zmin = Math.min(...zs),
+    zmax = Math.max(...zs);
   const h = hull(all.map((v) => [v[0], v[1]]));
   let area = 0;
   for (let i = 0; i < h.length; i++) {
-    const [x1, y1] = h[i], [x2, y2] = h[(i + 1) % h.length];
+    const [x1, y1] = h[i],
+      [x2, y2] = h[(i + 1) % h.length];
     area += x1 * y2 - x2 * y1;
   }
   area = Math.abs(area) / 2;
   if (area < 15) return null; // garden sheds and the like
   // The long axis: the hull edge direction that the outline is longest along.
-  let axisDeg = 0, best = -1;
+  let axisDeg = 0,
+    best = -1;
   for (let i = 0; i < h.length; i++) {
-    const [x1, y1] = h[i], [x2, y2] = h[(i + 1) % h.length];
+    const [x1, y1] = h[i],
+      [x2, y2] = h[(i + 1) % h.length];
     const ang = ((Math.atan2(x2 - x1, y2 - y1) * 180) / Math.PI + 180) % 180;
     const rad = (ang * Math.PI) / 180;
     const proj = h.map(([x, y]) => x * Math.sin(rad) + y * Math.cos(rad));
@@ -94,7 +100,8 @@ function shapeOf(b: Building): Shape | null {
   for (const f of b.faces) {
     if (f.length < 3) continue;
     const [a, c, d] = f;
-    const u = [c[0] - a[0], c[1] - a[1], c[2] - a[2]], v = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+    const u = [c[0] - a[0], c[1] - a[1], c[2] - a[2]],
+      v = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
     const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
     const len = Math.hypot(n[0], n[1], n[2]);
     if (!len) continue;
@@ -134,7 +141,8 @@ export async function shapeAt(lat: number, lon: number): Promise<Shape | null> {
   const href = await tileFor(lat, lon);
   if (!href) return null;
   const { E, N } = wgs84ToLv95(lat, lon);
-  let best: Shape | null = null, d0 = 25;
+  let best: Shape | null = null,
+    d0 = 25;
   for (const s of await shapesOf(href)) {
     const d = Math.hypot(s.x - E, s.y - N);
     if (d < d0) {
@@ -150,19 +158,24 @@ export function outlineGap(a: Shape, b: Shape): number {
   const inside = (p: number[], poly: number[][]) => {
     let c = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      const [xi, yi] = poly[i],
+        [xj, yj] = poly[j];
       if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
     }
     return c;
   };
   const segDist = (p: number[], a1: number[], a2: number[]) => {
-    const dx = a2[0] - a1[0], dy = a2[1] - a1[1];
+    const dx = a2[0] - a1[0],
+      dy = a2[1] - a1[1];
     const t = Math.max(0, Math.min(1, ((p[0] - a1[0]) * dx + (p[1] - a1[1]) * dy) / (dx * dx + dy * dy || 1)));
     return Math.hypot(p[0] - (a1[0] + t * dx), p[1] - (a1[1] + t * dy));
   };
   if (a.hull.some((p) => inside(p, b.hull)) || b.hull.some((p) => inside(p, a.hull))) return 0;
   let d = Infinity;
-  for (const [P, Q] of [[a.hull, b.hull], [b.hull, a.hull]])
+  for (const [P, Q] of [
+    [a.hull, b.hull],
+    [b.hull, a.hull],
+  ])
     for (const p of P) for (let i = 0; i < Q.length; i++) d = Math.min(d, segDist(p, Q[i], Q[(i + 1) % Q.length]));
   return d;
 }
@@ -173,7 +186,8 @@ export async function neighbourhoodAt(lat: number, lon: number): Promise<{ house
   if (!href) return null;
   const shapes = await shapesOf(href);
   const { E, N } = wgs84ToLv95(lat, lon);
-  let house: Shape | null = null, d0 = 25;
+  let house: Shape | null = null,
+    d0 = 25;
   for (const s of shapes) {
     const d = Math.hypot(s.x - E, s.y - N);
     if (d < d0) {
@@ -191,7 +205,8 @@ export async function neighbourhoodAt(lat: number, lon: number): Promise<{ house
 
 const bearingOf = (from: Shape, to: Shape) => ((Math.atan2(to.x - from.x, to.y - from.y) * 180) / Math.PI + 360) % 360;
 // The gap between two buildings, roughly: centre distance minus their half sizes.
-const gapOf = (a: Shape, b: Shape) => Math.max(0, Math.hypot(a.x - b.x, a.y - b.y) - Math.sqrt(a.areaM2) / 2 - Math.sqrt(b.areaM2) / 2);
+const gapOf = (a: Shape, b: Shape) =>
+  Math.max(0, Math.hypot(a.x - b.x, a.y - b.y) - Math.sqrt(a.areaM2) / 2 - Math.sqrt(b.areaM2) / 2);
 
 // The side's compass bearing when the photographed front faces `front`.
 function sideBearing(side: Side, front: number): number {
@@ -203,11 +218,16 @@ function sideBearing(side: Side, front: number): number {
 
 function fitOne(c: NeighbourClue, house: Shape, around: Shape[], front: number): number {
   const dir = c.side ? sideBearing(c.side, front) : null;
-  const near = around.filter((n) => (dir == null || angleDiff(bearingOf(house, n), dir) <= 50) && gapOf(house, n) <= Math.max(40, (c.distanceM ?? 25) * 2));
+  const near = around.filter(
+    (n) =>
+      (dir == null || angleDiff(bearingOf(house, n), dir) <= 50) &&
+      gapOf(house, n) <= Math.max(40, (c.distanceM ?? 25) * 2),
+  );
   if (c.none) return near.length === 0 ? 1 : 0;
   let best = 0;
   for (const n of near) {
-    let got = 0, of = 0;
+    let got = 0,
+      of = 0;
     if (c.distanceM != null) {
       of++;
       const err = Math.abs(gapOf(house, n) - c.distanceM);
@@ -219,19 +239,50 @@ function fitOne(c: NeighbourClue, house: Shape, around: Shape[], front: number):
       // One-sided: "smaller" is anything clearly smaller, however much; near
       // the boundary a misjudged size still earns half.
       got +=
-        c.size === "smaller" ? (r < 0.8 ? 1 : r < 1.05 ? 0.5 : 0)
-        : c.size === "bigger" ? (r > 1.25 ? 1 : r > 0.95 ? 0.5 : 0)
-        : r >= 0.7 && r <= 1.4 ? 1 : r >= 0.5 && r <= 2 ? 0.5 : 0;
+        c.size === "smaller"
+          ? r < 0.8
+            ? 1
+            : r < 1.05
+              ? 0.5
+              : 0
+          : c.size === "bigger"
+            ? r > 1.25
+              ? 1
+              : r > 0.95
+                ? 0.5
+                : 0
+            : r >= 0.7 && r <= 1.4
+              ? 1
+              : r >= 0.5 && r <= 2
+                ? 0.5
+                : 0;
     }
     if (c.height) {
       of++;
       const d = n.heightM - house.heightM;
       got +=
-        c.height === "lower" ? (d < -1.5 ? 1 : d < 0.5 ? 0.5 : 0)
-        : c.height === "taller" ? (d > 1.5 ? 1 : d > -0.5 ? 0.5 : 0)
-        : Math.abs(d) <= 2.5 ? 1 : Math.abs(d) <= 5 ? 0.5 : 0;
+        c.height === "lower"
+          ? d < -1.5
+            ? 1
+            : d < 0.5
+              ? 0.5
+              : 0
+          : c.height === "taller"
+            ? d > 1.5
+              ? 1
+              : d > -0.5
+                ? 0.5
+                : 0
+            : Math.abs(d) <= 2.5
+              ? 1
+              : Math.abs(d) <= 5
+                ? 0.5
+                : 0;
     }
-    if (c.roof) { of++; if ((c.roof === "flat") === n.flat) got++; }
+    if (c.roof) {
+      of++;
+      if ((c.roof === "flat") === n.flat) got++;
+    }
     if (c.ridge && !house.flat && !n.flat) {
       of++;
       const a = angleDiff(n.axisDeg, house.axisDeg) % 180;
@@ -275,7 +326,10 @@ export function coerceNeighbours(v: unknown): NeighbourClue[] {
   return v
     .map((x) => (x ?? {}) as Record<string, unknown>)
     .map((x): NeighbourClue => ({
-      side: pick(asText(x.side).toUpperCase().length <= 2 ? asText(x.side).toUpperCase() : asText(x.side).toLowerCase(), sides as readonly Side[]),
+      side: pick(
+        asText(x.side).toUpperCase().length <= 2 ? asText(x.side).toUpperCase() : asText(x.side).toLowerCase(),
+        sides as readonly Side[],
+      ),
       distanceM: typeof x.distance_m === "number" && x.distance_m >= 0 ? x.distance_m : undefined,
       size: pick(x.size, ["smaller", "similar", "bigger"] as const),
       height: pick(x.height, ["lower", "similar", "taller"] as const),
