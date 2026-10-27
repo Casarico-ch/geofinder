@@ -6,6 +6,7 @@ import type { Answer } from "../server/jobs";
 import { foundPair, nextSteps, type ListingRun } from "../server/practice";
 import { isParkingListing } from "../server/proof";
 import { mustCheck, topCheckText, type LedgerEntry, type SearchState } from "../server/search";
+import { sameListing, type PlatformRequest } from "../server/requests";
 
 let passed = 0;
 const failures: string[] = [];
@@ -159,6 +160,34 @@ await check("the ranked-list depth: 150 by default, the first N and every strong
   ); // the first 2 and the strong fit
   assert.match(topCheckText(locked), /first 2 of each commune's ranked list and every STRONG FIT/);
 });
+
+await check(
+  "a listing sent again within 30 days reuses the earlier request; changed, old, errored or lock runs do not",
+  () => {
+    const now = Date.parse("2026-10-27T10:00:00Z");
+    const req = (over: Partial<PlatformRequest> & { input?: Partial<PlatformRequest["input"]> }): PlatformRequest =>
+      ({
+        id: "r1",
+        kind: "listing",
+        status: "done",
+        createdAt: "2026-10-20T10:00:00Z",
+        updatedAt: "",
+        popetyCostChf: 0,
+        ...over,
+        input: { listingId: "radar-1", listingText: "Title: Villa\n", imageCount: 3, ...(over.input ?? {}) },
+      }) as PlatformRequest;
+    const key = { listingId: "radar-1", listingText: "Title: Villa\n", imageCount: 3 };
+    assert.ok(sameListing(req({}), key, now));
+    assert.ok(sameListing(req({ status: "running" }), key, now)); // still running: join it
+    assert.ok(sameListing(req({}), { ...key, listingText: " Title: Villa\n " }, now)); // whitespace only
+    assert.ok(!sameListing(req({ input: { listingText: "Title: Villa, new photos\n" } }), key, now));
+    assert.ok(!sameListing(req({ input: { imageCount: 5 } }), key, now));
+    assert.ok(!sameListing(req({ input: { listingId: "radar-2" } }), key, now));
+    assert.ok(!sameListing(req({ status: "error" }), key, now));
+    assert.ok(!sameListing(req({ input: { topCheck: 150 } }), key, now));
+    assert.ok(!sameListing(req({ createdAt: "2026-09-01T10:00:00Z" }), key, now));
+  },
+);
 
 await check("a parking listing is recognised, land and a house with parking are not", () => {
   assert.ok(isParkingListing("Title: Place de parc\nType: other\nCategory: parking\nSubtype: underground_parking\n"));

@@ -87,6 +87,31 @@ export function getRequest(id: string): PlatformRequest | undefined {
   return requests.get(id);
 }
 
+// A listing sent again (Daniel, 27.10: "you can also realize we sent you the
+// same listing multiple times" — radar-6678897 came 13 times and ran 33 model
+// runs). The same listingId with the same text and photo count within
+// GEOFINDER_RESUBMIT_DAYS is answered with the earlier request, running or
+// finished; `force: true` on /v1/address searches it again. A request that
+// errored, or a lock run (topCheck), never stands in for a new one.
+const RESUBMIT_DAYS = Number(process.env.GEOFINDER_RESUBMIT_DAYS ?? 30);
+export interface ListingKey {
+  listingId: string;
+  listingText?: string;
+  imageCount: number;
+}
+/** Is `r` an earlier search of this very listing that a new submission can reuse? */
+export function sameListing(r: PlatformRequest, key: ListingKey, now = Date.now()): boolean {
+  if (r.kind !== "listing" || r.status === "error" || r.input.topCheck) return false;
+  if (r.input.listingId !== key.listingId) return false;
+  if ((r.input.listingText ?? "").trim() !== (key.listingText ?? "").trim()) return false;
+  if ((r.input.imageCount ?? 0) !== key.imageCount) return false;
+  return now - Date.parse(r.createdAt) <= RESUBMIT_DAYS * 86_400_000;
+}
+/** The newest earlier request for this listing, or null. */
+export function priorListingRequest(key: ListingKey): PlatformRequest | null {
+  return listRequests().find((r) => sameListing(r, key)) ?? null;
+}
+
 export async function createRequest(
   kind: PlatformRequest["kind"],
   input: PlatformRequest["input"],

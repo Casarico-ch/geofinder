@@ -97,6 +97,9 @@ what is built nearby) carry `maxSource` / `zoning.sources` and show an
 
 Send your own `listingId` (and `listingUrl` if you have one) with every address search:
 the admin table shows all searches with the same `listingId` as one row, with the link.
+The same `listingId` with the same text and photo count sent again within 30 days
+(`GEOFINDER_RESUBMIT_DAYS`) gets the earlier request back (`resubmitted: true`, running or
+finished) instead of new model runs; send `force: true` to search it again.
 `radarUrl` is shown as an "Open in Radar" link. `POST /api/geo/investigate` accepts the same three fields.
 
 The models a listing runs on are set by `GEOFINDER_MODELS` (comma-separated,
