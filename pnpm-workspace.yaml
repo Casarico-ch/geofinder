@@ -1,0 +1,7 @@
+# Supply chain: a version must be public for 7 days before it is installed,
+# so a compromised release is usually caught and pulled before it reaches us.
+minimumReleaseAge: 10080
+
+# Install scripts run only for packages named here (esbuild checks its binary).
+allowBuilds:
+  esbuild: true
