@@ -13,13 +13,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { z } from "zod";
-import {
-  loadListingPhotos,
-  resumeInvestigation,
-  runInvestigation,
-  saveListingPhotos,
-  type AgentImage,
-} from "./agent";
+import { resumeInvestigation, runInvestigation } from "./agent";
+import { type AgentImage } from "./agent-prompt";
+import { loadListingPhotos, saveListingPhotos } from "./agent-state";
 import { exportJobHtml } from "./export";
 import { runLimits } from "./practice";
 import { listingModels } from "./platform";
@@ -39,6 +35,7 @@ import {
   requestCancel,
   requestPause,
 } from "./jobs";
+import { asText } from "./text";
 
 const mediaTypeSchema = z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
@@ -410,8 +407,8 @@ export function registerApiRoutes(app: Express) {
       res.status(404).json({ error: "No such investigation" });
       return;
     }
-    const offset = Math.max(0, Number.parseInt(String(req.query.offset ?? "0"), 10) || 0);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit ?? "30"), 10) || 30));
+    const offset = Math.max(0, Number.parseInt(asText(req.query.offset, "0"), 10) || 0);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(asText(req.query.limit, "30"), 10) || 30));
     res.json({ steps: job.steps.slice(offset, offset + limit), total: job.steps.length });
   });
 }

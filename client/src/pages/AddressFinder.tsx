@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLoad } from "@/hooks/useLoad";
 import { Link, useLocation, useRoute } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -610,12 +611,7 @@ export default function AddressFinder() {
   }, []);
 
   // Keep the overview list fresh while it's on screen (running jobs update live).
-  useEffect(() => {
-    if (!isOverview) return;
-    void loadRecent();
-    const timer = setInterval(() => void loadRecent(), 3000);
-    return () => clearInterval(timer);
-  }, [isOverview, loadRecent]);
+  useLoad(loadRecent, { every: 3000, enabled: isOverview });
 
   // Fetch the next page of trace steps and append it. Guarded so overlapping
   // triggers (scroll + poll) can't double-fetch the same page.
@@ -639,14 +635,9 @@ export default function AddressFinder() {
     }
   }, [jobId]);
 
-  // Switching investigations: reset the trace and load only the FIRST page.
-  useEffect(() => {
-    setJob(null);
-    setNotFound(false);
-    setSteps([]);
-    loadedRef.current = 0;
-    if (jobId) void loadMoreSteps();
-  }, [jobId, loadMoreSteps]);
+  // Load only the FIRST page of the trace. Another investigation is a fresh
+  // mount (App keys this page by its id), so nothing has to be reset here.
+  useLoad(loadMoreSteps, { key: jobId, enabled: jobId != null });
 
   // Poll the investigation META (small — no trace) while anything is running:
   // the investigation itself, or a construction-potential analysis (which also

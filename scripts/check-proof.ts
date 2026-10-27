@@ -1,11 +1,12 @@
-// Checks for the proof rules: an exact address has to be earned (agent.ts
-// proveAnswer, rejectionProblem), the listing's facts against the building's
+// Checks for the proof rules: an exact address has to be earned (prove.ts
+// proveAnswer, agent-tools.ts rejectionProblem), the listing's facts against the building's
 // (proof.ts), and the checklist a cross-check starts from (platform.ts).
 // The numbers are Zermatt's (radar-6664063): Gryfelblatte 58 fits every fact,
 // Riedweg 89 — claimed and "confirmed" twice — fits none of the hard ones.
 // Run: pnpm test   (tsx, node:assert — no test framework; no network)
 import assert from "node:assert/strict";
-import { proveAnswer, rejectionProblem, unprovenAsShortlist } from "../server/agent";
+import { rejectionProblem } from "../server/agent-tools";
+import { proveAnswer, unprovenAsShortlist } from "../server/prove";
 import type { Answer, Job } from "../server/jobs";
 import { seedForCheck, verifySetup } from "../server/verify";
 import { factRows, listingFacts, polygonAreaM2, strongFit } from "../server/proof";

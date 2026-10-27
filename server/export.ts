@@ -10,12 +10,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import type Anthropic from "@anthropic-ai/sdk";
-import { loadConversation, loadListingPhotos } from "./agent";
+import { loadConversation, loadListingPhotos } from "./agent-state";
 import { costUsd, elapsedMs, type Job } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";
+import { asText } from "./text";
 
 const esc = (s: unknown): string =>
-  String(s ?? "")
+  asText(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

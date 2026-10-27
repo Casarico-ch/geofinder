@@ -15,7 +15,9 @@
 // so the screen has something to show while the run works.
 // =============================================================================
 import { randomUUID } from "node:crypto";
-import { runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { runInvestigation } from "./agent";
+import { type AgentImage } from "./agent-prompt";
+import { saveListingPhotos } from "./agent-state";
 import { exactAddressOf } from "./consensus";
 import { buildingAt, buildingByEgid, flatsOf, type GwrBuilding } from "./gwr";
 import { costUsd, createJob, getJob, type Job, type ModelId } from "./jobs";

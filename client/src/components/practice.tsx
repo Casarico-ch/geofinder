@@ -401,9 +401,14 @@ export function ListingsPanel({
       return sort.dir === "desc" ? (y > x ? 1 : -1) : x > y ? 1 : -1;
     });
   }
-  const iconFor = (by: "cost" | "rank") => (sort?.by !== by ? ArrowUpDown : sort.dir === "desc" ? ArrowDown : ArrowUp);
-  const RankIcon = iconFor("rank");
-  const CostIcon = iconFor("cost");
+  const sortIcon = (by: "cost" | "rank") =>
+    sort?.by !== by ? (
+      <ArrowUpDown className="ml-1 h-3.5 w-3.5" />
+    ) : sort.dir === "desc" ? (
+      <ArrowDown className="ml-1 h-3.5 w-3.5" />
+    ) : (
+      <ArrowUp className="ml-1 h-3.5 w-3.5" />
+    );
   return (
     <div className="space-y-3">
       <Tabs value={filter} onValueChange={(v) => setFilter(v as ListingFilter)}>
@@ -429,7 +434,7 @@ export function ListingsPanel({
               <TableHead className="text-right whitespace-nowrap">
                 <Button variant="ghost" size="sm" className="-mr-3 h-8 px-3" onClick={() => cycle("rank")}>
                   Rank
-                  <RankIcon className="ml-1 h-3.5 w-3.5" />
+                  {sortIcon("rank")}
                 </Button>
               </TableHead>
               <TableHead className="text-right">
@@ -440,7 +445,7 @@ export function ListingsPanel({
                   onClick={() => cycle("cost")}
                 >
                   Cost
-                  <CostIcon className="ml-1 h-3.5 w-3.5" />
+                  {sortIcon("cost")}
                 </Button>
               </TableHead>
             </TableRow>

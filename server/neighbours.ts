@@ -14,6 +14,7 @@
 // =============================================================================
 import { findDxfHref, getTileBuildings, wgs84ToLv95, type Building } from "./roofs";
 import { DIRECTIONS, angleDiff, type ClueConfidence, type Direction } from "./locate";
+import { asText } from "./text";
 
 type Side = Direction | "left" | "right" | "behind" | "front";
 
@@ -270,11 +271,11 @@ export function coerceNeighbours(v: unknown): NeighbourClue[] {
   if (!Array.isArray(v)) return [];
   const sides = [...DIRECTIONS, "left", "right", "behind", "front"];
   const pick = <T extends string>(x: unknown, opts: readonly T[]): T | undefined =>
-    opts.includes(String(x ?? "").trim() as T) ? (String(x).trim() as T) : undefined;
+    opts.includes(asText(x).trim() as T) ? (asText(x).trim() as T) : undefined;
   return v
     .map((x) => (x ?? {}) as Record<string, unknown>)
     .map((x): NeighbourClue => ({
-      side: pick(String(x.side ?? "").toUpperCase().length <= 2 ? String(x.side ?? "").toUpperCase() : String(x.side ?? "").toLowerCase(), sides as readonly Side[]),
+      side: pick(asText(x.side).toUpperCase().length <= 2 ? asText(x.side).toUpperCase() : asText(x.side).toLowerCase(), sides as readonly Side[]),
       distanceM: typeof x.distance_m === "number" && x.distance_m >= 0 ? x.distance_m : undefined,
       size: pick(x.size, ["smaller", "similar", "bigger"] as const),
       height: pick(x.height, ["lower", "similar", "taller"] as const),

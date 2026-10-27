@@ -16,6 +16,7 @@ import { isPoolVariable } from "./claude-pool";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { asText } from "./text";
 
 // `let` so initRunsRoot() can fall back to a writable dir if the configured one
 // (e.g. a mis-mounted volume) can't be written — ESM live bindings propagate the
@@ -33,7 +34,7 @@ export async function initRunsRoot(): Promise<void> {
   } catch (err) {
     const fallback = path.resolve(process.cwd(), "runs");
     console.error(
-      `[sandbox] RUNS_DIR "${RUNS_ROOT}" is not writable (${err instanceof Error ? err.message : err}); ` +
+      `[sandbox] RUNS_DIR "${RUNS_ROOT}" is not writable (${err instanceof Error ? err.message : asText(err)}); ` +
         `falling back to ${fallback}. Persistence across deploys is OFF until the volume mount path matches RUNS_DIR.`,
     );
     RUNS_ROOT = fallback;

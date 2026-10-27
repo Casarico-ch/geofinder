@@ -15,6 +15,7 @@
 import type { GwrBuilding } from "./gwr";
 
 import { coerceNeighbours, type NeighbourClue } from "./neighbours";
+import { asText } from "./text";
 
 const SEARCH = "https://api3.geo.admin.ch/rest/services/api/SearchServer";
 const PROFILE = "https://api3.geo.admin.ch/rest/services/profile.json";
@@ -331,13 +332,13 @@ export function coerceLocation(v: unknown): LocationClues | undefined {
   const o = v as Record<string, unknown>;
   const conf = (x: unknown): ClueConfidence => (x === "sure" || x === "likely" || x === "guess" ? x : "guess");
   const dir = (x: unknown): Direction | undefined => {
-    const d = String(x ?? "").trim().toUpperCase();
+    const d = asText(x).trim().toUpperCase();
     return (DIRECTIONS as readonly string[]).includes(d) ? (d as Direction) : undefined;
   };
   const out: LocationClues = {};
   const sl = o.slope as Record<string, unknown> | undefined;
   if (sl && typeof sl === "object") {
-    const faces = String(sl.faces ?? "").trim().toLowerCase() === "flat" ? "flat" : dir(sl.faces);
+    const faces = asText(sl.faces).trim().toLowerCase() === "flat" ? "flat" : dir(sl.faces);
     if (faces) out.slope = { faces, confidence: conf(sl.confidence) };
   }
   if (Array.isArray(o.landmarks)) {

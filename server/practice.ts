@@ -26,7 +26,9 @@
 import { createHmac, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { resumeInvestigation, runInvestigation, saveListingPhotos, type AgentImage } from "./agent";
+import { resumeInvestigation, runInvestigation } from "./agent";
+import { type AgentImage } from "./agent-prompt";
+import { saveListingPhotos } from "./agent-state";
 import { exactAddressOf, houseNumberOf, sameAddress, streetOf, type Candidate } from "./consensus";
 import { createJob, deleteJob, elapsedMs, costUsd, getJob, MODELS, requestPause, type Answer, type Job, type ModelId } from "./jobs";
 import { RUNS_ROOT } from "./sandbox";

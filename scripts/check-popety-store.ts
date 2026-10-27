@@ -13,7 +13,7 @@ process.env.POPETY_API_KEY = "test";
 
 const paid: string[] = [];
 globalThis.fetch = (async (input: string | URL | Request) => {
-  const url = new URL(String(input));
+  const url = new URL(input instanceof Request ? input.url : input);
   paid.push(url.pathname);
   const body = url.pathname.endsWith("/buildings")
     ? { results: [] }
@@ -38,7 +38,7 @@ assert.deepEqual(await readdir(path.join(runs, "_popety")), ["land-1.json"], "ke
 // Same time, same new plot: one purchase, one buyer.
 const both = await Promise.all([store.profileByLandId("land-2", null), store.profileByLandId("land-2", null)]);
 assert.equal(paid.length, 6, "two look-ups at once buy the plot once");
-assert.deepEqual(both.map((b) => b.paid).sort(), [false, true], "only one of them is charged");
+assert.deepEqual(both.map((b) => b.paid).sort((a, b) => Number(a) - Number(b)), [false, true], "only one of them is charged");
 
 // A failed purchase is not kept: the next look-up tries again.
 const ok = globalThis.fetch;

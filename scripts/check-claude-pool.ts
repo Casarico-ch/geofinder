@@ -25,7 +25,7 @@ const sent: { key: string; beta: string; body: { thinking?: { block_binding?: { 
 globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
   const h = new Headers(init?.headers);
   const key = h.get("x-api-key") ?? h.get("authorization") ?? "";
-  sent.push({ key, beta: h.get("anthropic-beta") ?? "", body: JSON.parse(String(init?.body ?? "{}")) });
+  sent.push({ key, beta: h.get("anthropic-beta") ?? "", body: JSON.parse(typeof init?.body === "string" ? init.body : "{}") });
   const r = answer.get(key) ?? ok;
   return new Response(JSON.stringify(r.body), { status: r.status, headers: { "content-type": "application/json" } });
 }) as typeof fetch;

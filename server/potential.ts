@@ -12,13 +12,10 @@
 // =============================================================================
 import Anthropic from "@anthropic-ai/sdk";
 import { onLogin, THINKING } from "./claude-pool";
-import {
-  COMPUTER_TOOLS,
-  MODEL,
-  dispatchTool,
-  extractReasoning,
-} from "./agent";
+import { MODEL, extractReasoning } from "./agent";
+import { COMPUTER_TOOLS, dispatchTool } from "./agent-tools";
 import { addStep, addUsage, apiModel, setPotential, setPotentialStatus, type Answer, type Job } from "./jobs";
+import { asText } from "./text";
 
 const MAX_STEPS = Number(process.env.POTENTIAL_MAX_STEPS ?? 40);
 
@@ -132,7 +129,7 @@ function coerce(input: Record<string, unknown>): BuildPotential {
     : "indicative";
   return {
     generatedAt: new Date().toISOString(),
-    headline: String(input.headline ?? "Could not determine the construction potential."),
+    headline: asText(input.headline, "Could not determine the construction potential."),
     canton: s(input.canton),
     commune: s(input.commune),
     zone: s(input.zone),
@@ -146,7 +143,7 @@ function coerce(input: Record<string, unknown>): BuildPotential {
     confidence: conf,
     caveats: Array.isArray(input.caveats) ? input.caveats.filter((c): c is string => typeof c === "string") : [],
     sources: Array.isArray(input.sources) ? input.sources.filter((c): c is string => typeof c === "string") : [],
-    reasoning: String(input.reasoning ?? ""),
+    reasoning: asText(input.reasoning),
   };
 }
 

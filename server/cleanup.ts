@@ -14,7 +14,7 @@
 import { readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { listJobs, type Job } from "./jobs";
-import { CONVERSATION_FILE } from "./agent";
+import { CONVERSATION_FILE } from "./agent-state";
 
 const AFTER_MS = Number(process.env.CLEANUP_AFTER_MINUTES ?? 60) * 60_000;
 const EVERY_MS = 10 * 60_000;

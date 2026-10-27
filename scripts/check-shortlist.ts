@@ -55,7 +55,7 @@ await check("a wrong clue at most triples (sure), doubles (likely), 1.5× (guess
       // The worst case: the clue puts the target dead last.
       const location = [...footprint.filter((x) => x !== target), target];
       const place = interleave(location, footprint, take).indexOf(target) + 1;
-      assert.ok(place <= Math.ceil((target + 1) * bound), `take ${take}: #${target + 1} → #${place}`);
+      assert.ok(place <= Math.ceil((target + 1) * bound), `take ${take.join(",")}: #${target + 1} → #${place}`);
     }
   }
 });

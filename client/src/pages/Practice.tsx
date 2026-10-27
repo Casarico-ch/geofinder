@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useLoad } from "@/hooks/useLoad";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
@@ -36,11 +37,7 @@ export default function Practice() {
     }
   };
 
-  useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), 10_000);
-    return () => clearInterval(t);
-  }, []);
+  useLoad(load, { every: 10_000 });
 
   const call = async (id: string, url: string, method: "POST" | "DELETE", done?: string) => {
     setBusy(id);

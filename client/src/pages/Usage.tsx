@@ -230,6 +230,8 @@ function CostChart({ buckets, unit }: { buckets: Bucket[]; unit: "day" | "week" 
 export default function Usage() {
   const [, navigate] = useLocation();
   const [data, setData] = useState<{ runs: Run[]; popety: PopetyCharge[]; searches?: Search[] } | null>(null);
+  // When the data was fetched: "now" for the chart, so rendering stays pure.
+  const [asOf, setAsOf] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>(() => readStored("usage-range", "last7" as RangeKey));
   const [customFrom, setCustomFrom] = useState(() => readStored("usage-from", isoDay(new Date(Date.now() - 30 * DAY))));
@@ -244,6 +246,7 @@ export default function Usage() {
         const body = await res.json();
         if (alive) {
           setData(body);
+          setAsOf(Date.now());
           setError(null);
         }
       } catch {
@@ -316,8 +319,8 @@ export default function Usage() {
       .sort((a, b) => b.cost - a.cost);
 
     // Buckets: from the first run (or range start) to the range end, daily up to 90 days, else weekly.
-    const first = from ?? (runs.length ? startOfDay(new Date(Math.min(...runs.map((r) => Date.parse(r.createdAt))))) : startOfDay(new Date()));
-    const last = to ? new Date(to.getTime() - 1) : new Date();
+    const first = from ?? (runs.length ? startOfDay(new Date(Math.min(...runs.map((r) => Date.parse(r.createdAt))))) : startOfDay(new Date(asOf)));
+    const last = to ? new Date(to.getTime() - 1) : new Date(asOf);
     const days = Math.max(1, Math.round((startOfDay(last).getTime() - startOfDay(first).getTime()) / DAY) + 1);
     const unit: "day" | "week" = days > 90 ? "week" : "day";
     const bucketStart = (d: Date) => (unit === "week" ? startOfWeek(d) : startOfDay(d));
@@ -370,7 +373,7 @@ export default function Usage() {
     const expensive = [...runs].sort((a, b) => b.costUsd - a.costUsd).slice(0, 5);
     const popetyChf = popety.reduce((s, p) => s + p.costChf, 0);
     return { runs, popety, counted, solved, cost, input, output, cached, finished, found, byModel, buckets, unit, insights, expensive, popetyChf };
-  }, [data, range, customFrom, customTo]);
+  }, [data, asOf, range, customFrom, customTo]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

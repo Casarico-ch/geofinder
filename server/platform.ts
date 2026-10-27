@@ -18,7 +18,8 @@ import { forgetRound, learningOf, pauseLearning, requestLessons, setLesson } fro
 import { missReasonNow } from "./miss";
 import { firstModels, foundPair, listingVerdict, nextSteps, startSearch, type Role, type Step, type RoundSummary, allRounds, deleteRound, getRound, listRounds, pauseRound, resumeRound, startRound, summarize } from "./practice";
 import { geminiConfigured, isGemini } from "./gemini";
-import { loadListingPhotos, type AgentImage } from "./agent";
+import { type AgentImage } from "./agent-prompt";
+import { loadListingPhotos } from "./agent-state";
 import { isParkingListing } from "./proof";
 import { reviewRound } from "./review";
 import { startChallenge, viewChallenge } from "./challenge";

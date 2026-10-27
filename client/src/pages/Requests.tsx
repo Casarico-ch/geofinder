@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLoad } from "@/hooks/useLoad";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import AdminHeader from "@/components/AdminHeader";
@@ -923,14 +924,7 @@ function Challenger({ r }: { r: PlatformRequest }) {
     if (res?.ok) setList(((await res.json()) as { challenges: ChallengeView[] }).challenges);
   };
   const running = list.some((c) => c.status === "running");
-  useEffect(() => {
-    void load();
-  }, [r.id]);
-  useEffect(() => {
-    if (!running) return;
-    const t = setInterval(() => void load(), 5000);
-    return () => clearInterval(t);
-  }, [running, r.id]);
+  useLoad(load, { key: r.id, every: running ? 5000 : null });
   if (r.id.startsWith("job-")) return null; // an older search with no request record: re-run it first
   const start = async () => {
     if (address.trim().length < 3) return;

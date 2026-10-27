@@ -109,7 +109,7 @@ function densityText(d: any): string {
     right && typeof right === "object"
       ? Object.entries(right)
           .filter(([k, v]) => k !== "cite" && typeof v !== "object")
-          .map(([k, v]) => `${k} ${v}`)
+          .map(([k, v]) => `${k} ${v as string | number}`)
           .join(", ")
       : right != null ? String(right) : "";
   const der = Array.isArray(d.by_derogation) && d.by_derogation.length ? ` · by derogation up to ${d.by_derogation.map((x: any) => x.max).filter(Boolean).join(" / ")}` : "";

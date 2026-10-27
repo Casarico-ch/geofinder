@@ -25,6 +25,11 @@ import {
 // globally; a page that is not the one on screen is shown as its own
 // screenshot behind the pins, at the size it was captured, so every pin lands
 // on the picture it was measured on.
+
+// A note emptied and then closed is gone, so the pins on screen always
+// number exactly what will be filed.
+const prune = (ns: ReviewNote[]) =>
+  ns.every(x => x.text.trim()) ? ns : ns.filter(x => x.text.trim());
 export default function MagicReview({
   initialNotes,
   pages,
@@ -40,7 +45,7 @@ export default function MagicReview({
   onDiscard: () => void;
   onSend: (notes: ReviewNote[]) => void;
 }) {
-  const [notes, setNotes] = useState(initialNotes);
+  const [notes, setNotes] = useState(() => prune(initialNotes));
   const [sel, setSel] = useState(Math.max(0, pages.length - 1));
   const [hover, setHover] = useState(-1);
   const [open, setOpen] = useState(-1);
@@ -56,9 +61,13 @@ export default function MagicReview({
 
   useEffect(() => onChange(notes), [notes, onChange]);
 
+  const close = () => {
+    setOpen(-1);
+    setNotes(prune);
+  };
   const pick = (v: string) => {
     setSel(Number(v));
-    setOpen(-1);
+    close();
     setHover(-1);
   };
   const unhover = (i: number) => setHover(h => (h === i ? -1 : h));
@@ -66,23 +75,15 @@ export default function MagicReview({
     setNotes(ns => ns.map((n, k) => (k === i ? { ...n, text } : n)));
   const remove = (i: number) => {
     setNotes(ns => ns.filter((_, k) => k !== i));
-    setOpen(-1);
+    close();
     setHover(-1);
   };
-
-  // A note emptied and then closed is gone, so the pins on screen always
-  // number exactly what will be filed.
-  useEffect(() => {
-    if (open !== -1) return;
-    setNotes(ns =>
-      ns.every(x => x.text.trim()) ? ns : ns.filter(x => x.text.trim())
-    );
-  }, [open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setOpen(-1);
+      setNotes(prune);
       setHover(-1);
     };
     window.addEventListener("keydown", onKey, true);
@@ -120,7 +121,7 @@ export default function MagicReview({
             onMouseEnter={() => setHover(i)}
             onMouseLeave={() => unhover(i)}
             onFocus={() => setHover(i)}
-            onClick={() => setOpen(o => (o === i ? -1 : i))}
+            onClick={() => (open === i ? close() : setOpen(i))}
           >
             {i + 1}
           </Button>
@@ -167,7 +168,7 @@ export default function MagicReview({
                 >
                   Remove
                 </Button>
-                <Button size="sm" onClick={() => setOpen(-1)}>
+                <Button size="sm" onClick={close}>
                   Done
                 </Button>
               </div>

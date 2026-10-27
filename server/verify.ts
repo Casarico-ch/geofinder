@@ -27,7 +27,7 @@ const modelLabel = (m: KnownModel) =>
  * The checklist a cross-check starts from: the search's own, with its verdicts
  * kept, except the claimed house and the strongest alternatives it set aside
  * (strong fits first, then "possible" ones, nearest to the claim first), which
- * are open again. The proof rules (agent.ts proveAnswer) then mean the checker
+ * are open again. The proof rules (prove.ts proveAnswer) then mean the checker
  * can only confirm the claim after a close look at it AND a visible reason
  * against each re-opened alternative.
  */
