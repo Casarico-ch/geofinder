@@ -18,9 +18,9 @@ import type { CombinedSite, LandCandidate, PropertyProfile } from "./popety";
 import type { GenevaAnswer } from "./geneva";
 
 // "paused" is display-only: a request whose unfinished runs are all paused.
-export type RequestStatus = "running" | "paused" | "done" | "error";
+type RequestStatus = "running" | "paused" | "done" | "error";
 
-export interface ModelResult {
+interface ModelResult {
   model: KnownModel;
   jobId: string;
   status: JobStatus;

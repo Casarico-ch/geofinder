@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react"],
+  "ignorePatterns": ["dist", "geneva", "client/src/components/ui"],
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": ["error", { "checksVoidReturn": { "attributes": false } }],
+    "react/rules-of-hooks": "error"
+  }
+}

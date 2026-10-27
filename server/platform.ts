@@ -194,7 +194,7 @@ function publicView(r: PlatformRequest) {
  * (practice.ts), one first search per model, grouped as one request. Shared
  * by /v1/address and the admin's "Run again".
  */
-export async function startListingRequest(
+async function startListingRequest(
   input: { listingText?: string; municipality?: string; listingId?: string; listingUrl?: string; radarUrl?: string; topCheck?: number },
   images: AgentImage[],
   models: ModelId[],
@@ -391,7 +391,7 @@ export function registerPlatformRoutes(app: Express) {
       const all = await listRounds();
       res.json({ rounds: await Promise.all(all.map((r) => roundView(r, all))) });
     });
-    app.get(`${base}/rounds/:id`, async (req: Request, res: Response) => {
+    app.get(`${base}/rounds/:id`, async (req: Request<Record<string, string>>, res: Response) => {
       const round = await getRound(req.params.id);
       if (!round) {
         res.status(404).json({ error: "No such round" });
@@ -436,7 +436,7 @@ export function registerPlatformRoutes(app: Express) {
     });
     // The same listings again, under today's code, lessons and investigators
     // (firstModels): a before/after on exactly the same houses.
-    app.post(`${base}/rounds/:id/rerun`, async (req: Request, res: Response) => {
+    app.post(`${base}/rounds/:id/rerun`, async (req: Request<Record<string, string>>, res: Response) => {
       const src = await getRound(req.params.id);
       if (!src) {
         res.status(404).json({ error: "No such round" });
@@ -457,18 +457,18 @@ export function registerPlatformRoutes(app: Express) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
       }
     });
-    app.post(`${base}/rounds/:id/learn`, async (req: Request, res: Response) => {
+    app.post(`${base}/rounds/:id/learn`, async (req: Request<Record<string, string>>, res: Response) => {
       const round = await requestLessons(req.params.id);
       if (!round) res.status(404).json({ error: "No such round" });
       else res.json(summarize(round));
     });
-    app.post(`${base}/rounds/:id/pause`, async (req: Request, res: Response) => {
+    app.post(`${base}/rounds/:id/pause`, async (req: Request<Record<string, string>>, res: Response) => {
       const round = await pauseRound(req.params.id);
       if (round) await pauseLearning(round.id, true);
       if (!round) res.status(404).json({ error: "No such round" });
       else res.json(summarize(round));
     });
-    app.post(`${base}/rounds/:id/resume`, async (req: Request, res: Response) => {
+    app.post(`${base}/rounds/:id/resume`, async (req: Request<Record<string, string>>, res: Response) => {
       try {
         const round = await resumeRound(req.params.id);
         if (round) await pauseLearning(round.id, false);
@@ -478,7 +478,7 @@ export function registerPlatformRoutes(app: Express) {
         res.status(503).json({ error: err instanceof Error ? err.message : String(err) });
       }
     });
-    app.delete(`${base}/rounds/:id`, async (req: Request, res: Response) => {
+    app.delete(`${base}/rounds/:id`, async (req: Request<Record<string, string>>, res: Response) => {
       await forgetRound(req.params.id);
       if (await deleteRound(req.params.id)) res.json({ ok: true });
       else res.status(404).json({ error: "No such round" });
@@ -487,7 +487,7 @@ export function registerPlatformRoutes(app: Express) {
     app.get(`${base}/lessons`, async (_req: Request, res: Response) => {
       res.json({ lessons: [...(await loadLessons())].reverse() });
     });
-    app.post(`${base}/lessons/:id/:action`, async (req: Request, res: Response) => {
+    app.post(`${base}/lessons/:id/:action`, async (req: Request<Record<string, string>>, res: Response) => {
       if (!["keep", "drop", "test", "delete"].includes(req.params.action)) {
         res.status(404).json({ error: "Unknown action" });
         return;
@@ -533,7 +533,7 @@ export function registerPlatformRoutes(app: Express) {
     }
   });
 
-  app.get("/v1/requests/:id", (req: Request, res: Response) => {
+  app.get("/v1/requests/:id", (req: Request<Record<string, string>>, res: Response) => {
     const record = getRequest(req.params.id);
     if (!record) {
       res.status(404).json({ error: "No such request" });
@@ -664,7 +664,7 @@ export function registerPlatformRoutes(app: Express) {
 
   // The website's search page: the request a run belongs to, and its recheck
   // (recheckIfDoubtful), whose answer is the one that counts.
-  app.get("/api/requests/for-job/:jobId", (req: Request, res: Response) => {
+  app.get("/api/requests/for-job/:jobId", (req: Request<Record<string, string>>, res: Response) => {
     const record = listRequests().find((r) => (r.results ?? []).some((m) => m.jobId === req.params.jobId));
     const check = record?.results?.find((m) => m.check);
     res.json({
@@ -676,7 +676,7 @@ export function registerPlatformRoutes(app: Express) {
 
   // A person challenges the result with another house: weighed in full depth
   // against every house the searches named (challenge.ts). Opus, a few dollars.
-  app.post("/api/requests/:id/challenge", async (req: Request, res: Response) => {
+  app.post("/api/requests/:id/challenge", async (req: Request<Record<string, string>>, res: Response) => {
     const parsed = z.object({ address: z.string().trim().min(3).max(200) }).safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Expected { address }" });
@@ -699,12 +699,12 @@ export function registerPlatformRoutes(app: Express) {
     }
   });
 
-  app.get("/api/requests/:id/challenges", (req: Request, res: Response) => {
+  app.get("/api/requests/:id/challenges", (req: Request<Record<string, string>>, res: Response) => {
     const record = getRequest(req.params.id);
     res.json({ challenges: (record?.challenges ?? []).map(viewChallenge).reverse() });
   });
 
-  app.get("/api/requests/:id", (req: Request, res: Response) => {
+  app.get("/api/requests/:id", (req: Request<Record<string, string>>, res: Response) => {
     const record = getRequest(req.params.id);
     if (!record) {
       res.status(404).json({ error: "No such request" });

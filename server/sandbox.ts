@@ -50,7 +50,7 @@ export async function ensureRunDir(runId: string): Promise<string> {
 // Resolve a model-supplied path inside the run directory and refuse anything
 // that escapes it (path traversal). Absolute paths are only allowed when they
 // already point inside the run dir.
-export function resolveInRun(runDir: string, p: string): string {
+function resolveInRun(runDir: string, p: string): string {
   const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(runDir, p);
   const root = path.resolve(runDir);
   if (abs !== root && !abs.startsWith(root + path.sep)) {
@@ -59,7 +59,7 @@ export function resolveInRun(runDir: string, p: string): string {
   return abs;
 }
 
-export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
 
 const IMG_EXT: Record<string, ImageMediaType> = {
   ".jpg": "image/jpeg",

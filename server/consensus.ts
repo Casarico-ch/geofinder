@@ -13,7 +13,7 @@
 // "Found" means street or building confidence with a house number, or the
 // cadastral plot number(s).
 // =============================================================================
-import { runnableModel, type Answer, type KnownModel, type ModelId } from "./jobs";
+import type { Answer } from "./jobs";
 
 export interface Candidate {
   /** Street address, or the commune when only the plot is known. */
@@ -51,7 +51,7 @@ export function exactAddressOf(answer: Answer | null, opts: { parcel?: boolean }
 }
 
 /** "Horgen 1234, 1235" → ["1234", "1235"]: the plot numbers, sorted. */
-export function plotNumbersOf(parcel: string | null | undefined): string[] {
+function plotNumbersOf(parcel: string | null | undefined): string[] {
   if (!parcel) return [];
   // A postcode in front of a town ("8810 Horgen") is not a plot number.
   const text = parcel.replace(/\b\d{4}\s+(?=[A-Za-zÀ-ÿ])/g, " ");
@@ -129,31 +129,4 @@ export function sameAddress(a: Candidate, b: Candidate): boolean {
   if (sa && sa === sb) return true;
   const d = metresBetween(a, b);
   return d != null && d <= 40;
-}
-
-export interface Check {
-  verifier: ModelId;
-  candidate: Candidate;
-  candidateFrom: KnownModel;
-}
-
-/** After the searches finished: the checks to run (none when they agree or nobody found it). */
-export function planChecks(searches: { model: KnownModel; answer: Answer | null }[]): Check[] {
-  const found = searches.map((s) => ({ ...s, at: exactAddressOf(s.answer) }));
-  const checks: Check[] = [];
-  for (const claim of found) {
-    if (!claim.at) continue;
-    for (const other of found) {
-      if (other === claim || other.model === claim.model) continue;
-      if (other.at && sameAddress(other.at, claim.at)) continue;
-      checks.push({ verifier: runnableModel(other.model), candidate: claim.at, candidateFrom: claim.model });
-    }
-  }
-  return checks;
-}
-
-/** Did a check confirm the address it was asked about? */
-export function confirms(candidate: Candidate, answer: Answer | null): boolean {
-  const at = exactAddressOf(answer);
-  return !!at && sameAddress(at, candidate);
 }

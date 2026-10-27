@@ -28,11 +28,11 @@ const MODEL = (process.env.CHALLENGE_MODEL ?? "opus-5-5-high") as ModelId;
 const BUDGET_USD = Number(process.env.CHALLENGE_BUDGET_USD ?? 5);
 const MAX_MINUTES = Number(process.env.CHALLENGE_MAX_MINUTES ?? 20);
 
-export type QuickVerdict = "yes" | "likely" | "no" | "unsure";
+type QuickVerdict = "yes" | "likely" | "no" | "unsure";
 type Fact = Pick<FactRow, "fact" | "listing" | "building" | "verdict">;
 
 /** One house in a challenge: one the searches named, or the suggested one. */
-export interface ChallengeHouse {
+interface ChallengeHouse {
   label: string; // A, B, C…
   egid: string;
   address: string | null;
@@ -77,7 +77,7 @@ export interface ChallengeView extends Challenge {
 const FIT: Record<string, "yes" | "no" | "unclear"> = { fits: "yes", fit: "yes", yes: "yes", no: "no", "doesn't fit": "no", unclear: "unclear" };
 
 // "COMPARE: Plot | A: 800 m² vs 815 (fits) | B: 1355 m² (no)", "A: WINS — …", "DECIDED BY: …".
-export function readReasoning(text: string, labels: string[]) {
+function readReasoning(text: string, labels: string[]) {
   const compare: ChallengeView["compare"] = [];
   const summary: ChallengeView["summary"] = {};
   let decidedBy: string | null = null, photos: string | null = null, caveat: string | null = null;
@@ -118,7 +118,7 @@ async function getJson(url: string, ms = 15_000): Promise<any> {
 }
 
 // An EGID typed as is, else the first hit of the address search (its featureId is "EGID_EDID").
-export async function findBuilding(query: string): Promise<GwrBuilding | null> {
+async function findBuilding(query: string): Promise<GwrBuilding | null> {
   const q = query.trim();
   if (/^\d{4,10}$/.test(q)) return buildingByEgid(q);
   const j = await getJson(`${SEARCH}?searchText=${encodeURIComponent(q)}&type=locations&origins=address&sr=4326&limit=1`);
@@ -146,7 +146,7 @@ function moreRows(l: ReturnType<typeof listingFacts>, b: Partial<GwrBuilding>): 
 }
 
 /** The register facts of one building against the listing, with a plain verdict. */
-export async function quickCheck(
+async function quickCheck(
   listingText: string,
   b: Pick<GwrBuilding, "egid" | "lat" | "lon" | "floors" | "dwellings" | "footprintM2"> & Partial<GwrBuilding>,
 ) {
@@ -239,7 +239,9 @@ export async function startChallenge(req: PlatformRequest, query: string, images
     if (!b) continue;
     const k = key(b.egid);
     const by = `${r.model}${r.check ? " (check)" : ""}`;
-    named.has(k) ? named.get(k)!.by.push(by) : named.set(k, { b, by: [by] });
+    const seen = named.get(k);
+    if (seen) seen.by.push(by);
+    else named.set(k, { b, by: [by] });
   }
   if (named.has(key(suggested.egid))) {
     throw new Error(`${suggested.address ?? `EGID ${suggested.egid}`} is the house the search already named — suggest a different one to challenge it.`);

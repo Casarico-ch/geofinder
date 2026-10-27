@@ -1214,7 +1214,7 @@ export default function Requests() {
       } catch {
         if (alive) setError("Could not load the requests. Retrying…");
       }
-      if (alive) timer = setTimeout(load, 5000);
+      if (alive) timer = setTimeout(() => void load(), 5000);
     };
     void load();
     return () => {

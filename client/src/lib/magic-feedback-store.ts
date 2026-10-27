@@ -16,7 +16,7 @@ const TAB_KEY = "mf-tab";
 let tabIdCache: string | null | undefined;
 
 /** This tab's id, made once and kept for the life of the tab; null without sessionStorage. */
-export function tabId(): string | null {
+function tabId(): string | null {
   if (tabIdCache !== undefined) return tabIdCache;
   try {
     let id = sessionStorage.getItem(TAB_KEY);

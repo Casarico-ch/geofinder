@@ -58,13 +58,13 @@ export function angleDiff(a: number, b: number): number {
   return d > 180 ? 360 - d : d;
 }
 
-export function bearing(from: { lat: number; lon: number }, to: { lat: number; lon: number }): number {
+function bearing(from: { lat: number; lon: number }, to: { lat: number; lon: number }): number {
   const dx = (to.lon - from.lon) * Math.cos((from.lat * Math.PI) / 180);
   const dy = to.lat - from.lat;
   return ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
 }
 
-export function metres(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+function metres(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
   return Math.hypot((a.lon - b.lon) * 111_320 * Math.cos((a.lat * Math.PI) / 180), (a.lat - b.lat) * 111_320);
 }
 

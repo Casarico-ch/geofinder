@@ -35,7 +35,7 @@ const TRIAL_RUNS = Number(process.env.PRACTICE_TRIAL_RUNS ?? 12);
 const PARALLEL_TESTS = Number(process.env.PRACTICE_PARALLEL_TESTS ?? 3);
 
 /** The decision rule, in one place: never less accurate, and better at something. */
-export function judge(before: Kpis, after: Kpis): { keep: boolean; verdict: string } {
+function judge(before: Kpis, after: Kpis): { keep: boolean; verdict: string } {
   const min = (k: Kpis) => k.avgMinutes ?? Infinity;
   const usd = (k: Kpis) => k.avgCostUsd ?? Infinity;
   const nums = `right ${before.right}→${after.right}, wrong ${before.wrong}→${after.wrong}, ` +
@@ -161,7 +161,7 @@ Answer with JSON only: {"lessons":[{"text":"the rule","why":"which runs show it,
  * one, then the misses) and, as guards, runs that were right — a lesson that
  * breaks a right answer must show it. At most TRIAL_RUNS.
  */
-export function trialPairs(base: PracticeRound, max = TRIAL_RUNS): Pair[] {
+function trialPairs(base: PracticeRound, max = TRIAL_RUNS): Pair[] {
   const of = (o: string) => base.results.filter((r) => r.outcome === o);
   const guards = Math.max(1, Math.floor(max / 3));
   const right = of("right").slice(0, guards);
@@ -170,7 +170,7 @@ export function trialPairs(base: PracticeRound, max = TRIAL_RUNS): Pair[] {
 }
 
 /** Start testing a proposed lesson against its base round, on a small batch. */
-export async function testLesson(lesson: Lesson): Promise<void> {
+async function testLesson(lesson: Lesson): Promise<void> {
   const base = await getRound(lesson.baseRound ?? lesson.fromRound);
   if (!base) throw new Error("Its base round was deleted.");
   const pairs = trialPairs(base);

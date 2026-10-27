@@ -123,7 +123,7 @@ export async function getPropertyProfile(address: string) {
   return getProfileByLandId(match.landId, match.matchedAddress ?? address);
 }
 
-export async function getProfileByLandId(id: string, matchedAddress: string | null) {
+async function getProfileByLandId(id: string, matchedAddress: string | null) {
   const { land, buildings, zoning } = await getLandData(id);
   return toPropertyProfile(matchedAddress, land, buildings, zoning);
 }
@@ -149,7 +149,7 @@ export async function getLandData(id: string): Promise<LandData> {
 // WMS URLs (no key), drawn in plain lat/lon so outlines map linearly onto them:
 // x = (lon - west) / (east - west) * width, y = (north - lat) / (north - south) * height.
 // `parcelsPixels` holds each outline already converted, ready for an SVG overlay.
-export function mapWindow(polygons: [number, number][][], width = 960, height = 1200) {
+function mapWindow(polygons: [number, number][][], width = 960, height = 1200) {
   const all = polygons.flat();
   const lons = all.map((p) => p[0]);
   const lats = all.map((p) => p[1]);
@@ -187,7 +187,7 @@ export function mapWindow(polygons: [number, number][][], width = 960, height = 
 }
 
 // The single-parcel map on a profile keeps one outline under `parcelPixels`.
-export function parcelMap(polygon: [number, number][]) {
+function parcelMap(polygon: [number, number][]) {
   const { parcelsPixels, ...rest } = mapWindow([polygon]);
   return { ...rest, parcelPixels: parcelsPixels[0] };
 }

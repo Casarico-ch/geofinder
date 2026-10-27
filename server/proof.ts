@@ -276,7 +276,7 @@ export function plotByEgrid(egrid: string): Promise<Plot | null> {
   });
 }
 
-export type FactVerdict = "match" | "mismatch" | "unknown";
+type FactVerdict = "match" | "mismatch" | "unknown";
 export interface FactRow {
   fact: string; // "Plot area", "Homes in the building", "Living area"
   listing: string;

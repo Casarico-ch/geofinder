@@ -12,7 +12,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { RUNS_ROOT } from "./sandbox";
 
-export type LessonStatus = "proposed" | "testing" | "kept" | "dropped";
+type LessonStatus = "proposed" | "testing" | "kept" | "dropped";
 
 /** A round's score on the goal, for the before/after comparison. */
 export interface Kpis {

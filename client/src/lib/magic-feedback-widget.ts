@@ -40,7 +40,7 @@ import {
 } from "./magic-feedback";
 import { clearSession, loadSession, saveSession } from "./magic-feedback-store";
 
-export type Phase = "idle" | "starting" | "recording" | "reading" | "review";
+type Phase = "idle" | "starting" | "recording" | "reading" | "review";
 
 /** What the review screen needs of each page: its address and the picture its pins were measured on. */
 export interface ReviewPage {

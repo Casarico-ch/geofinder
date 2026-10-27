@@ -14,7 +14,7 @@ import { writeSandboxFile } from "./sandbox";
 
 // The literal source of geo.mjs. Concatenation only — no backticks / ${} — so it
 // nests safely inside this template string.
-export const GEO_HELPER_JS = `// geo.mjs — tested geometry helpers (seeded into your working directory).
+const GEO_HELPER_JS = `// geo.mjs — tested geometry helpers (seeded into your working directory).
 // Pure math, no network. Import these instead of re-deriving them by hand:
 //   import { wmsBbox4326, haversine, minEdgeDistanceMetres } from './geo.mjs'
 // The axis order and metre<->degree scaling below are the usual mistakes.

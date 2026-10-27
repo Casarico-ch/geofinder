@@ -16,7 +16,7 @@ import { getJob } from "./jobs";
 import { fingerprint, type PracticeResult } from "./practice";
 import { homeStatus, inBand, inRange } from "./shortlist";
 
-export type MissCode = "wrong_commune" | "not_residential" | "floors" | "dwellings" | "footprint" | "cut_off" | "not_found";
+type MissCode = "wrong_commune" | "not_residential" | "floors" | "dwellings" | "footprint" | "cut_off" | "not_found";
 
 export interface MissReason {
   code: MissCode;
